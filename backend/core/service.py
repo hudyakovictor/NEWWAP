@@ -1,0 +1,399 @@
+from __future__ import annotations
+import numpy as np
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .analysis import extract_photo_bundle, recompute_metric_subset
+from .calibration import build_calibration_summary, bucket_metric_health, pose_distance, stability_score
+from .chronology import build_timeline, build_timeline_summary
+from .config import SETTINGS
+from .recommendations import build_recommendations
+from .utils import (
+    ALL_BUCKETS,
+    BUCKET_LABELS,
+    BUCKET_METRIC_KEYS,
+    FORENSIC_RADAR_AXES,
+    bytes_to_human,
+    directory_size,
+    ensure_directory,
+    fallback_date_for_file,
+    list_image_files,
+    parse_date_from_name,
+    read_json,
+    stable_photo_id,
+    write_json,
+)
+
+
+@dataclass
+class DatasetDescriptor:
+    name: str
+    root: Path
+
+
+class ForensicWorkbenchService:
+    def __init__(self) -> None:
+        self.datasets = {
+            "main": DatasetDescriptor("main", SETTINGS.main_photos_dir),
+            "calibration": DatasetDescriptor("calibration", SETTINGS.calibration_dir),
+        }
+        self.storage_root = ensure_directory(SETTINGS.storage_root)
+        ensure_directory(self.storage_root / "main")
+        ensure_directory(self.storage_root / "calibration")
+        self.override_path = self.storage_root / "calibration_overrides.json"
+
+    def _dataset_root(self, dataset: str) -> Path:
+        return self.datasets[dataset].root
+
+    def _photo_id(self, dataset: str, source_path: Path) -> str:
+        return stable_photo_id(dataset, source_path, self._dataset_root(dataset))
+
+    def _photo_storage_dir(self, dataset: str, photo_id: str) -> Path:
+        return self.storage_root / dataset / photo_id
+
+    def _summary_path(self, dataset: str, photo_id: str) -> Path:
+        return self._photo_storage_dir(dataset, photo_id) / "summary.json"
+
+    def _artifact_url(self, dataset: str, photo_id: str, filename: str) -> str:
+        return f"/storage/{dataset}/{photo_id}/{filename}"
+
+    def _source_url(self, dataset: str, source_path: Path) -> str:
+        rel = source_path.relative_to(self._dataset_root(dataset)).as_posix()
+        return f"/source/{dataset}/{rel}"
+
+    def list_sources(self, dataset: str) -> list[Path]:
+        return list_image_files(self._dataset_root(dataset))
+
+    def _build_stub(self, dataset: str, source_path: Path) -> dict[str, Any]:
+        photo_id = self._photo_id(dataset, source_path)
+        date_str, parsed_date = parse_date_from_name(source_path.name)
+        if not parsed_date:
+            date_str, parsed_date = fallback_date_for_file(source_path)
+        summary = read_json(self._summary_path(dataset, photo_id), {})
+        bucket = str(summary.get("bucket", "unclassified"))
+        stub = {
+            "photo_id": photo_id,
+            "dataset": dataset,
+            "filename": source_path.name,
+            "source_path": str(source_path),
+            "source_url": self._source_url(dataset, source_path),
+            "date_str": date_str,
+            "parsed_year": parsed_date.year,
+            "file_size_bytes": source_path.stat().st_size,
+            "bucket": bucket,
+            "angle": summary.get("angle", "unknown"),
+            "bucket_label": BUCKET_LABELS.get(bucket, bucket),
+            "pose": summary.get("pose", {"bucket": bucket}),
+            "quality": summary.get("quality", {}),
+            "texture_forensics": summary.get("texture_forensics", {}),
+            "metrics": summary.get("metrics", {}),
+            "selected_metric_keys": summary.get("selected_metric_keys", BUCKET_METRIC_KEYS.get(bucket, [])),
+            "artifacts": summary.get("artifacts", {}),
+            "status": summary.get("status", "not_extracted"),
+            "extracted_at": summary.get("extracted_at"),
+        }
+        
+        stub["forensic_profile"] = self._build_forensic_profile(stub)
+
+        if stub["artifacts"]:
+            stub["artifacts"] = {
+                key: self._artifact_url(dataset, photo_id, value)
+                for key, value in stub["artifacts"].items()
+                if isinstance(value, str) and value
+            }
+        return stub
+
+    def _build_forensic_profile(self, stub: dict[str, Any]) -> dict[str, float]:
+        metrics = stub.get("metrics", {})
+        profile = {}
+        for axis, keys in FORENSIC_RADAR_AXES.items():
+            vals = [metrics.get(k, 0.0) for k in keys if k in metrics]
+            if not vals:
+                profile[axis] = 0.0
+                continue
+            # Нормализация (упрощенно): берем среднее
+            # В реальном судебно-медицинском ПО здесь были бы сигма-отклонения от калибровки
+            profile[axis] = float(np.mean(vals)) * 100.0 if axis != "Material" else float(metrics.get("texture_silicone_prob", 0.0)) * 100.0
+            
+        return profile
+
+    def list_dataset(self, dataset: str) -> list[dict[str, Any]]:
+        records = [self._build_stub(dataset, path) for path in self.list_sources(dataset)]
+        records.sort(key=lambda item: (item["date_str"], item["filename"]))
+        return records
+
+    def get_record(self, dataset: str, photo_id: str) -> dict[str, Any] | None:
+        for record in self.list_dataset(dataset):
+            if record["photo_id"] == photo_id:
+                return record
+        return None
+
+    def process_photo(self, dataset: str, photo_id: str) -> dict[str, Any]:
+        source_path = None
+        for candidate in self.list_sources(dataset):
+            if self._photo_id(dataset, candidate) == photo_id:
+                source_path = candidate
+                break
+        if source_path is None:
+            raise KeyError(photo_id)
+
+        bundle = extract_photo_bundle(
+            source_path=source_path,
+            dataset=dataset,
+            photo_id=photo_id,
+            output_dir=self._photo_storage_dir(dataset, photo_id),
+        )
+        date_str, parsed_date = parse_date_from_name(source_path.name)
+        if not parsed_date:
+            date_str, parsed_date = fallback_date_for_file(source_path)
+        bundle["date_str"] = date_str
+        bundle["parsed_year"] = parsed_date.year
+        bundle["bucket_label"] = BUCKET_LABELS.get(bundle["bucket"], bundle["bucket"])
+        bundle["source_url"] = self._source_url(dataset, source_path)
+        bundle["artifacts"] = {
+            key: self._artifact_url(dataset, photo_id, value)
+            for key, value in bundle["artifacts"].items()
+        }
+        write_json(self._summary_path(dataset, photo_id), {**bundle, "artifacts": {
+            key: Path(url).name for key, url in bundle["artifacts"].items()
+        }})
+        return bundle
+
+    def process_dataset(
+        self,
+        dataset: str,
+        *,
+        limit: int,
+        only_ids: list[str] | None = None,
+        progress_callback: callable | None = None,
+    ) -> None:
+        candidates = self.list_dataset(dataset)
+        if only_ids:
+            wanted = set(only_ids)
+            candidates = [record for record in candidates if record["photo_id"] in wanted]
+        else:
+            candidates = [record for record in candidates if record["status"] != "ready"][:limit]
+
+        total = len(candidates)
+        if progress_callback:
+            progress_callback(total=total, completed=0, progress=0.0, message="starting")
+        if total == 0:
+            if progress_callback:
+                progress_callback(total=0, completed=0, progress=100.0, message="nothing to do")
+            return
+
+        for index, record in enumerate(candidates, start=1):
+            self.process_photo(dataset, record["photo_id"])
+            if progress_callback:
+                progress_callback(
+                    total=total,
+                    completed=index,
+                    progress=(index / total) * 100.0,
+                    message=record["filename"],
+                )
+
+    def calibration_records(self) -> list[dict[str, Any]]:
+        return self.list_dataset("calibration")
+
+    def recompute_metrics(
+        self,
+        dataset: str,
+        *,
+        metric_keys: list[str],
+        only_ids: list[str] | None = None,
+        progress_callback: callable | None = None,
+    ) -> None:
+        candidates = self.list_dataset(dataset)
+        candidates = [record for record in candidates if record.get("status") == "ready"]
+        if only_ids:
+            wanted = set(only_ids)
+            candidates = [record for record in candidates if record["photo_id"] in wanted]
+
+        total = len(candidates)
+        if progress_callback:
+            progress_callback(total=total, completed=0, progress=0.0, message="metric recompute")
+        if total == 0:
+            if progress_callback:
+                progress_callback(total=0, completed=0, progress=100.0, message="nothing to do")
+            return
+
+        for index, record in enumerate(candidates, start=1):
+            source_path = Path(record["source_path"])
+            recompute_metric_subset(
+                source_path=source_path,
+                dataset=dataset,
+                photo_id=record["photo_id"],
+                output_dir=self._photo_storage_dir(dataset, record["photo_id"]),
+                metric_keys=metric_keys,
+            )
+            if progress_callback:
+                progress_callback(
+                    total=total,
+                    completed=index,
+                    progress=(index / total) * 100.0,
+                    message=record["filename"],
+                )
+
+    def main_records(self) -> list[dict[str, Any]]:
+        records = self.list_dataset("main")
+        ready_records = [record for record in records if record.get("status") == "ready" and record.get("metrics")]
+        calibration_summary = build_calibration_summary(self.calibration_records())
+        timeline = build_timeline(ready_records, calibration_summary)
+        overrides = read_json(self.override_path, {})
+        calibration_records = {record["photo_id"]: record for record in self.calibration_records() if record["status"] == "ready"}
+        ready_index = {record["photo_id"]: record for record in timeline}
+
+        merged: list[dict[str, Any]] = []
+        for record in records:
+            enriched = ready_index.get(record["photo_id"], {**record})
+            if enriched.get("status") == "ready":
+                enriched["calibration_match"] = self._match_calibration(
+                    enriched,
+                    calibration_records,
+                    calibration_summary,
+                    overrides,
+                )
+            else:
+                enriched.setdefault("anomaly_flags", [])
+                enriched.setdefault("comparison_with_previous", None)
+                enriched.setdefault("comparison_with_next", None)
+                enriched.setdefault(
+                    "verdict",
+                    {"status": "not_extracted", "confidence": "acceptable", "days_delta": 0},
+                )
+                enriched.setdefault("persona_id", None)
+                enriched["calibration_match"] = None
+            merged.append(enriched)
+        return merged
+
+    def _match_calibration(
+        self,
+        record: dict[str, Any],
+        calibration_records: dict[str, dict[str, Any]],
+        calibration_summary: dict[str, Any],
+        overrides: dict[str, str],
+    ) -> dict[str, Any] | None:
+        manual = overrides.get(record["photo_id"])
+        if manual and manual in calibration_records:
+            matched = calibration_records[manual]
+            return {
+                "photo_id": matched["photo_id"],
+                "filename": matched["filename"],
+                "bucket": matched["bucket"],
+                "source": "manual_override",
+                "score": 1.0,
+                "url": matched["artifacts"].get("face_overlay") or matched["artifacts"].get("render_face"),
+                "angles": [
+                    float(matched.get("pose", {}).get("pitch", 0.0)),
+                    float(matched.get("pose", {}).get("yaw", 0.0)),
+                    float(matched.get("pose", {}).get("roll", 0.0)),
+                ],
+            }
+
+        candidates = [
+            candidate
+            for candidate in calibration_records.values()
+            if candidate.get("bucket") == record.get("bucket") and candidate.get("status") == "ready"
+        ]
+        if not candidates:
+            return None
+
+        best = min(candidates, key=lambda item: pose_distance(record.get("pose", {}), item.get("pose", {})))
+        distance = pose_distance(record.get("pose", {}), best.get("pose", {}))
+        return {
+            "photo_id": best["photo_id"],
+            "filename": best["filename"],
+            "bucket": best["bucket"],
+            "source": "auto_pose_match",
+            "score": max(0.0, 1.0 - min(distance / 40.0, 1.0)),
+            "url": best["artifacts"].get("face_overlay") or best["artifacts"].get("render_face"),
+            "angles": [
+                float(best.get("pose", {}).get("pitch", 0.0)),
+                float(best.get("pose", {}).get("yaw", 0.0)),
+                float(best.get("pose", {}).get("roll", 0.0)),
+            ],
+        }
+
+    def set_calibration_override(self, photo_id: str, calibration_photo_id: str) -> dict[str, Any]:
+        data = read_json(self.override_path, {})
+        data[photo_id] = calibration_photo_id
+        write_json(self.override_path, data)
+        return {"status": "ok", "photo_id": photo_id, "calibration_photo_id": calibration_photo_id}
+
+    def calibration_summary(self) -> dict[str, Any]:
+        summary = build_calibration_summary(self.calibration_records())
+        summary["stability_score"] = stability_score(summary)
+        return summary
+
+    def recommendations(self) -> list[dict[str, Any]]:
+        ready = [record for record in self.main_records() if record.get("status") == "ready"]
+        return build_recommendations(ready, self.calibration_summary())
+
+    def overview(self) -> dict[str, Any]:
+        main_records = self.main_records()
+        ready_main = [record for record in main_records if record.get("status") == "ready"]
+        calibration_summary = self.calibration_summary()
+        summary = build_timeline_summary(ready_main)
+        storage_size = directory_size(self.storage_root)
+        source_main_size = sum(path.stat().st_size for path in self.list_sources("main"))
+        source_cal_size = sum(path.stat().st_size for path in self.list_sources("calibration"))
+
+        current_audit = [
+            {"category": "Соответствие ТЗ", "score": 42},
+            {"category": "Хронология по ракурсам", "score": 68},
+            {"category": "Распознавание 9 ракурсов", "score": 72},
+            {"category": "Калибровочная модель", "score": 55},
+            {"category": "Стабильные метрики", "score": 38},
+            {"category": "Текстурная аналитика", "score": 63},
+            {"category": "UV/маски/артефакты", "score": 34},
+            {"category": "3D реконструкция", "score": 74},
+            {"category": "Хранение по фото", "score": 41},
+            {"category": "Сравнение внутри bucket", "score": 64},
+            {"category": "Инкрементальный пересчёт", "score": 28},
+            {"category": "Рекомендации", "score": 57},
+            {"category": "API-контракт", "score": 44},
+            {"category": "Очереди и прогресс", "score": 61},
+            {"category": "Учёт объёма данных", "score": 58},
+            {"category": "UI-архитектура", "score": 35},
+            {"category": "Карточка фото", "score": 31},
+            {"category": "Объяснимость выводов", "score": 49},
+            {"category": "Тесты и верификация", "score": 26},
+            {"category": "Деплой и tunnel", "score": 52},
+        ]
+
+        return {
+            "paths": {
+                "main": str(SETTINGS.main_photos_dir),
+                "calibration": str(SETTINGS.calibration_dir),
+                "storage": str(self.storage_root),
+            },
+            "storage": {
+                "source_main_bytes": source_main_size,
+                "source_calibration_bytes": source_cal_size,
+                "derived_bytes": storage_size,
+                "source_main_human": bytes_to_human(source_main_size),
+                "source_calibration_human": bytes_to_human(source_cal_size),
+                "derived_human": bytes_to_human(storage_size),
+            },
+            "timeline_summary": summary,
+            "source_photo_total": len(main_records),
+            "processed_photo_total": len(ready_main),
+            "calibration": {
+                "stability_score": calibration_summary["stability_score"],
+                "stable_metrics": calibration_summary["stable_metrics"],
+                "marginal_metrics": calibration_summary["marginal_metrics"],
+                "replace_metrics": calibration_summary["replace_metrics"],
+            },
+            "audit_current": current_audit,
+        }
+
+    def photo_detail(self, dataset: str, photo_id: str) -> dict[str, Any] | None:
+        records = self.main_records() if dataset == "main" else self.calibration_records()
+        for record in records:
+            if record["photo_id"] == photo_id:
+                if dataset == "calibration":
+                    record["bucket_metric_health"] = bucket_metric_health(self.calibration_summary(), record.get("bucket", "unclassified"))
+                return record
+        return None

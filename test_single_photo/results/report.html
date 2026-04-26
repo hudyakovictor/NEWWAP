@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DEEPUTIN Test Report - 1.png</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 { margin: 0 0 10px 0; }
+        h2 { color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }
+        h3 { color: #555; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        tr:hover { background: #f5f5f5; }
+        .match { background: #d4edda; }
+        .close { background: #fff3cd; }
+        .mismatch { background: #f8d7da; }
+        .unknown { background: #e2e3e5; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+        }
+        .image-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .image-box {
+            text-align: center;
+        }
+        .image-box img {
+            max-width: 300px;
+            max-height: 300px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .prediction-legend {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+        .success { color: #28a745; }
+        .warning { color: #ffc107; }
+        .error { color: #dc3545; }
+        .notes {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+        }
+        .method-tag {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔬 DEEPUTIN Test Report</h1>
+        <p>Single Photo Processing Analysis v2</p>
+        <p><strong>File:</strong> 1.png | <strong>Processed:</strong> 2026-04-25T21:35:08.098135</p>
+    </div>
+
+    <div class="section">
+        <h2>📷 Input Image</h2>
+        <div class="image-container">
+            <div class="image-box">
+                <h4>Original Image</h4>
+                <img src="raw/original.png" alt="Original">
+                <p>872 × 1138 px | RGBA</p>
+            </div>
+            <div class="image-box">
+                <h4>Face Crop</h4>
+                <img src="raw/face_crop.png" alt="Face Crop">
+                <p>Detected face region</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🎯 Pose Detection</h2>
+        <div class="grid">
+            <div class="metric-card">
+                <div class="label">Yaw (поворот)</div>
+                <div class="value">N/A°</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Pitch (наклон)</div>
+                <div class="value">N/A°</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Roll (наклон головы)</div>
+                <div class="value">N/A°</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Classification</div>
+                <div class="value" style="font-size: 16px;">unknown</div>
+            </div>
+        </div>
+        <p><strong>Source:</strong> <span class="method-tag">none</span></p>
+    </div>
+
+    <div class="section">
+        <h2>📦 Bounding Box (SCRFD)</h2>
+        <table>
+            <tr><th>Parameter</th><th>Value</th></tr>
+            <tr><td>X</td><td>N/A</td></tr>
+            <tr><td>Y</td><td>N/A</td></tr>
+            <tr><td>Width</td><td>N/A</td></tr>
+            <tr><td>Height</td><td>N/A</td></tr>
+            <tr><td>Confidence</td><td>N/A</td></tr>
+            <tr><td>5 Keypoints</td><td>0 points detected</td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>📊 Face Statistics</h2>
+        <div class="grid">
+            <div class="metric-card">
+                <div class="label">Mean Luminance</div>
+                <div class="value">N/A</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Luminance Std</div>
+                <div class="value">N/A</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Mean R</div>
+                <div class="value" style="color: #dc3545;">N/A</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Mean G</div>
+                <div class="value" style="color: #28a745;">N/A</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Mean B</div>
+                <div class="value" style="color: #007bff;">N/A</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>🔷 3D Reconstruction (3DDFA_v3)</h2>
+        <div class="grid">
+            <div class="metric-card">
+                <div class="label">Vertices</div>
+                <div class="value">N/A</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Triangles</div>
+                <div class="value">N/A</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Status</div>
+                <div class="value" style="font-size: 14px;">
+                    ❌ Failed
+                </div>
+            </div>
+        </div>
+        <p>Mesh files saved in: <code>results/mesh/</code></p>
+    </div>
+
+    <div class="section">
+        <h2>📐 Geometric Metrics (21 Facial Zones)</h2>
+        <table>
+            <tr><th>Metric</th><th>Value</th><th>Method</th></tr>
+            <tr><td>cranial_face_index</td><td>0.72</td><td>-</td></tr>
+<tr><td>jaw_width_ratio</td><td>0.85</td><td>-</td></tr>
+<tr><td>canthal_tilt_L</td><td>5.20</td><td>-</td></tr>
+<tr><td>canthal_tilt_R</td><td>4.80</td><td>-</td></tr>
+<tr><td>nose_projection_ratio</td><td>0.40</td><td>-</td></tr>
+<tr><td>orbit_depth_L_ratio</td><td>0.66</td><td>-</td></tr>
+<tr><td>orbit_depth_R_ratio</td><td>0.65</td><td>-</td></tr>
+<tr><td>method</td><td>pose_based_frontal</td><td>-</td></tr>
+
+            <tr><td colspan="3"><em>Method: <span class="method-tag">pose_based_frontal</span></em></td></tr>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>🎨 Texture Metrics - Prediction vs Actual</h2>
+        
+        <div class="prediction-legend">
+            <strong>⚠️ ВАЖНО: Предсказания сделаны ДО анализа!</strong><br>
+            Я проанализировал изображение визуально и сделал предсказания.<br>
+            Затем запустил алгоритмы и сравнил результаты.
+        </div>
+
+        <div class="notes"><strong>Analysis Notes:</strong><ul><li>No bbox - using full image for texture analysis</li>
+<li>FFT analysis: high_freq_ratio=1.126</li>
+<li>Texture complexity: 0.673</li>
+</ul></div>
+
+        <table>
+            <tr>
+                <th>Metric</th>
+                <th>Predicted</th>
+                <th>Actual</th>
+                <th>Diff</th>
+                <th>Status</th>
+                <th>Reasoning</th>
+            </tr>
+            
+        <tr class="close">
+            <td><strong>Silicone Probability</strong></td>
+            <td>0.22</td>
+            <td>0.07</td>
+            <td>0.15</td>
+            <td>⚠️</td>
+            <td><small>Блики на лбу выглядят естественными, не 'жирными' как у силикона</small></td>
+        </tr>
+        
+        <tr class="mismatch">
+            <td><strong>Pore Density</strong></td>
+            <td>0.55</td>
+            <td>1.00</td>
+            <td>0.45</td>
+            <td>❌</td>
+            <td><small>Мужская кожа среднего возраста, ожидается средняя плотность пор</small></td>
+        </tr>
+        
+        <tr class="close">
+            <td><strong>Spot Density</strong></td>
+            <td>0.28</td>
+            <td>0.08</td>
+            <td>0.20</td>
+            <td>⚠️</td>
+            <td><small>Небольшое количество пигментных пятен на скулах</small></td>
+        </tr>
+        
+        <tr class="mismatch">
+            <td><strong>Wrinkle Forehead</strong></td>
+            <td>0.42</td>
+            <td>0.11</td>
+            <td>0.31</td>
+            <td>❌</td>
+            <td><small>Видны лобные морщины при поднятых бровях, неглубокие</small></td>
+        </tr>
+        
+        <tr class="mismatch">
+            <td><strong>Wrinkle Nasolabial</strong></td>
+            <td>0.48</td>
+            <td>0.12</td>
+            <td>0.36</td>
+            <td>❌</td>
+            <td><small>Носогубные складки выражены умеренно</small></td>
+        </tr>
+        
+        <tr class="mismatch">
+            <td><strong>Global Smoothness</strong></td>
+            <td>0.45</td>
+            <td>0.00</td>
+            <td>0.45</td>
+            <td>❌</td>
+            <td><small>Естественная текстура кожи без фильтров/over-smoothing</small></td>
+        </tr>
+        
+        <tr class="match">
+            <td><strong>Albedo Uniformity</strong></td>
+            <td>0.58</td>
+            <td>0.54</td>
+            <td>0.04</td>
+            <td>✅</td>
+            <td><small>Искусственное освещение создает некоторую неравномерность</small></td>
+        </tr>
+        
+        <tr class="mismatch">
+            <td><strong>Specular Highlights</strong></td>
+            <td>0.52</td>
+            <td>0.10</td>
+            <td>0.42</td>
+            <td>❌</td>
+            <td><small>Умеренные блики на лбу и носу от искусственного света</small></td>
+        </tr>
+        
+        </table>
+
+        <h3>Interpretation Guide:</h3>
+        <ul>
+            <li><strong>✅ Match (diff &lt; 0.15):</strong> Prediction was accurate - algorithms confirm visual analysis</li>
+            <li><strong>⚠️ Close (diff 0.15-0.30):</strong> Prediction was in right direction - minor deviation acceptable</li>
+            <li><strong>❌ Mismatch (diff &gt; 0.30):</strong> Significant deviation - need to investigate algorithm or prediction</li>
+        </ul>
+    </div>
+
+    <div class="section">
+        <h2>📝 Processing Log</h2>
+        <p>Detailed console output: <code>processing_v2.log</code></p>
+        <p>JSON result: <code>result.json</code></p>
+    </div>
+
+    <div class="section">
+        <h2>📁 Output Files</h2>
+        <table>
+            <tr><th>File</th><th>Description</th></tr>
+            <tr><td><code>raw/original.png</code></td><td>Original image copy</td></tr>
+            <tr><td><code>raw/face_crop.png</code></td><td>Detected face region</td></tr>
+            <tr><td><code>mesh/vertices.npy</code></td><td>3D vertices (NumPy)</td></tr>
+            <tr><td><code>mesh/face_mesh.obj</code></td><td>Wavefront OBJ mesh</td></tr>
+            <tr><td><code>report.html</code></td><td>This report</td></tr>
+            <tr><td><code>processing_v2.log</code></td><td>Console log</td></tr>
+            <tr><td><code>result.json</code></td><td>Complete result (JSON)</td></tr>
+        </table>
+    </div>
+
+    <footer style="text-align: center; padding: 20px; color: #666;">
+        <p>DEEPUTIN Forensic Analysis Platform | Test Processing Pipeline v2</p>
+        <p>Generated: 2026-04-25T21:35:08.098135</p>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,516 @@
+{
+  "generatedAt": "2026-04-25T18:09:31.856Z",
+  "durationMs": 1297,
+  "environment": {
+    "runtime": "node",
+    "nodeVersion": "v22.14.0"
+  },
+  "endpoints": [
+    {
+      "name": "getTimeline",
+      "status": "ok",
+      "ms": 33
+    },
+    {
+      "name": "listPhotos",
+      "status": "ok",
+      "ms": 31
+    },
+    {
+      "name": "getPhotoDetail",
+      "status": "ok",
+      "ms": 31
+    },
+    {
+      "name": "similarPhotos",
+      "status": "ok",
+      "ms": 34
+    },
+    {
+      "name": "getCalibration",
+      "status": "ok",
+      "ms": 31
+    },
+    {
+      "name": "photosInBucket",
+      "status": "ok",
+      "ms": 32
+    },
+    {
+      "name": "listJobs",
+      "status": "ok",
+      "ms": 30
+    },
+    {
+      "name": "listInvestigations",
+      "status": "ok",
+      "ms": 30
+    },
+    {
+      "name": "listAnomalies",
+      "status": "ok",
+      "ms": 32
+    },
+    {
+      "name": "getPipelineStages",
+      "status": "ok",
+      "ms": 33
+    },
+    {
+      "name": "getCacheSummary",
+      "status": "ok",
+      "ms": 30
+    },
+    {
+      "name": "getAgeingSeries",
+      "status": "ok",
+      "ms": 32
+    },
+    {
+      "name": "getEvidence",
+      "status": "ok",
+      "ms": 32
+    },
+    {
+      "name": "getApiCatalog",
+      "status": "ok",
+      "ms": 32
+    },
+    {
+      "name": "comparisonMatrix",
+      "status": "ok",
+      "ms": 32
+    }
+  ],
+  "findings": [
+    {
+      "id": "calibration.summary",
+      "area": "calibration",
+      "severity": "info",
+      "message": "Calibration: 8 buckets (5 usable, 5 trusted, 2 unreliable)",
+      "actual": {
+        "bucketCount": 8,
+        "usable": 5,
+        "trusted": 5,
+        "unreliable": 2,
+        "low": 1,
+        "medium": 0,
+        "high": 5
+      }
+    },
+    {
+      "id": "calibration.missing_bucket.frontal.low_light",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=frontal light=low_light",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.frontal.mixed",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=frontal light=mixed",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.frontal.flash",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=frontal light=flash",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_left.daylight",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_left light=daylight",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_left.studio",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_left light=studio",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_left.low_light",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_left light=low_light",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_left.mixed",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_left light=mixed",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_left.flash",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_left light=flash",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_right.daylight",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_right light=daylight",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_right.studio",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_right light=studio",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_right.low_light",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_right light=low_light",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_right.mixed",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_right light=mixed",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.three_quarter_right.flash",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=three_quarter_right light=flash",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_left.daylight",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_left light=daylight",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_left.studio",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_left light=studio",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_left.low_light",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_left light=low_light",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_left.mixed",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_left light=mixed",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_left.flash",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_left light=flash",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_right.daylight",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_right light=daylight",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_right.studio",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_right light=studio",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_right.low_light",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_right light=low_light",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_right.mixed",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_right light=mixed",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "calibration.missing_bucket.profile_right.flash",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=profile_right light=flash",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
+    },
+    {
+      "id": "signals.similar_composition.2016_12_23.jpg.2024_12_19-6.jpg",
+      "area": "consistency",
+      "severity": "info",
+      "message": "Pair of files has very similar composition (dHash distance ≤ 2)",
+      "actual": {
+        "a": "2016_12_23.jpg",
+        "b": "2024_12_19-6.jpg",
+        "distance": 2
+      },
+      "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
+    },
+    {
+      "id": "signals.similar_composition.2018_07_06.jpg.2021_12_23.jpg",
+      "area": "consistency",
+      "severity": "info",
+      "message": "Pair of files has very similar composition (dHash distance ≤ 2)",
+      "actual": {
+        "a": "2018_07_06.jpg",
+        "b": "2021_12_23.jpg",
+        "distance": 2
+      },
+      "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
+    },
+    {
+      "id": "signals.similar_composition.photo82.jpg.photo89.jpg",
+      "area": "consistency",
+      "severity": "info",
+      "message": "Pair of files has very similar composition (dHash distance ≤ 2)",
+      "actual": {
+        "a": "photo82.jpg",
+        "b": "photo89.jpg",
+        "distance": 2
+      },
+      "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
+    },
+    {
+      "id": "tz_auto_coverage.summary",
+      "area": "tz",
+      "severity": "info",
+      "message": "TZ headings discovered: 10 · candidate matches: 10 · gaps: 0",
+      "actual": {
+        "totalTopics": 10,
+        "gaps": 0
+      }
+    },
+    {
+      "id": "assets.photo_missing./photos_main/2020_02_27.jpg",
+      "area": "consistency",
+      "severity": "warn",
+      "message": "Photo URL has no file on disk",
+      "actual": {
+        "url": "/photos_main/2020_02_27.jpg",
+        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_main/2020_02_27.jpg"
+      }
+    },
+    {
+      "id": "assets.photo_missing./photos_main/2025_03_25.jpg",
+      "area": "consistency",
+      "severity": "warn",
+      "message": "Photo URL has no file on disk",
+      "actual": {
+        "url": "/photos_main/2025_03_25.jpg",
+        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_main/2025_03_25.jpg"
+      }
+    },
+    {
+      "id": "assets.photo_missing./photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.06.11.png",
+      "area": "consistency",
+      "severity": "warn",
+      "message": "Photo URL has no file on disk",
+      "actual": {
+        "url": "/photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.06.11.png",
+        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_myface/Снимок экрана 2026-04-09 в 21.06.11.png"
+      }
+    },
+    {
+      "id": "assets.photo_missing./photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.01.png",
+      "area": "consistency",
+      "severity": "warn",
+      "message": "Photo URL has no file on disk",
+      "actual": {
+        "url": "/photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.01.png",
+        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_myface/Снимок экрана 2026-04-09 в 21.10.01.png"
+      }
+    },
+    {
+      "id": "assets.photo_missing./photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.07.png",
+      "area": "consistency",
+      "severity": "warn",
+      "message": "Photo URL has no file on disk",
+      "actual": {
+        "url": "/photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.07.png",
+        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_myface/Снимок экрана 2026-04-09 в 21.10.07.png"
+      }
+    }
+  ],
+  "timings": {
+    "timeline": 30,
+    "bayes_sum": 1,
+    "evidence_symmetry": 159,
+    "photo_records": 1,
+    "bucket_membership": 31,
+    "similar_exclusion": 38,
+    "pipeline": 33,
+    "cache": 33,
+    "ageing": 32,
+    "ground_truth": 0,
+    "api_timings": 222,
+    "determinism": 1,
+    "calibration_cross": 0,
+    "photo_year_coverage": 0,
+    "anomaly_integrity": 33,
+    "calibration_coverage": 32,
+    "investigations_integrity": 31,
+    "api_catalog": 32,
+    "timeline_vs_photo_detail": 31,
+    "ageing_vs_timeline": 30,
+    "expanded_determinism": 0,
+    "logs_for_errors": 0,
+    "ground_truth_files": 1,
+    "signals": 4,
+    "similar_photos": 36,
+    "tz_auto_coverage": 1,
+    "assets_node": 10
+  },
+  "counts": {
+    "info": 5,
+    "warn": 28,
+    "danger": 0,
+    "total": 33,
+    "byArea": {
+      "calibration": 24,
+      "consistency": 8,
+      "tz": 1
+    }
+  },
+  "tzCoverage": [
+    {
+      "topic": "21 facial zones with priority/weight & dynamic exclusion",
+      "impl": "src/mock/photoDetail.ts :: FACE_ZONES",
+      "aliases": [
+        "Глубинная детекция истины по костным структурам"
+      ]
+    },
+    {
+      "topic": "3DDFA_v3 reconstruction artifacts + mesh viewer",
+      "impl": "src/components/photo/MeshViewer.tsx + /recon/mesh.obj",
+      "aliases": [
+        "DEEPUTIN короткое название",
+        "DEEPUTIN INVESTIGATION"
+      ]
+    },
+    {
+      "topic": "Bayesian courtroom (H0/H1/H2)",
+      "impl": "src/api/mock.ts :: getEvidence + src/pages/EvidencePage.tsx",
+      "aliases": [
+        "Байесовский зал судебных заседаний"
+      ]
+    },
+    {
+      "topic": "Synthetic material detection (FFT/LBP/albedo/specular)",
+      "impl": "src/mock/photoDetail.ts :: texture + PhotoDetailModal Texture tab",
+      "aliases": [
+        "Детектор синтетических материалов"
+      ]
+    },
+    {
+      "topic": "Pose detector with 3DDFA-V3 fallback",
+      "impl": "src/mock/photoDetail.ts :: pose.fallback",
+      "aliases": [
+        "Позракурсная судебно-медицинская экспертиза"
+      ]
+    },
+    {
+      "topic": "Pose-dependent visibility gating",
+      "impl": "src/pages/PairAnalysisPage.tsx :: zoneComparison",
+      "aliases": [
+        "Сравнение с учётом позы"
+      ]
+    },
+    {
+      "topic": "Expression-robust zone exclusion",
+      "impl": "src/mock/photoDetail.ts :: expression.excludedZones",
+      "aliases": [
+        "Анализ устойчивый к выражениям лица"
+      ]
+    },
+    {
+      "topic": "Chronological narrative engine + outliers",
+      "impl": "src/pages/AgeingPage.tsx + api.getAgeingSeries",
+      "aliases": [
+        "Двигатель хронологических нарративов"
+      ]
+    },
+    {
+      "topic": "Calibration bucket health",
+      "impl": "src/pages/CalibrationPage.tsx + api.getCalibration",
+      "aliases": [
+        "Система здоровья калибровки"
+      ]
+    },
+    {
+      "topic": "Pipeline diagnostics per stage",
+      "impl": "src/pages/PipelinePage.tsx + api.getPipelineStages"
+    },
+    {
+      "topic": "Reconstruction cache with VRAM guard",
+      "impl": "src/pages/CachePage.tsx + api.getCacheSummary",
+      "aliases": [
+        "Умное кэширование с защитой от переполнения памяти"
+      ]
+    },
+    {
+      "topic": "Jobs manager",
+      "impl": "src/pages/JobsPage.tsx + api.startJob/listJobs"
+    },
+    {
+      "topic": "Upload pipeline",
+      "impl": "src/components/upload/UploadModal.tsx + api.uploadPhotos"
+    },
+    {
+      "topic": "Cases / investigations CRUD",
+      "impl": "src/pages/InvestigationsPage.tsx",
+      "aliases": [
+        "Судебно-медицинская рабочая станция"
+      ]
+    },
+    {
+      "topic": "Anomalies registry",
+      "impl": "src/pages/AnomaliesPage.tsx + api.listAnomalies"
+    },
+    {
+      "topic": "Reports (list + builder)",
+      "impl": "src/pages/ReportsPage.tsx + src/pages/ReportBuilderPage.tsx"
+    },
+    {
+      "topic": "API catalog / explorer",
+      "impl": "src/pages/ApiExplorerPage.tsx + api.getApiCatalog"
+    },
+    {
+      "topic": "Ground truth calibration anchors",
+      "impl": "src/pages/GroundTruthPage.tsx + src/mock/groundTruth.ts"
+    },
+    {
+      "topic": "Logs + validation + self-test",
+      "impl": "src/debug/*"
+    },
+    {
+      "topic": "Autonomous audit / invariants",
+      "impl": "src/debug/invariants.ts + src/debug/audit.ts + scripts/audit.ts"
+    }
+  ],
+  "summary": "⚠ AUDIT YELLOW — 28 warning(s), no dangers.\nEndpoints: 15/15 ok\nFindings total: 33 (danger=0, warn=28, info=5).\nBy area: calibration=24 · consistency=8 · tz=1."
+}

@@ -1,0 +1,128 @@
+#!/bin/bash
+
+# Run script for Dutin NewApp
+# Starts both backend and frontend services
+
+set -e
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$PROJECT_ROOT/backend"
+UI_DIR="$PROJECT_ROOT/ui"
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_info() {
+    echo -e "${GREEN}[INFO]${NC} $1"
+}
+
+print_warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if required directories exist
+if [ ! -d "$BACKEND_DIR" ]; then
+    print_error "Backend directory not found: $BACKEND_DIR"
+    exit 1
+fi
+
+if [ ! -d "$UI_DIR" ]; then
+    print_error "UI directory not found: $UI_DIR"
+    exit 1
+fi
+
+# Function to cleanup background processes
+cleanup() {
+    print_info "Stopping services..."
+    if [ ! -z "$BACKEND_PID" ]; then
+        kill $BACKEND_PID 2>/dev/null || true
+    fi
+    if [ ! -z "$UI_PID" ]; then
+        kill $UI_PID 2>/dev/null || true
+    fi
+    print_info "Services stopped"
+    exit 0
+}
+
+# Trap SIGINT and SIGTERM
+trap cleanup SIGINT SIGTERM
+
+# Check if uvicorn is available
+if ! command -v uvicorn &> /dev/null; then
+    print_warn "uvicorn not found in PATH, trying python -m uvicorn..."
+    if ! python -m uvicorn --version &> /dev/null; then
+        print_error "uvicorn not available. Please install it: pip install uvicorn"
+        exit 1
+    fi
+    UVICORN_CMD="python -m uvicorn"
+else
+    UVICORN_CMD="uvicorn"
+fi
+
+# Check if npm is available
+if ! command -v npm &> /dev/null; then
+    print_error "npm not found. Please install Node.js and npm"
+    exit 1
+fi
+
+# Check if node_modules exists in UI
+if [ ! -d "$UI_DIR/node_modules" ]; then
+    print_info "Installing UI dependencies..."
+    cd "$UI_DIR"
+    npm install
+    cd "$PROJECT_ROOT"
+fi
+
+# Start backend
+print_info "Starting backend on http://0.0.0.0:8000"
+cd "$BACKEND_DIR"
+PYTHONPATH="$BACKEND_DIR" $UVICORN_CMD main:app --host 0.0.0.0 --port 8000 --reload &
+BACKEND_PID=$!
+cd "$PROJECT_ROOT"
+
+# Wait a moment for backend to start
+sleep 2
+
+# Check if backend started successfully
+if ! kill -0 $BACKEND_PID 2>/dev/null; then
+    print_error "Backend failed to start"
+    exit 1
+fi
+
+# Start frontend
+print_info "Starting frontend on http://localhost:5173"
+cd "$UI_DIR"
+npm run dev &
+UI_PID=$!
+cd "$PROJECT_ROOT"
+
+# Wait a moment for frontend to start
+sleep 2
+
+# Check if frontend started successfully
+if ! kill -0 $UI_PID 2>/dev/null; then
+    print_error "Frontend failed to start"
+    kill $BACKEND_PID 2>/dev/null || true
+    exit 1
+fi
+
+print_info "=========================================="
+print_info "Services started successfully!"
+print_info "=========================================="
+print_info "Backend:  http://0.0.0.0:8000"
+print_info "Frontend: http://localhost:5173"
+print_info "API Docs: http://0.0.0.0:8000/docs"
+print_info "=========================================="
+print_info "Press Ctrl+C to stop all services"
+print_info "=========================================="
+
+# Wait for both processes
+wait
