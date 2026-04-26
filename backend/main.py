@@ -15,7 +15,7 @@ from core.analysis import calculate_bayesian_evidence, BayesianEvidence
 from core.jobs import JobManager
 from core.models import CalibrationOverrideRequest, ExtractJobRequest, RecomputeMetricsRequest
 from core.service import ForensicWorkbenchService
-from core.utils import IMAGE_EXTENSIONS
+from core.utils import IMAGE_EXTENSIONS, read_json
 
 service = ForensicWorkbenchService()
 jobs = JobManager()
@@ -145,15 +145,32 @@ def set_override(request: CalibrationOverrideRequest) -> dict:
 
 @app.post("/api/evidence/compare", response_model=BayesianEvidence)
 async def compare_evidence(photo_id_a: str, photo_id_b: str):
-    # TODO: В следующих итерациях заменим заглушки на реальное чтение JSON из storage/
-    # Сейчас симулируем извлеченные сырые данные для проверки работы API
-    mock_metrics_a = {"nasal_bridge": 1.2, "orbital_rims": 2.0, "zygomatic_bones": 1.5}
-    mock_metrics_b = {"nasal_bridge": 1.3, "orbital_rims": 2.1, "zygomatic_bones": 1.7}
+    """
+    Вычисляет криминалистический вердикт на основе реальных данных из summary.json.
+    """
+    path_a = SETTINGS.storage_root / "main" / photo_id_a / "summary.json"
+    path_b = SETTINGS.storage_root / "main" / photo_id_b / "summary.json"
     
+    summary_a = read_json(path_a, {})
+    summary_b = read_json(path_b, {})
+    
+    metrics_a = summary_a.get("metrics", {})
+    metrics_b = summary_b.get("metrics", {})
+    
+    if not metrics_a or not metrics_b:
+        raise HTTPException(
+            status_code=404, 
+            detail=f"Данные не найдены для {photo_id_a} или {photo_id_b}. Убедитесь, что фотографии обработаны."
+        )
+    
+    # Можно извлечь флаг улыбки из метаданных позы, если он там есть
+    is_smiling = summary_a.get("pose", {}).get("expression") == "smile" or \
+                 summary_b.get("pose", {}).get("expression") == "smile"
+                 
     evidence = calculate_bayesian_evidence(
-        zone_metrics_photo_a=mock_metrics_a,
-        zone_metrics_photo_b=mock_metrics_b,
-        is_smiling=False
+        zone_metrics_photo_a=metrics_a,
+        zone_metrics_photo_b=metrics_b,
+        is_smiling=is_smiling
     )
     return evidence
 
