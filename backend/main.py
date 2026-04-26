@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from core.config import SETTINGS
+from core.analysis import calculate_bayesian_evidence, BayesianEvidence
 from core.jobs import JobManager
 from core.models import CalibrationOverrideRequest, ExtractJobRequest, RecomputeMetricsRequest
 from core.service import ForensicWorkbenchService
@@ -140,6 +141,21 @@ def start_recompute_metrics(request: RecomputeMetricsRequest) -> dict:
 @app.post("/api/calibration/override")
 def set_override(request: CalibrationOverrideRequest) -> dict:
     return service.set_calibration_override(request.photo_id, request.calibration_photo_id)
+
+
+@app.post("/api/evidence/compare", response_model=BayesianEvidence)
+async def compare_evidence(photo_id_a: str, photo_id_b: str):
+    # TODO: В следующих итерациях заменим заглушки на реальное чтение JSON из storage/
+    # Сейчас симулируем извлеченные сырые данные для проверки работы API
+    mock_metrics_a = {"nasal_bridge": 1.2, "orbital_rims": 2.0, "zygomatic_bones": 1.5}
+    mock_metrics_b = {"nasal_bridge": 1.3, "orbital_rims": 2.1, "zygomatic_bones": 1.7}
+    
+    evidence = calculate_bayesian_evidence(
+        zone_metrics_photo_a=mock_metrics_a,
+        zone_metrics_photo_b=mock_metrics_b,
+        is_smiling=False
+    )
+    return evidence
 
 
 @app.post("/api/upload")

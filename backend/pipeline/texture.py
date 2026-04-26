@@ -189,3 +189,41 @@ class SkinTextureAnalyzer:
             }
         except Exception as exc:
             return {"error": str(exc)}
+
+
+def analyze_texture_synthetic_prob(face_crop_path: str) -> float:
+    """
+    Принимает путь к обрезанному изображению лица (face_crop.jpg).
+    Вычисляет вероятность того, что материал синтетический (от 0.0 до 1.0).
+    Использует упрощенную оценку высокочастотных деталей (FFT-подобный подход).
+    """
+    try:
+        # Загружаем изображение в градациях серого
+        img = cv2.imread(face_crop_path, cv2.IMREAD_GRAYSCALE)
+        if img is None:
+            return 0.5 # Неизвестно
+            
+        # Применяем фильтр Лапласа для выделения краев/пор (микрорельефа)
+        laplacian = cv2.Laplacian(img, cv2.CV_64F)
+        variance = laplacian.var()
+        
+        # Естественная кожа имеет высокую дисперсию Лапласиана из-за пор и морщин (высокий микрорельеф)
+        # Синтетика/дипфейки часто сглажены (низкая дисперсия)
+        
+        # Пороги (требуют тонкой настройки на реальных данных)
+        NATURAL_VAR_THRESHOLD = 500.0
+        SYNTHETIC_VAR_THRESHOLD = 100.0
+        
+        if variance > NATURAL_VAR_THRESHOLD:
+            synthetic_prob = 0.05 # Очень вероятно натуральная кожа
+        elif variance < SYNTHETIC_VAR_THRESHOLD:
+            synthetic_prob = 0.95 # Очень вероятно синтетика/блюр
+        else:
+            # Линейная интерполяция между порогами
+            synthetic_prob = 1.0 - ((variance - SYNTHETIC_VAR_THRESHOLD) / (NATURAL_VAR_THRESHOLD - SYNTHETIC_VAR_THRESHOLD))
+            
+        return round(synthetic_prob, 3)
+        
+    except Exception as e:
+        print(f"Ошибка анализа текстуры {face_crop_path}: {e}")
+        return 0.5

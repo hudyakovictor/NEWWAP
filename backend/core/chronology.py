@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from copy import deepcopy
 from datetime import date
-from typing import Any
+from typing import Any, List, Dict
 
 from .calibration import allowed_metric_delta, confidence_from_ratio
 from .config import SETTINGS
@@ -314,4 +314,43 @@ def build_timeline_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "persona_count": len(persona_ids),
         "angle_coverage": coverage,
         "critical_events": critical_events[:30],
+    }
+
+
+def analyze_chronology(timeline_data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Анализирует последовательность фото (отсортированных по году).
+    Выявляет аномалии: резкие скачки метрик (инверсия асимметрии) между соседними годами.
+    """
+    anomalies = []
+    
+    # Проходимся по парам соседних лет
+    for i in range(len(timeline_data) - 1):
+        photo_early = timeline_data[i]
+        photo_late = timeline_data[i+1]
+        
+        year_diff = photo_late['year'] - photo_early['year']
+        if year_diff <= 0:
+            continue # Пропускаем фото одного года или неверную сортировку
+            
+        # Сравниваем базовую метрику: например, костную ширину (bizygomatic_width)
+        w_early = photo_early.get('metrics', {}).get('bizygomatic_width', 0)
+        w_late = photo_late.get('metrics', {}).get('bizygomatic_width', 0)
+        
+        if w_early > 0 and w_late > 0:
+            delta = abs(w_late - w_early)
+            # Если костная структура изменилась слишком сильно за короткий срок
+            if delta > 15.0: # Пороговое значение (требует калибровки)
+                anomalies.append({
+                    "type": "chronological_jump",
+                    "severity": "danger" if delta > 25.0 else "warn",
+                    "years": [photo_early['year'], photo_late['year']],
+                    "photos": [photo_early['id'], photo_late['id']],
+                    "message": f"Аномальный скачок костной ширины (delta={delta:.1f}) между {photo_early['year']} и {photo_late['year']}"
+                })
+                
+    return {
+        "status": "ok" if not anomalies else "anomalies_detected",
+        "anomaly_count": len(anomalies),
+        "anomalies": anomalies
     }

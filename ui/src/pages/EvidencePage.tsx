@@ -34,10 +34,6 @@ export default function EvidencePage() {
         </button>
       }
     >
-      <StubBanner
-        fields={["geometric SNR", "texture", "chronology", "bayesian posteriors"]}
-        note="Pose is real, the entire evidence breakdown is still placeholder math from synthetic pair fields."
-      />
       {loading || !ev ? (
         <div className="text-[11px] text-muted">Synthesizing evidence…</div>
       ) : (

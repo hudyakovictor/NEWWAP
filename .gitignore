@@ -5,5 +5,7 @@ __pycache__/
 dist/
 *.log
 .env
+ui/public/
+ui/audit-report.json
+backend/scratch/
 storage/
-ui/public

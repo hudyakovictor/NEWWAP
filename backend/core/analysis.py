@@ -4,7 +4,8 @@ import math
 import threading
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, Dict
+from pydantic import BaseModel
 
 import cv2
 import numpy as np
@@ -40,6 +41,81 @@ from .utils import (
 
 _RUNTIME_LOCK = threading.Lock()
 _RUNTIME: "LegacyRuntime | None" = None
+
+
+class BayesianEvidence(BaseModel):
+    h0_same_person: float
+    h1_synthetic_mask: float
+    h2_different_person: float
+    structural_snr: float
+    anomalies_flagged: int
+
+
+# Веса зон согласно ТЗ: приоритет на неизменные костные структуры
+ZONE_WEIGHTS = {
+    "nasal_bridge": 1.0,     # Переносица (максимальный вес)
+    "orbital_rims": 1.0,     # Глазницы
+    "zygomatic_bones": 0.9,  # Скуловые кости
+    "mandible": 0.8,         # Челюсть (поддерживающая структура)
+    "lips": 0.2,             # Губы (мягкие ткани, минимальный вес)
+    "cheeks": 0.3            # Щеки (мягкие ткани)
+}
+
+
+def calculate_bayesian_evidence(
+    zone_metrics_photo_a: Dict[str, float], 
+    zone_metrics_photo_b: Dict[str, float],
+    is_smiling: bool = False
+) -> BayesianEvidence:
+    """
+    Вычисляет вероятности гипотез H0, H1, H2 на основе дельты зон.
+    """
+    # Априорные вероятности
+    prior_h0 = 0.80  # Изначально предполагаем, что это один человек
+    prior_h1 = 0.01  # Подмена (маска)
+    prior_h2 = 0.19  # Разные люди
+
+    total_weight = 0.0
+    weighted_delta = 0.0
+
+    for zone, weight in ZONE_WEIGHTS.items():
+        # Динамическое исключение зон при мимике (ТЗ: Устойчивость к выражениям)
+        if is_smiling and zone in ["lips", "cheeks"]:
+            continue
+            
+        val_a = zone_metrics_photo_a.get(zone, 0.0)
+        val_b = zone_metrics_photo_b.get(zone, 0.0)
+        delta = abs(val_a - val_b)
+        
+        weighted_delta += delta * weight
+        total_weight += weight
+
+    # Средневзвешенное отклонение
+    mean_divergence = (weighted_delta / total_weight) if total_weight > 0 else 1.0
+    
+    # Расчет Отношения Сигнал/Шум (SNR). Чем меньше отклонение, тем выше SNR.
+    structural_snr = max(0.1, 10.0 - mean_divergence)
+
+    # Байесовское обновление (упрощенная модель для старта)
+    likelihood_h0 = 1.0 / (1.0 + mean_divergence)
+    likelihood_h2 = mean_divergence / 10.0
+    
+    posterior_h0 = prior_h0 * likelihood_h0
+    posterior_h1 = prior_h1 # Для H1 нужны текстурные метрики (добавим позже)
+    posterior_h2 = prior_h2 * likelihood_h2
+
+    # Нормализация до 1.0 (100%)
+    total_prob = posterior_h0 + posterior_h1 + posterior_h2
+    
+    return BayesianEvidence(
+        h0_same_person=round(posterior_h0 / total_prob, 4),
+        h1_synthetic_mask=round(posterior_h1 / total_prob, 4),
+        h2_different_person=round(posterior_h2 / total_prob, 4),
+        structural_snr=round(structural_snr, 2),
+        anomalies_flagged=1 if mean_divergence > 5.0 else 0
+    )
+
+
 
 
 class LegacyRuntime:

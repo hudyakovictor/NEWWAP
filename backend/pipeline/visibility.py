@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 from .types import ReconstructionResult, VisibilityResult
 from core.constants import Z_TOLERANCE_RATIO
+from typing import Dict, List
 
 def compute_software_zbuffer_mask(vertices_camera: np.ndarray, resolution: int = 256) -> np.ndarray:
     """
@@ -70,3 +71,34 @@ def compute_visibility(reconstruction: ReconstructionResult, angle_threshold_deg
         facing_cosines=facing_cosines,
         visible_count=int(np.count_nonzero(binary_mask)),
     )
+
+
+def get_visible_zones(yaw: float, pitch: float) -> List[str]:
+    """
+    Определяет список видимых зон лица на основе углов поворота головы (в градусах).
+    Согласно ТЗ: предотвращение геометрических «галлюцинаций» в профильных снимках.
+    """
+    # Базовые зоны, видимые всегда (фронтально)
+    visible = [
+        "nasal_bridge", "chin", "forehead"
+    ]
+    
+    # Левая сторона лица (исключается при сильном повороте вправо)
+    if yaw > -45.0:  # Голова не повернута экстремально вправо
+        visible.extend(["left_eye", "left_zygomatic", "left_cheek"])
+        
+    # Правая сторона лица (исключается при сильном повороте влево)
+    if yaw < 45.0:   # Голова не повернута экстремально влево
+        visible.extend(["right_eye", "right_zygomatic", "right_cheek"])
+        
+    # Дополнительные проверки для сильного наклона (pitch)
+    if pitch > -30.0: # Голова не сильно наклонена вниз
+        visible.extend(["jawline", "lower_lip"])
+        
+    return visible
+
+
+def filter_metrics_by_pose(metrics: Dict[str, float], yaw: float, pitch: float) -> Dict[str, float]:
+    """Оставляет в словаре метрик только те зоны, которые физически видны в данном ракурсе."""
+    visible_zones = get_visible_zones(yaw, pitch)
+    return {k: v for k, v in metrics.items() if k in visible_zones}
