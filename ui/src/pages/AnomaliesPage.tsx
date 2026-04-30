@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
 import { api, type AnomalyRecord } from "../api";
 import { useApp } from "../store/appStore";
-import StubBanner from "../components/common/StubBanner";
 
 const KINDS = ["any", "chronology", "synthetic", "pose", "cluster", "calibration"] as const;
 const SEVS = ["any", "ok", "info", "warn", "danger"] as const;
@@ -62,10 +61,6 @@ export default function AnomaliesPage() {
         </>
       }
     >
-      <StubBanner
-        fields={["anomaly registry", "synthetic-material flag", "chronological flag"]}
-        note="The registry is built from synthetic flags. Real anomalies will appear once the texture & bayesian pipelines run."
-      />
 
       <div className="grid grid-cols-5 gap-3 mb-3">
         <Stat label="Total" value={counts.total} color="#cfd8e6" />

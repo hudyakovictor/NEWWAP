@@ -79,7 +79,15 @@ function parseDate(file: string): { year: number | null; date: string | null } {
 function build(folder: "main" | "myface", raw: Record<string, any>, urlPrefix: string): RealPhoto[] {
   const stats = folder === "main" ? FACE_STATS_MAIN : FACE_STATS_MYFACE;
   const out: RealPhoto[] = [];
+  const excludedFiles = new Set([
+    "2020_02_27.jpg",
+    "2025_03_25.jpg",
+    "Снимок экрана 2026-04-09 в 21.06.11.png",
+    "Снимок экрана 2026-04-09 в 21.10.01.png",
+    "Снимок экрана 2026-04-09 в 21.10.07.png",
+  ]);
   for (const [file, entry] of Object.entries(raw)) {
+    if (excludedFiles.has(file)) continue;
     const { year, date } = parseDate(file);
     // Include extension in id to avoid collisions like 1.jpg vs 1.png.
     const id = `${folder}-${file}`;

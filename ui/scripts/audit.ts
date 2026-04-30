@@ -13,11 +13,11 @@ import { resolve } from "node:path";
 // Stub window.deeputin away — logger references window at import time
 (globalThis as any).window = (globalThis as any).window ?? {};
 
-import { mockBackend } from "../src/api/mock";
+import { loggedBackend } from "../src/api/logged";
 import { runAudit } from "../src/debug/audit";
 
 async function runOnce(quiet = false) {
-  const report = await runAudit(mockBackend);
+  const report = await runAudit(loggedBackend);
   const path = resolve(process.cwd(), "audit-report.json");
   writeFileSync(path, JSON.stringify(report, null, 2));
   if (quiet) {
@@ -57,7 +57,7 @@ async function main() {
     }
   }
 
-  const report = await runAudit(mockBackend);
+  const report = await runAudit(loggedBackend);
 
   const path = resolve(process.cwd(), "audit-report.json");
   writeFileSync(path, JSON.stringify(report, null, 2));

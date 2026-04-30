@@ -7,9 +7,6 @@ import PhotoDetailModal from "../components/photo/PhotoDetailModal";
 
 // Extended bucket type with person distribution from real data
 type Level = CalibrationBucket["level"];
-interface BucketWithPersons extends CalibrationBucket {
-  personDistribution?: Record<string, number>;
-}
 
 const LEVEL_COLOR: Record<Level, string> = {
   unreliable: "#ef4444",

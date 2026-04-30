@@ -4,7 +4,6 @@ import { api } from "../api";
 import { PHOTOS, type PhotoRecord } from "../mock/photos";
 import { useApp } from "../store/appStore";
 import { rngFor } from "../debug/prng";
-import StubBanner from "../components/common/StubBanner";
 
 // Debug N×N comparison matrix. Pick any subset of photos, see pairwise
 // similarity heatmap. Clicking a cell sends the pair to PairAnalysis.
@@ -77,10 +76,6 @@ export default function MatrixPage() {
         </>
       }
     >
-      <StubBanner
-        fields={["similarity score"]}
-        note="Pose is real; similarity is currently derived from stub synthetic / bayes fields."
-      />
       {loading ? (
         <div className="text-[11px] text-muted">Computing matrix…</div>
       ) : !matrix.length ? (

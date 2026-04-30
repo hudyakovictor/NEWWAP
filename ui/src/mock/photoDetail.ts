@@ -105,6 +105,7 @@ export interface PhotoDetail {
     uvConfidence: string;
     uvMask: string;
     overlay: string;
+    meshObj: string;
     meshTriangles: number;
     vertices: number;
   };
@@ -174,11 +175,18 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
       z.group === "bone" ? 0.75 + r() * 0.2 : z.group === "ligament" ? 0.6 + r() * 0.25 : 0.4 + r() * 0.3;
     const penalty = anomalyYear && (z.group === "bone" || z.group === "ligament") ? 0.25 : 0;
     const identityPenalty = identityB && z.group === "bone" ? 0.18 : 0;
+    const zoneMatch = realData?.geometry?.zones?.find((rz: any) => rz.name === z.id);
+    let finalScore = 0;
+    if (zoneMatch) {
+      finalScore = zoneMatch.status === "ok" ? (zoneMatch.bounded_score ?? 0) : 0;
+    } else {
+      finalScore = !visible || excluded ? 0 : Math.max(0, baseScore - penalty - identityPenalty);
+    }
     return {
       ...z,
       visible,
       excluded,
-      score: !visible || excluded ? 0 : Math.max(0, baseScore - penalty - identityPenalty),
+      score: finalScore,
     };
   });
 
@@ -192,13 +200,14 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
     year,
     photo,
     reconstruction: {
-      renderFace: "/recon/render_face.png",
-      renderShape: "/recon/render_shape.png",
-      renderMask: "/recon/render_mask.png",
-      uvTexture: "/recon/uv_texture.png",
-      uvConfidence: "/recon/uv_confidence.png",
-      uvMask: "/recon/uv_mask.png",
-      overlay: "/recon/face_overlay.png",
+      renderFace: `/storage/main/${photoId}/render_face.png`,
+      renderShape: `/storage/main/${photoId}/render_shape.png`,
+      renderMask: `/storage/main/${photoId}/render_mask.png`,
+      uvTexture: `/storage/main/${photoId}/uv_texture.png`,
+      uvConfidence: `/storage/main/${photoId}/uv_confidence.png`,
+      uvMask: `/storage/main/${photoId}/uv_mask.png`,
+      overlay: `/storage/main/${photoId}/face_overlay.png`,
+      meshObj: `/storage/main/${photoId}/mesh.obj`,
       meshTriangles: 70_122,
       vertices: 35_709,
     },

@@ -3,7 +3,7 @@ import { Page, PanelCard } from "../components/common/Page";
 import { PHOTOS, type PhotoRecord } from "../mock/photos";
 import { FACE_ZONES } from "../mock/photoDetail";
 import { useApp } from "../store/appStore";
-import StubBanner from "../components/common/StubBanner";
+import { api, type EvidenceBreakdown } from "../api";
 import { ALL_PHOTOS } from "../data/photoRegistry";
 import { getBucketFallbackPolicy, buildCalibrationHealth, type CalibrationHealth } from "../data/calibrationBuckets";
 
@@ -25,28 +25,22 @@ function zoneVisibleFromYaw(zoneId: string, yawDeg: number | null): boolean {
   return true;
 }
 
-function pickScore(a: PhotoRecord, b: PhotoRecord, seed: number) {
-  // Combine bayes + cluster match + synthetic as mock SNR
-  let s = 1 - Math.abs(a.bayesH0 - b.bayesH0);
-  if (a.cluster !== b.cluster) s -= 0.4;
-  s -= Math.max(a.syntheticProb, b.syntheticProb) * 0.4;
-  s += ((seed * 9301 + 49297) % 233280) / 233280 / 8;
-  return Math.max(0, Math.min(1, s));
-}
-
 export default function PairAnalysisPage() {
   const { pairA, pairB, setPairA, setPairB } = useApp();
   const a = PHOTOS.find((p) => p.id === pairA) ?? PHOTOS[0];
   const b = PHOTOS.find((p) => p.id === pairB) ?? PHOTOS[1];
   
   const [calibrationHealth, setCalibrationHealth] = useState<CalibrationHealth | null>(null);
+  const [ev, setEv] = useState<EvidenceBreakdown | null>(null);
   
   useEffect(() => {
     setCalibrationHealth(buildCalibrationHealth());
   }, []);
 
-  const snr = useMemo(() => +pickScore(a, b, a.year + b.year).toFixed(2), [a, b]);
-  const silicone = +Math.max(a.syntheticProb, b.syntheticProb).toFixed(2);
+  useEffect(() => {
+    setEv(null);
+    api.getEvidence(pairA, pairB).then(setEv).catch(console.error);
+  }, [pairA, pairB]);
 
   const realA = realPose(a.id);
   const realB = realPose(b.id);
@@ -96,23 +90,6 @@ export default function PairAnalysisPage() {
     });
   }, [a, b]);
 
-  const weightedSim =
-    zoneComparison.reduce((acc, z) => acc + (z.excluded || !z.both ? 0 : z.weight * z.scoreAB), 0) /
-    zoneComparison.reduce((acc, z) => acc + (z.excluded || !z.both ? 0 : z.weight), 0 || 1);
-
-  // Bayesian update
-  const H1_prior = 0.02;
-  const H2_prior = 0.2;
-  const H0_prior = 1 - H1_prior - H2_prior;
-
-  const likeH0 = weightedSim;
-  const likeH1 = silicone > 0.45 ? silicone * 0.9 : 0.1;
-  const likeH2 = 1 - weightedSim;
-  const z = H0_prior * likeH0 + H1_prior * likeH1 + H2_prior * likeH2 || 1;
-  const H0 = (H0_prior * likeH0) / z;
-  const H1 = (H1_prior * likeH1) / z;
-  const H2 = (H2_prior * likeH2) / z;
-
   return (
     <Page
       title="Pair analysis"
@@ -131,11 +108,6 @@ export default function PairAnalysisPage() {
         </div>
       )}
       
-      <StubBanner
-        fields={["bayesian posteriors", "evidence breakdown", "21-zone scores", "silicone probability"]}
-        note="Pose comparison (Δyaw / Δpitch / Δroll, mutual zone visibility) and calibration context are REAL. Everything else still derives from stub fields."
-      />
-
       <div className="grid grid-cols-2 gap-3 mb-3">
         <PhotoSlot label="Photo A" photo={a} onPick={setPairA} />
         <PhotoSlot label="Photo B" photo={b} onPick={setPairB} />
@@ -165,28 +137,32 @@ export default function PairAnalysisPage() {
 
       <div className="grid grid-cols-3 gap-3">
         <PanelCard title="Evidence synthesis">
-          <StatBar label="Weighted similarity" value={weightedSim} color="#22c55e" />
-          <StatBar label="SNR (bone vs noise)" value={snr} color="#38bdf8" />
-          <StatBar label="Silicone prob. (max)" value={silicone} color="#ef4444" />
-          <StatBar
-            label="Chronological delta (y)"
-            value={Math.abs(a.year - b.year) / 30}
-            color="#f59e0b"
-            rawText={String(Math.abs(a.year - b.year))}
-          />
+          {!ev ? <div className="text-[11px] text-muted py-4">Fetching real evidence...</div> : (
+            <>
+              <StatBar label="Geometric similarity" value={ev.geometric.boneScore} color="#22c55e" />
+              <StatBar label="SNR (bone vs noise)" value={Math.min(1, ev.geometric.snr / 10)} color="#38bdf8" rawText={ev.geometric.snr.toFixed(1) + " dB"} />
+              <StatBar label="Silicone prob. (max)" value={ev.texture.syntheticProb} color="#ef4444" />
+              <StatBar
+                label="Chronological delta (y)"
+                value={Math.min(1, ev.chronology.deltaYears / 30)}
+                color="#f59e0b"
+                rawText={String(ev.chronology.deltaYears)}
+              />
+            </>
+          )}
         </PanelCard>
 
         <PanelCard title="Bayesian courtroom">
-          <StatBar label="H0 · same person" value={H0} color="#22c55e" />
-          <StatBar label="H1 · double / mask" value={H1} color="#ef4444" />
-          <StatBar label="H2 · different people" value={H2} color="#f59e0b" />
-          <div className="text-[11px] text-muted mt-2 leading-snug">
-            {H1 > H0 && H1 > H2
-              ? "Verdict: ⚠ likely identity substitution — elevated silicone and geometric divergence."
-              : H0 > H2
-              ? "Verdict: most likely same person. Use corroborating photos before closing the case."
-              : "Verdict: probably different people — low bone similarity dominates."}
-          </div>
+          {!ev ? <div className="text-[11px] text-muted py-4">Computing posteriors...</div> : (
+            <>
+              <StatBar label="H0 · same person" value={ev.posteriors.H0} color="#22c55e" />
+              <StatBar label="H1 · double / mask" value={ev.posteriors.H1} color="#ef4444" />
+              <StatBar label="H2 · different people" value={ev.posteriors.H2} color="#f59e0b" />
+              <div className="text-[11px] text-muted mt-2 leading-snug font-semibold text-white">
+                Verdict: {ev.verdict}
+              </div>
+            </>
+          )}
         </PanelCard>
 
         <PanelCard title="Pose compatibility">

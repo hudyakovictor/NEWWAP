@@ -25,60 +25,36 @@ import {
 
 const API_BASE = "http://localhost:8000";
 
+async function fetchJson(path: string, options: RequestInit = {}) {
+  const resp = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    signal: AbortSignal.timeout(10000), // 10s global timeout
+  });
+  if (!resp.ok) throw new Error(`Backend error: ${resp.statusText}`);
+  return resp.json();
+}
+
 async function fetchEvidence(aId: string, bId: string): Promise<EvidenceBreakdown> {
   try {
-    const resp = await fetch(`${API_BASE}/api/evidence/compare?photo_id_a=${encodeURIComponent(aId)}&photo_id_b=${encodeURIComponent(bId)}`, {
+    return await fetchJson(`/api/evidence/compare?photo_id_a=${encodeURIComponent(aId)}&photo_id_b=${encodeURIComponent(bId)}`, {
       method: "POST",
-      signal: AbortSignal.timeout(2000), // 2s timeout
     });
-    if (!resp.ok) throw new Error(`Backend error: ${resp.statusText}`);
-    const data = await resp.json();
-    
-    // Map BayesianEvidence (backend) -> EvidenceBreakdown (frontend)
-    const posteriors = { 
-      H0: data.h0_same_person, 
-      H1: data.h1_synthetic_mask, 
-      H2: data.h2_different_person 
-    };
-    
-    const verdict = posteriors.H0 >= posteriors.H1 && posteriors.H0 >= posteriors.H2 
-      ? "H0" 
-      : (posteriors.H1 >= posteriors.H2 ? "H1" : "H2");
-
-    return {
-      aId,
-      bId,
-      geometric: {
-        snr: data.structural_snr,
-        boneScore: data.h0_same_person,
-        ligamentScore: 0.5,
-        softTissueScore: 0.5,
-      },
-      texture: {
-        syntheticProb: data.h1_synthetic_mask,
-        fft: 0.1,
-        lbp: 0.1,
-        albedo: 0.9,
-        specular: 0.1,
-      },
-      chronology: {
-        deltaYears: 0,
-        boneJump: 0.0,
-        ligamentJump: 0.0,
-        flags: data.anomalies_flagged ? ["Backend flagged potential structural anomaly"] : [],
-      },
-      pose: {
-        mutualVisibility: 21,
-        expressionExcluded: 0,
-      },
-      priors: { H0: 0.80, H1: 0.01, H2: 0.19 },
-      likelihoods: posteriors,
-      posteriors: posteriors,
-      verdict: verdict as "H0" | "H1" | "H2",
-    };
   } catch (err) {
     console.warn(`[getEvidence] Falling back to mock: ${err instanceof Error ? err.message : String(err)}`);
     return mockBackend.getEvidence(aId, bId);
+  }
+}
+
+async function fetchComparisonMatrix(ids: string[]): Promise<number[][]> {
+  try {
+    return await fetchJson(`/api/evidence/matrix`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ids),
+    });
+  } catch (err) {
+    console.warn(`[comparisonMatrix] Falling back to mock: ${err}`);
+    return mockBackend.comparisonMatrix(ids);
   }
 }
 
@@ -96,11 +72,8 @@ function wrap<T extends (...args: any[]) => Promise<any>>(
       if (violations.length) {
         log.validation(`api:${name}`, `${name} validated with ${violations.length} violation(s)`, { args, result, durationMs }, violations);
       } else {
-        // Keep it debug-level for normal success to avoid spam; still inspectable in console group.
         log.debug("api", `api:${name}`, `${name} ok`, { args, result, durationMs });
-        (log as any).time; // silence unused
       }
-      // Always stash duration separately at info level for quick timing table
       log.trace("api", `api:${name}:timing`, `${durationMs}ms`, { durationMs, args });
       return result;
     } catch (err) {
@@ -112,24 +85,36 @@ function wrap<T extends (...args: any[]) => Promise<any>>(
 }
 
 export const loggedBackend: Backend = {
-  getTimeline: wrap("getTimeline", mockBackend.getTimeline, (r) => validateTimeline(r)),
-  listPhotos:  wrap("listPhotos", mockBackend.listPhotos, (r) => validatePhotoList(r)),
-  getPhotoDetail: wrap("getPhotoDetail", mockBackend.getPhotoDetail, (r) => validatePhotoDetail(r)),
-  similarPhotos: wrap("similarPhotos", mockBackend.similarPhotos),
-  getCalibration: wrap("getCalibration", mockBackend.getCalibration, (r) => validateCalibration(r)),
-  photosInBucket: wrap("photosInBucket", mockBackend.photosInBucket),
-  listJobs:       wrap("listJobs", mockBackend.listJobs, (r) => validateJobs(r)),
-  startJob:       wrap("startJob", mockBackend.startJob),
+  getTimeline: wrap("getTimeline", () => fetchJson("/api/timeline-summary"), (r) => validateTimeline(r)),
+  listPhotos:  wrap("listPhotos", (_q) => fetchJson(`/api/photos/main`), (r) => validatePhotoList(r)),
+  getPhotoDetail: wrap("getPhotoDetail", (id) => fetchJson(`/api/photo/main/${id}`), (r) => validatePhotoDetail(r)),
+  similarPhotos: wrap("similarPhotos", (id) => fetchJson(`/api/similar-photos/${id}`)),
+  getCalibration: wrap("getCalibration", () => fetchJson("/api/calibration/summary"), (r) => validateCalibration(r)),
+  photosInBucket: wrap("photosInBucket", (p, l) => mockBackend.photosInBucket(p, l)), // Keep mock for now or implement in main.py
+  listJobs:       wrap("listJobs", () => fetchJson("/api/jobs"), (r) => validateJobs(r)),
+  startJob:       wrap("startJob", (kind) => fetchJson(`/api/jobs/${kind === "extract" ? "extract" : "recompute-metrics"}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataset: "main", limit: 100 }),
+  })),
   listInvestigations: wrap("listInvestigations", mockBackend.listInvestigations),
   upsertInvestigation: wrap("upsertInvestigation", mockBackend.upsertInvestigation),
   deleteInvestigation: wrap("deleteInvestigation", mockBackend.deleteInvestigation),
-  listAnomalies:  wrap("listAnomalies", mockBackend.listAnomalies, (r) => validateAnomalies(r)),
-  uploadPhotos:   wrap("uploadPhotos", mockBackend.uploadPhotos),
+  listAnomalies:  wrap("listAnomalies", () => fetchJson("/api/anomalies"), (r) => validateAnomalies(r)),
+  uploadPhotos:   wrap("uploadPhotos", async (files) => {
+    const formData = new FormData();
+    files.forEach(f => formData.append("file", f));
+    return fetchJson("/api/upload", { method: "POST", body: formData });
+  }),
 
-  getPipelineStages: wrap("getPipelineStages", mockBackend.getPipelineStages, (r) => validatePipeline(r)),
-  getCacheSummary:   wrap("getCacheSummary", mockBackend.getCacheSummary, (r) => validateCache(r)),
-  getAgeingSeries:   wrap("getAgeingSeries", mockBackend.getAgeingSeries, (r) => validateAgeing(r)),
+  getPipelineStages: wrap("getPipelineStages", () => fetchJson("/api/pipeline/stages"), (r) => validatePipeline(r)),
+  getCacheSummary:   wrap("getCacheSummary", () => fetchJson("/api/cache/summary"), (r) => validateCache(r)),
+  getAgeingSeries:   wrap("getAgeingSeries", () => fetchJson("/api/debug/ageing"), (r) => validateAgeing(r)),
   getEvidence:       wrap("getEvidence", fetchEvidence, (r) => validateEvidence(r)),
-  getApiCatalog:     wrap("getApiCatalog", mockBackend.getApiCatalog),
-  comparisonMatrix:  wrap("comparisonMatrix", mockBackend.comparisonMatrix),
+  getApiCatalog:     wrap("getApiCatalog", () => fetchJson("/api/debug/catalog")),
+  comparisonMatrix:  wrap("comparisonMatrix", fetchComparisonMatrix),
+  
+  getDiaryEntries: wrap("getDiaryEntries", () => fetchJson("/api/diary")),
+  addDiaryEntry: wrap("addDiaryEntry", (e) => fetchJson("/api/diary", { method: "POST", body: JSON.stringify(e) })),
+  updateDiaryEntry: wrap("updateDiaryEntry", (id, u) => fetchJson(`/api/diary/${id}`, { method: "PUT", body: JSON.stringify(u) })),
 };

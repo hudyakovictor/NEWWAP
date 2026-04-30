@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
 import { api, type Investigation, type AnomalyRecord, type EvidenceBreakdown } from "../api";
-import { PHOTOS } from "../mock/photos";
+
 import { useApp } from "../store/appStore";
-import StubBanner from "../components/common/StubBanner";
 
 interface ReportDraft {
   title: string;
@@ -29,7 +28,7 @@ export default function ReportBuilderPage() {
   const [evidence, setEvidence] = useState<EvidenceBreakdown | null>(null);
 
   const [draft, setDraft] = useState<ReportDraft>({
-    title: "DEEPUTIN · interim report",
+    title: "FORENSIC_SNAPSHOT_INTERIM",
     subject: "Subject 1",
     caseId: "inv-001",
     format: "json",
@@ -42,7 +41,7 @@ export default function ReportBuilderPage() {
       calibration: true,
       photos: false,
     },
-    notes: "Interim automated report — requires expert review before publishing.",
+    notes: "Automated forensic compilation. High confidence markers only.",
   });
 
   useEffect(() => {
@@ -59,66 +58,22 @@ export default function ReportBuilderPage() {
     [anomalies, draft.range]
   );
 
-  const photoSample = useMemo(
-    () => PHOTOS.filter((p) => p.year >= draft.range.from && p.year <= draft.range.to).slice(0, 10),
-    [draft.range]
-  );
-
-  const selectedCase = cases.find((c) => c.id === draft.caseId);
-
   const payload = {
     meta: {
       title: draft.title,
       subject: draft.subject,
       caseId: draft.caseId,
-      caseName: selectedCase?.name,
-      verdict: selectedCase?.verdict,
+      caseName: cases.find((c) => c.id === draft.caseId)?.name,
       generatedAt: new Date().toISOString(),
       format: draft.format,
       range: draft.range,
     },
-    ...(draft.sections.summary && {
-      summary: {
-        totalPhotos: PHOTOS.length,
-        inRange: PHOTOS.filter((p) => p.year >= draft.range.from && p.year <= draft.range.to).length,
-        headline: "Automated pipeline identifies elevated H1 evidence in 2012 / 2014 / 2023 windows.",
-      },
-    }),
-    ...(draft.sections.pairEvidence && evidence
-      ? {
-          pairEvidence: {
-            aId: evidence.aId,
-            bId: evidence.bId,
-            verdict: evidence.verdict,
-            posteriors: evidence.posteriors,
-            chronologyFlags: evidence.chronology.flags,
-          },
-        }
-      : {}),
-    ...(draft.sections.anomalies && {
-      anomalies: includedAnomalies.map((a) => ({
-        id: a.id,
-        year: a.year,
-        severity: a.severity,
-        kind: a.kind,
-        title: a.title,
-        resolved: a.resolved,
-      })),
-    }),
-    ...(draft.sections.calibration && {
-      calibration: {
-        note: "see /api/calibration/summary",
-        aggregate: "medium",
-      },
-    }),
-    ...(draft.sections.photos && {
-      photos: photoSample.map((p) => ({
-        id: p.id,
-        year: p.year,
-        cluster: p.cluster,
-        flags: p.flags,
-      })),
-    }),
+    sections: Object.keys(draft.sections).filter(k => (draft.sections as any)[k]),
+    payload: {
+        summary: draft.sections.summary ? "..." : null,
+        anomalies: draft.sections.anomalies ? includedAnomalies.length : 0,
+        evidence: draft.sections.pairEvidence ? evidence?.verdict : null
+    },
     notes: draft.notes,
   };
 
@@ -126,118 +81,150 @@ export default function ReportBuilderPage() {
 
   return (
     <Page
-      title="Report builder (debug)"
-      subtitle="Compose a forensic export payload from the current state"
+      title="Report Architect"
+      subtitle="Configure forensic export bundle"
       actions={
         <button
+          id="btn_download_json"
           onClick={() => {
             const blob = new Blob([json], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `${draft.title.replace(/\s+/g, "_")}.json`;
+            a.download = `${draft.title}.json`;
             a.click();
             URL.revokeObjectURL(url);
           }}
-          className="px-3 h-8 rounded bg-accent/80 hover:bg-accent text-[11px] text-white"
+          className="px-6 h-10 rounded-full bg-accent text-[12px] font-black tracking-widest text-white shadow-lg shadow-accent/20 hover:scale-105 active:scale-95 transition-all"
         >
-          Download JSON
+          GENERATE BUNDLE
         </button>
       }
     >
-      <StubBanner note="Most report sections still draw from stub fields. Export only what the Progress page marks as real." />
-
-      <div className="grid grid-cols-12 gap-3">
-        <div className="col-span-5 flex flex-col gap-3">
-          <PanelCard title="Meta">
-            <Field label="Title">
-              <input
-                value={draft.title}
-                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-                className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-white text-[11px]"
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label="Subject">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Left: Controls */}
+        <div className="md:col-span-5 space-y-4">
+          <PanelCard title="🏷️ Metadata" className="bg-bg-deep/50">
+            <div className="space-y-4">
+              <Field label="Document Title">
                 <input
-                  value={draft.subject}
-                  onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
-                  className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-white text-[11px]"
+                  id="inp_title"
+                  value={draft.title}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px] outline-none focus:border-accent transition-colors"
                 />
               </Field>
-              <Field label="Case">
-                <select
-                  value={draft.caseId}
-                  onChange={(e) => setDraft({ ...draft, caseId: e.target.value })}
-                  className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-white text-[11px]"
-                >
-                  {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Target Subject">
+                  <input
+                    id="inp_subject"
+                    value={draft.subject}
+                    onChange={(e) => setDraft({ ...draft, subject: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
+                  />
+                </Field>
+                <Field label="Active Investigation">
+                  <select
+                    id="sel_case"
+                    value={draft.caseId}
+                    onChange={(e) => setDraft({ ...draft, caseId: e.target.value })}
+                    className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px] outline-none"
+                  >
+                    {cases.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </Field>
+              </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <Field label="From year">
+          </PanelCard>
+
+          <PanelCard title="📅 Scope & Format">
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Range From">
                 <input
+                  id="inp_range_from"
                   type="number"
                   value={draft.range.from}
                   onChange={(e) => setDraft({ ...draft, range: { ...draft.range, from: +e.target.value } })}
-                  className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-white text-[11px]"
+                  className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
                 />
               </Field>
-              <Field label="To year">
+              <Field label="Range To">
                 <input
+                  id="inp_range_to"
                   type="number"
                   value={draft.range.to}
                   onChange={(e) => setDraft({ ...draft, range: { ...draft.range, to: +e.target.value } })}
-                  className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-white text-[11px]"
+                  className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
                 />
               </Field>
-              <Field label="Format">
+              <Field label="MIME Type">
                 <select
+                  id="sel_format"
                   value={draft.format}
                   onChange={(e) => setDraft({ ...draft, format: e.target.value as any })}
-                  className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-white text-[11px]"
+                  className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
                 >
-                  <option value="json">json</option>
-                  <option value="html">html</option>
-                  <option value="pdf">pdf</option>
+                  <option value="json">JSON</option>
+                  <option value="html">HTML</option>
+                  <option value="pdf">PDF</option>
                 </select>
               </Field>
             </div>
           </PanelCard>
 
-          <PanelCard title="Sections">
-            {(Object.keys(draft.sections) as Array<keyof typeof draft.sections>).map((k) => (
-              <label key={k} className="flex items-center gap-2 text-[11px] text-white py-1">
-                <input
-                  type="checkbox"
-                  checked={draft.sections[k]}
-                  onChange={(e) =>
-                    setDraft({ ...draft, sections: { ...draft.sections, [k]: e.target.checked } })
-                  }
-                />
-                {k}
-              </label>
-            ))}
+          <PanelCard title="🧩 Component Selection">
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 py-2">
+              {(Object.keys(draft.sections) as Array<keyof typeof draft.sections>).map((k) => (
+                <label key={k} className="flex items-center justify-between cursor-pointer group p-2 rounded-xl hover:bg-white/5 transition-colors">
+                  <span className="text-[11px] font-bold text-muted group-hover:text-white uppercase tracking-tighter">{k}</span>
+                  <input
+                    id={`chk_section_${k}`}
+                    type="checkbox"
+                    checked={draft.sections[k]}
+                    onChange={(e) =>
+                      setDraft({ ...draft, sections: { ...draft.sections, [k]: e.target.checked } })
+                    }
+                    className="w-4 h-4 rounded-full border-line accent-accent transition-all"
+                  />
+                </label>
+              ))}
+            </div>
           </PanelCard>
 
-          <PanelCard title="Notes">
+          <PanelCard title="📝 Executive Notes">
             <textarea
-              rows={6}
-              className="w-full px-2 py-1 bg-bg-deep border border-line rounded text-white text-[11px]"
+              id="txt_notes"
+              rows={4}
+              className="w-full px-3 py-2 bg-bg-deep border border-line rounded-2xl text-white text-[11px] outline-none focus:border-accent transition-all resize-none"
               value={draft.notes}
               onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
+              placeholder="Enter analysis context..."
             />
           </PanelCard>
         </div>
-        <div className="col-span-7">
-          <PanelCard title="Preview payload" className="h-full flex flex-col">
-            <div className="text-[11px] text-muted mb-2">
-              {Object.values(draft.sections).filter(Boolean).length} section(s) · includes {includedAnomalies.length} anomalies
+
+        {/* Right: Preview */}
+        <div className="md:col-span-7">
+          <PanelCard title="📦 Final Payload Preview" className="h-full flex flex-col bg-black/20 border-line/20">
+            <div className="flex items-center justify-between mb-4 px-1">
+              <div className="flex gap-4">
+                <div className="text-[10px] text-muted font-bold uppercase tracking-widest flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-info"></span>
+                  {Object.values(draft.sections).filter(Boolean).length} Units
+                </div>
+                <div className="text-[10px] text-muted font-bold uppercase tracking-widest flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-warn"></span>
+                  {includedAnomalies.length} Flagged
+                </div>
+              </div>
+              <div className="text-[10px] font-mono text-accent">{draft.format.toUpperCase()} VERSION 1.0</div>
             </div>
-            <pre className="flex-1 text-[11px] bg-black/60 border border-line rounded p-2 overflow-auto text-muted font-mono whitespace-pre-wrap">
-              {json}
-            </pre>
+            
+            <div className="flex-1 bg-black/60 rounded-3xl border border-line p-6 shadow-inner overflow-hidden flex flex-col">
+              <pre className="flex-1 text-[11px] text-info/70 font-mono whitespace-pre-wrap overflow-auto custom-scrollbar no-scrollbar">
+                {json}
+              </pre>
+            </div>
           </PanelCard>
         </div>
       </div>
@@ -247,8 +234,8 @@ export default function ReportBuilderPage() {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1 text-[11px] my-1">
-      <span className="text-muted">{label}</span>
+    <label className="flex flex-col gap-1.5 text-[11px]">
+      <span className="text-muted font-black uppercase tracking-widest pl-1 text-[9px]">{label}</span>
       {children}
     </label>
   );

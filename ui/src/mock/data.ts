@@ -56,16 +56,22 @@ function realByYear<T>(years: number[], get: (s: { year: number; count: number; 
 
 /** For each year in YEARS, return the URL of the most "neutral" real photo
  *  (frontal pose, smallest |yaw|). Falls back to any photo of that year. */
-function pickAnchor(year: number): string {
+function pickAnchor(year: number, preferredPose?: string): string {
   const candidates = MAIN_PHOTOS.filter((p) => p.year === year && p.pose.source !== "none");
   if (candidates.length === 0) {
     // last resort: any photo of that year, even without pose
     const any = MAIN_PHOTOS.find((p) => p.year === year);
     return any?.url ?? "";
   }
-  // prefer frontal, then smallest |yaw|
-  const frontal = candidates.filter((p) => p.pose.classification === "frontal");
-  const pool = frontal.length > 0 ? frontal : candidates;
+  let pool = candidates;
+  if (preferredPose) {
+    const matching = candidates.filter((p) => p.pose.classification === preferredPose);
+    if (matching.length > 0) pool = matching;
+  } else {
+    // prefer frontal, then smallest |yaw|
+    const frontal = candidates.filter((p) => p.pose.classification === "frontal");
+    if (frontal.length > 0) pool = frontal;
+  }
   pool.sort((a, b) => Math.abs(a.pose.yaw ?? 0) - Math.abs(b.pose.yaw ?? 0));
   return pool[0].url;
 }
@@ -114,36 +120,40 @@ function seriesWithJump(seed: number, base: number, drift: number, jumpYear: num
   });
 }
 
-export const yearPoints: YearPoint[] = YEARS.map((year, i) => {
-  // photo URL is REAL — picked deterministically from main folder.
-  // anomaly / identity / note remain synthetic placeholders for now.
-  const real = pickAnchor(year);
-  const photo = real || PHOTO_POOL[i % PHOTO_POOL.length];
-  // anomalies cluster around 2012 (suspected double swap) and later years
-  let anomaly: Severity | undefined;
-  if (year === 2012) anomaly = "warn";
-  else if (year === 2014) anomaly = "danger";
-  else if (year === 2015) anomaly = "ok";
-  else if (year === 2017) anomaly = "ok";
-  else if (year === 2022) anomaly = "warn";
-  else if (year === 2023) anomaly = "danger";
-  else if (year === 2025) anomaly = "warn";
+export function buildYearPoints(preferredPose?: string): YearPoint[] {
+  return YEARS.map((year, i) => {
+    // photo URL is REAL — picked deterministically from main folder.
+    // anomaly / identity / note remain synthetic placeholders for now.
+    const real = pickAnchor(year, preferredPose);
+    const photo = real || PHOTO_POOL[i % PHOTO_POOL.length];
+    // anomalies cluster around 2012 (suspected double swap) and later years
+    let anomaly: Severity | undefined;
+    if (year === 2012) anomaly = "warn";
+    else if (year === 2014) anomaly = "danger";
+    else if (year === 2015) anomaly = "ok";
+    else if (year === 2017) anomaly = "ok";
+    else if (year === 2022) anomaly = "warn";
+    else if (year === 2023) anomaly = "danger";
+    else if (year === 2025) anomaly = "warn";
 
-  const identity: "A" | "B" = year >= 2015 && year <= 2020 ? "B" : "A";
+    const identity: "A" | "B" = year >= 2015 && year <= 2020 ? "B" : "A";
 
-  return {
-    year,
-    photo,
-    anomaly,
-    identity,
-    note:
-      year === 2012
-        ? "Chronological inconsistency: sudden bone asymmetry shift"
-        : year === 2014
-        ? "High synthetic-material probability (silicone mask signature)"
-        : undefined,
-  };
-});
+    return {
+      year,
+      photo,
+      anomaly,
+      identity,
+      note:
+        year === 2012
+          ? "Chronological inconsistency: sudden bone asymmetry shift"
+          : year === 2014
+          ? "High synthetic-material probability (silicone mask signature)"
+          : undefined,
+    };
+  });
+}
+
+export const yearPoints: YearPoint[] = buildYearPoints();
 
 // Metric 1 — bone asymmetry ratio (H0 support)
 const skullRatio = seriesWithJump(11, 1.62, 0.006, 2012, 0.08).map((v) => +Math.min(1.8, v).toFixed(2));

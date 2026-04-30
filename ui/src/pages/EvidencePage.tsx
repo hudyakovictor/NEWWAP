@@ -3,12 +3,12 @@ import { Page, PanelCard } from "../components/common/Page";
 import { api, type EvidenceBreakdown } from "../api";
 import { PHOTOS } from "../mock/photos";
 import { useApp } from "../store/appStore";
-import StubBanner from "../components/common/StubBanner";
 
 export default function EvidencePage() {
   const { pairA, pairB, setPage } = useApp();
   const [ev, setEv] = useState<EvidenceBreakdown | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -29,184 +29,209 @@ export default function EvidencePage() {
 
   return (
     <Page
-      title="Evidence synthesis (debug)"
-      subtitle="Full bayesian courtroom breakdown for current Pair A / B"
+      title="Evidence Synthesis"
+      subtitle="Final forensic probability aggregation"
       actions={
         <button
           onClick={() => setPage("pairs")}
-          className="px-3 h-8 rounded bg-line/70 hover:bg-line text-[11px] text-white"
+          className="px-4 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-all text-[12px] font-medium text-white border border-white/10"
         >
-          ← Pair analysis
+          ← Back to Analysis
         </button>
       }
     >
       {loading ? (
-        <div className="text-[11px] text-muted">Synthesizing evidence…</div>
+        <div className="flex items-center gap-3 p-8 rounded-3xl bg-white/5 border border-line">
+          <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+          <div className="text-[12px] text-muted font-medium uppercase tracking-widest">Synthesizing forensic bundle...</div>
+        </div>
       ) : error ? (
-        <div className="p-4 bg-danger/10 border border-danger/20 rounded text-[11px] text-danger max-w-2xl">
-          <div className="font-bold mb-1">DATA MISSING</div>
-          {error}
-          <div className="mt-2 text-white/50 leading-relaxed">
-            This likely means the real forensic metrics for these photos haven't been extracted yet.
-            The current system requires real <code className="bg-white/10 px-1 rounded">summary.json</code> files from the extraction pipeline.
-            Go to <b>Jobs</b> or <b>Photos</b> to run the extraction for these IDs.
+        <div className="p-6 bg-danger/10 border border-danger/20 rounded-3xl text-[12px] text-danger max-w-2xl shadow-xl shadow-danger/5">
+          <div className="flex items-center gap-2 font-bold mb-3">
+            <span className="w-2 h-2 rounded-full bg-danger animate-pulse"></span>
+            PIPELINE_STALLED: DATA_MISSING
+          </div>
+          <p className="opacity-80 leading-relaxed mb-4">{error}</p>
+          <div className="p-4 bg-black/40 rounded-2xl text-white/70 font-mono text-[11px]">
+            This occurs when real forensic metrics for these specific IDs haven't been extracted. 
+            Run the extraction job via the <span className="text-white underline cursor-pointer" onClick={() => setPage("photos")}>Dataset Inspector</span>.
           </div>
         </div>
       ) : !ev ? (
-        <div className="text-[11px] text-muted">No data available.</div>
+        <div className="text-[11px] text-muted p-8">Null result returned.</div>
       ) : (
-        <div className="space-y-3">
-          {/* Header */}
-          <div className="grid grid-cols-2 gap-3">
-            <SubjectCard label="Photo A" rec={a} />
-            <SubjectCard label="Photo B" rec={b} />
+        <div className="space-y-4">
+          {/* Top Subjects */}
+          <div className="grid grid-cols-2 gap-4">
+            <SubjectMini label="SOURCE ALPHA" rec={a} side="L" />
+            <SubjectMini label="SOURCE BETA" rec={b} side="R" />
           </div>
 
-          {/* Evidence sources */}
-          <div className="grid grid-cols-12 gap-3">
-            <PanelCard title="1. Geometric evidence (bone structures)" className="col-span-6">
-              <Bar label="SNR (signal/noise)"      value={ev.geometric.snr}               color="#22c55e" />
-              <Bar label="Bone zones score"         value={ev.geometric.boneScore}         color="#22c55e" />
-              <Bar label="Ligament anchors score"   value={ev.geometric.ligamentScore}     color="#38bdf8" />
-              <Bar label="Soft-tissue residual"     value={ev.geometric.softTissueScore}   color="#a855f7" />
-              <div className="text-[11px] text-muted mt-2">
-                Bone score dominates with weight up to 1.00; ligament anchors checked for pose visibility; soft-tissue is downweighted & excluded on smile.
-              </div>
-            </PanelCard>
-
-            <PanelCard title="2. Texture evidence (synthetic material)" className="col-span-6">
-              <Bar label="Synthetic probability (combined)" value={ev.texture.syntheticProb}  color="#ef4444" />
-              <Bar label="FFT periodicity anomaly"          value={ev.texture.fft}            color="#f59e0b" />
-              <Bar label="LBP texture complexity"           value={ev.texture.lbp}            color="#a855f7" />
-              <Bar label="Albedo skin viability"            value={ev.texture.albedo}         color="#22c55e" />
-              <Bar label="Specular (shine) index"           value={ev.texture.specular}       color="#38bdf8" />
-            </PanelCard>
-
-            <PanelCard title="3. Chronology evidence" className="col-span-6">
-              <div className="grid grid-cols-3 gap-2">
-                <KV k="Δt (years)"       v={ev.chronology.deltaYears} />
-                <KV k="bone jump"        v={ev.chronology.boneJump} />
-                <KV k="ligament jump"    v={ev.chronology.ligamentJump} />
-              </div>
-              <div className="mt-2">
-                <div className="text-[10px] uppercase tracking-widest text-muted mb-1">Flags</div>
-                {ev.chronology.flags.length === 0 ? (
-                  <div className="text-[11px] text-ok">No chronological inconsistencies.</div>
-                ) : (
-                  <ul className="text-[11px] text-warn space-y-0.5">
-                    {ev.chronology.flags.map((f) => <li key={f}>• {f}</li>)}
-                  </ul>
-                )}
-              </div>
-            </PanelCard>
-
-            <PanelCard title="4. Pose & expression gating" className="col-span-6">
-              <div className="grid grid-cols-2 gap-2">
-                <KV k="mutual zone visibility" v={`${ev.pose.mutualVisibility}/21`} />
-                <KV k="expression-excluded" v={ev.pose.expressionExcluded} />
-              </div>
-              <div className="text-[11px] text-muted mt-2">
-                Only mutually visible + not-excluded zones contribute to the weighted similarity used in the geometric likelihood.
-              </div>
-            </PanelCard>
-          </div>
-
-          {/* Bayesian math */}
-          <PanelCard title="5. Bayesian update">
-            <table className="w-full text-[11px]">
-              <thead className="text-muted border-b border-line">
-                <tr>
-                  <th className="text-left p-2">hypothesis</th>
-                  <th className="text-left p-2">prior P(H)</th>
-                  <th className="text-left p-2">likelihood P(E|H)</th>
-                  <th className="text-left p-2">prior × like</th>
-                  <th className="text-left p-2">posterior P(H|E)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(["H0", "H1", "H2"] as const).map((h) => {
-                  const pri = ev.priors[h];
-                  const lik = ev.likelihoods[h];
-                  const post = ev.posteriors[h];
-                  const color = h === "H0" ? "#22c55e" : h === "H1" ? "#ef4444" : "#f59e0b";
-                  return (
-                    <tr key={h} className="border-b border-line/40">
-                      <td className="p-2 font-semibold" style={{ color }}>{h}</td>
-                      <td className="p-2 font-mono text-white">{pri.toFixed(3)}</td>
-                      <td className="p-2 font-mono text-white">{lik.toFixed(3)}</td>
-                      <td className="p-2 font-mono text-muted">{(pri * lik).toFixed(4)}</td>
-                      <td className="p-2">
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-2 bg-bg rounded overflow-hidden">
-                            <div className="h-full" style={{ width: `${post * 100}%`, background: color }} />
-                          </div>
-                          <span className="font-mono w-12 text-right" style={{ color }}>
-                            {(post * 100).toFixed(1)}%
-                          </span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <div className="text-[11px] text-muted mt-2">
-              Normalization constant Z = Σ prior × likelihood.
-              Verdict = argmax posterior → <span className="text-white font-semibold">{ev.verdict}</span>.
+          <div className="grid grid-cols-12 gap-4">
+            {/* Geometric */}
+            <div className="col-span-12 lg:col-span-4 space-y-4">
+              <PanelCard title="⚖️ Geometric Integrity" className="border-accent/20">
+                <div className="space-y-4 py-2">
+                  <IconStat label="Bone Structure SNR" value={ev.geometric.boneScore} icon="🦴" color="success" />
+                  <IconStat label="Ligament Anchors" value={ev.geometric.ligamentScore} icon="⚓" color="info" />
+                  <IconStat label="Soft-Tissue Delta" value={ev.geometric.softTissueScore} icon="🧬" color="warn" />
+                  <div className="h-px bg-white/5 mt-2"></div>
+                  <div className="flex justify-between items-center px-1">
+                    <span className="text-[10px] text-muted uppercase font-bold tracking-tighter">Geometric SNR</span>
+                    <span className="text-[12px] font-mono font-bold text-success">{(ev.geometric.snr * 10).toFixed(1)} dB</span>
+                  </div>
+                </div>
+              </PanelCard>
+              
+              <PanelCard title="🕒 Chronology Status">
+                <div className="flex items-center justify-between px-1 py-1">
+                  <div className="text-[10px] text-muted uppercase font-bold tracking-tighter">Aging Period</div>
+                  <div className="text-[12px] font-mono text-white">{ev.chronology.deltaYears} YRS</div>
+                </div>
+                <div className="mt-4 space-y-1">
+                  {ev.chronology.flags.length === 0 ? (
+                    <div className="text-[11px] text-success flex items-center gap-2 bg-success/10 p-2 rounded-xl border border-success/20">
+                      <span className="text-lg">✓</span> Chronological sequence consistent
+                    </div>
+                  ) : (
+                    ev.chronology.flags.map(f => (
+                      <div key={f} className="text-[11px] text-warn flex items-center gap-2 bg-warn/10 p-2 rounded-xl border border-warn/20">
+                        <span className="text-lg">⚠️</span> {f}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </PanelCard>
             </div>
-          </PanelCard>
 
-          <PanelCard title="6. Raw JSON">
-            <pre className="text-[10px] bg-black/60 border border-line p-2 rounded overflow-auto max-h-64 text-muted">
-              {JSON.stringify(ev, null, 2)}
-            </pre>
-          </PanelCard>
+            {/* Texture */}
+            <div className="col-span-12 lg:col-span-4 space-y-4">
+              <PanelCard title="🎭 Texture & Liveness" className="border-danger/20">
+                <div className="space-y-4 py-2">
+                  <IconStat label="Synthetic Match" value={ev.texture.syntheticProb} icon="🤖" color="danger" />
+                  <IconStat label="FFT Periodicity" value={ev.texture.fft} icon="〰️" color="warn" />
+                  <IconStat label="LBP Complexity" value={ev.texture.lbp} icon="🕸️" color="info" />
+                  <IconStat label="Albedo Viability" value={ev.texture.albedo} icon="💡" color="success" />
+                </div>
+              </PanelCard>
+
+              <PanelCard title="📐 Pose Gating">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 rounded-2xl bg-bg-deep border border-line">
+                    <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-1 text-center">Visibility</div>
+                    <div className="text-lg font-mono font-bold text-info text-center">{ev.pose.mutualVisibility}<span className="text-[10px] opacity-40 ml-1">/21</span></div>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-bg-deep border border-line">
+                    <div className="text-[9px] text-muted uppercase font-bold tracking-widest mb-1 text-center">Excluded</div>
+                    <div className="text-lg font-mono font-bold text-muted text-center">{ev.pose.expressionExcluded}</div>
+                  </div>
+                </div>
+              </PanelCard>
+            </div>
+
+            {/* Verdict */}
+            <div className="col-span-12 lg:col-span-4">
+              <PanelCard title="👨‍⚖️ Final Verdict" className="h-full bg-accent/5 border-accent/30 shadow-2xl shadow-accent/5">
+                <div className="flex flex-col h-full">
+                  <div className="text-center py-6 mb-4 rounded-3xl bg-bg-deep/80 border border-accent/20">
+                    <div className="text-[10px] text-muted uppercase font-black tracking-[0.3em] mb-2">Likely Conclusion</div>
+                    <div className={`text-xl font-black uppercase tracking-wider ${ev.verdict.includes('Substitution') ? 'text-danger' : 'text-success'}`}>
+                      {ev.verdict.split('—')[0]}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 flex-1">
+                    <VerdictRow label="H0: Same Identity" value={ev.posteriors.H0} color="success" />
+                    <VerdictRow label="H1: Mask / Double" value={ev.posteriors.H1} color="danger" />
+                    <VerdictRow label="H2: Different Subject" value={ev.posteriors.H2} color="warn" />
+                  </div>
+
+                  <div className="mt-8 p-4 rounded-2xl bg-white/5 border border-white/10 italic text-[11px] text-white/60 leading-relaxed">
+                    "Geometric similarity across {ev.pose.mutualVisibility} mutually visible zones suggests {ev.verdict.toLowerCase()}."
+                  </div>
+                </div>
+              </PanelCard>
+            </div>
+          </div>
+
+          {/* Details */}
+          <details className="group mt-8">
+            <summary className="list-none flex items-center gap-2 cursor-pointer text-[11px] font-bold text-muted uppercase tracking-widest hover:text-white transition-colors bg-white/5 w-fit px-4 py-2 rounded-full border border-white/5">
+              <span className="group-open:rotate-180 transition-transform">▼</span> RAW FORENSIC BUNDLE (JSON)
+            </summary>
+            <div className="mt-4 p-4 rounded-3xl bg-black/60 border border-line overflow-auto max-h-96 custom-scrollbar shadow-inner">
+              <pre className="text-[10px] font-mono text-info/80 leading-relaxed">
+                {JSON.stringify(ev, null, 2)}
+              </pre>
+            </div>
+          </details>
         </div>
       )}
     </Page>
   );
 }
 
-function SubjectCard({ label, rec }: { label: string; rec: (typeof PHOTOS)[number] }) {
+function SubjectMini({ label, rec, side }: { label: string; rec: any; side: string }) {
   return (
-    <PanelCard title={label}>
-      <div className="flex gap-3">
-        <img src={rec.photo} alt="" className="w-20 h-20 object-cover rounded border border-line" />
-        <div className="flex-1 text-[11px]">
-          <div className="text-white font-mono">{rec.id}</div>
-          <div className="text-muted">{rec.date} · {rec.pose} · {rec.expression}</div>
-          <div className="mt-1 flex flex-wrap gap-1">
-            {rec.flags.map((f) => (
-              <span key={f} className="text-[9px] px-1 rounded bg-warn/30 text-warn">{f}</span>
-            ))}
-          </div>
-          <div className="mt-1 grid grid-cols-2 gap-1">
-            <KV k="cluster" v={rec.cluster} />
-            <KV k="synthetic" v={rec.syntheticProb.toFixed(2)} />
-          </div>
+    <div className={`flex items-center gap-4 p-4 rounded-3xl bg-bg-deep/40 border border-line backdrop-blur-md shadow-lg ${side === 'L' ? 'flex-row' : 'flex-row-reverse'}`}>
+      <div className="relative group">
+        <img src={rec.photo} className="w-20 h-20 object-cover rounded-2xl border-2 border-line group-hover:border-accent transition-all duration-500 shadow-lg" alt="" />
+        <div className={`absolute -top-2 ${side === 'L' ? '-left-2' : '-right-2'} w-6 h-6 rounded-full bg-accent border-2 border-bg-deep flex items-center justify-center text-[10px] font-black`}>
+          {side}
         </div>
       </div>
-    </PanelCard>
-  );
-}
-
-function Bar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="flex items-center gap-2 my-1">
-      <div className="text-[11px] text-muted w-56 truncate">{label}</div>
-      <div className="flex-1 h-2 bg-bg rounded overflow-hidden">
-        <div className="h-full" style={{ width: `${Math.min(100, value * 100)}%`, background: color }} />
+      <div className={`flex-1 ${side === 'R' ? 'text-right' : ''}`}>
+        <div className="text-[10px] text-muted font-black tracking-widest mb-1">{label}</div>
+        <div className="text-[13px] font-bold text-white mb-0.5">{rec.id.split('-').slice(1,3).join(' ')}</div>
+        <div className="text-[10px] font-mono text-info uppercase">{rec.date} · {rec.pose}</div>
       </div>
-      <div className="text-[11px] font-mono w-14 text-right" style={{ color }}>{value.toFixed(3)}</div>
     </div>
   );
 }
 
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
+function IconStat({ label, value, icon, color }: { label: string; value: number; icon: string; color: string }) {
+  const colorMap: any = {
+    success: 'bg-success shadow-success/40',
+    danger: 'bg-danger shadow-danger/40',
+    warn: 'bg-warn shadow-warn/40',
+    info: 'bg-info shadow-info/40'
+  };
+  
   return (
-    <div className="flex justify-between text-[11px] border-b border-line/40 py-0.5">
-      <span className="text-muted">{k}</span>
-      <span className="font-mono text-white">{v}</span>
+    <div className="group">
+      <div className="flex justify-between items-center mb-1.5 px-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm grayscale group-hover:grayscale-0 transition-all duration-300">{icon}</span>
+          <span className="text-[10px] font-bold text-muted uppercase tracking-tighter group-hover:text-white/80 transition-colors">{label}</span>
+        </div>
+        <span className="text-[11px] font-mono font-bold text-white/90">{(value * 100).toFixed(0)}<span className="opacity-40 text-[9px] ml-0.5">%</span></span>
+      </div>
+      <div className="h-1.5 w-full bg-bg-deep rounded-full overflow-hidden border border-white/5">
+        <div 
+          className={`h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_8px] ${colorMap[color]}`}
+          style={{ width: `${value * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function VerdictRow({ label, value, color }: { label: string; value: number; color: string }) {
+  const colorText: any = { success: 'text-success', danger: 'text-danger', warn: 'text-warn' };
+  const colorBg: any = { success: 'bg-success', danger: 'bg-danger', warn: 'bg-warn' };
+
+  return (
+    <div className="space-y-1.5 p-3 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors">
+      <div className="flex justify-between items-center">
+        <span className="text-[10px] font-bold text-muted uppercase tracking-tight">{label}</span>
+        <span className={`text-[12px] font-mono font-black ${colorText[color]}`}>{(value * 100).toFixed(1)}%</span>
+      </div>
+      <div className="h-1.5 w-full bg-bg-deep rounded-full overflow-hidden">
+        <div 
+          className={`h-full rounded-full ${colorBg[color]} transition-all duration-1000 ease-out`}
+          style={{ width: `${value * 100}%` }}
+        />
+      </div>
     </div>
   );
 }

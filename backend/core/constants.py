@@ -36,3 +36,9 @@ PRIOR_SAME_PERSON = 0.5
 # --- Artifact Versioning ---
 ARTIFACT_VERSION = "2.1.0"
 RUNTIME_CONFIG_HASH_VERSION = "v2"
+
+# --- Exclusion Lists ---
+# List of photo IDs or zone names to be excluded from automated forensic analysis
+EXCLUDED_FROM_ANALYSIS = [
+    "main-2012_05_07-a1b2c3d4", # Example: problematic lighting
+]

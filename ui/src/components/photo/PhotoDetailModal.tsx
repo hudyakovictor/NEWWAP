@@ -4,6 +4,7 @@ import type { YearPoint } from "../../mock/data";
 import FaceZoneMap from "./FaceZoneMap";
 import MeshViewer from "./MeshViewer";
 import { api } from "../../api";
+import { MAIN_PHOTOS } from "../../data/photoRegistry";
 import type { PhotoRecord } from "../../mock/photos";
 import { useApp } from "../../store/appStore";
 import { log, getAllLogs, subscribe, type LogEntry } from "../../debug/logger";
@@ -38,10 +39,20 @@ export default function PhotoDetailModal({
   onPrev?: () => void;
   onNext?: () => void;
 }) {
-  const detail = useMemo(() => buildPhotoDetail(point.year, point.photo), [point]);
+  const [currentPhotoId, setCurrentPhotoId] = useState<string>(point.photo);
+
+  useEffect(() => {
+    setCurrentPhotoId(point.photo);
+  }, [point.photo]);
+
+  const detail = useMemo(() => buildPhotoDetail(point.year, currentPhotoId), [point.year, currentPhotoId]);
   const [tab, setTab] = useState<TabId>("overview");
   const [hoveredZone, setHoveredZone] = useState<string | undefined>();
   const { openPairWith } = useApp();
+
+  const yearPhotos = useMemo(() => {
+    return MAIN_PHOTOS.filter(p => p.year === point.year).sort((a,b) => (a.date||"").localeCompare(b.date||""));
+  }, [point.year]);
 
   useEffect(() => {
     log.info("photo", "photo:modal_open", `Open detail for ${point.year}`, { point, photoId });
@@ -80,7 +91,8 @@ export default function PhotoDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* header */}
-        <div className="flex items-center h-12 px-4 border-b border-line shrink-0">
+        <div className="flex flex-col border-b border-line shrink-0 bg-bg-panel/95 backdrop-blur-md">
+          <div className="flex items-center h-12 px-4 shrink-0">
           <div className="flex items-center gap-3">
             <img src={detail.photo} alt="" className="w-9 h-9 rounded object-cover border border-line" />
             <div>
@@ -155,6 +167,29 @@ export default function PhotoDetailModal({
               ×
             </button>
           </div>
+        </div>
+
+        {/* YEAR GALLERY */}
+        {yearPhotos.length > 1 && (
+          <div className="flex items-center gap-2 px-4 py-2 bg-bg-deep/50 overflow-x-auto scrollbar-thin border-b border-line/40 shrink-0">
+            <span className="text-[10px] uppercase text-muted tracking-widest shrink-0 mr-2">All {point.year} photos ({yearPhotos.length}):</span>
+            <div className="flex gap-1">
+              {yearPhotos.map(p => {
+                const isActive = currentPhotoId.includes(p.id) || currentPhotoId === p.url;
+                return (
+                  <button 
+                    key={p.id}
+                    onClick={() => setCurrentPhotoId(p.url)}
+                    title={`${p.date || 'Unknown date'} - ${p.pose.classification}`}
+                    className={`shrink-0 w-10 h-10 rounded overflow-hidden border-2 transition-all ${isActive ? 'border-accent shadow-[0_0_8px_rgba(56,189,248,0.5)]' : 'border-transparent opacity-50 hover:opacity-100 hover:border-line'}`}
+                  >
+                    <img src={p.url} className="w-full h-full object-cover" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         </div>
 
         {/* body */}
@@ -337,7 +372,7 @@ function Reconstruction({ detail }: { detail: D }) {
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-5 flex flex-col gap-3">
         <div className="bg-bg-deep rounded border border-line/60 overflow-hidden" style={{ height: 460 }}>
-          <MeshViewer objUrl="/recon/mesh.obj" />
+          <MeshViewer objUrl={detail.reconstruction.meshObj} />
         </div>
         <Panel title="Mesh statistics">
           <div className="grid grid-cols-2 gap-2">

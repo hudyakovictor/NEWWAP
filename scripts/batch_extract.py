@@ -88,14 +88,14 @@ def main():
     
     sample_photos = []
     
-    # Take first 3 from each
+    # Take all photos
     if main_dir.exists():
-        sample_photos.extend(sorted(list(main_dir.glob("*.jpg")))[:3])
+        sample_photos.extend(sorted(list(main_dir.glob("*.jpg"))))
     if myface_dir.exists():
-        sample_photos.extend(sorted(list(myface_dir.glob("*.jpg")))[:3])
-        sample_photos.extend(sorted(list(myface_dir.glob("*.png")))[:2])
+        sample_photos.extend(sorted(list(myface_dir.glob("*.jpg"))))
+        sample_photos.extend(sorted(list(myface_dir.glob("*.png"))))
         
-    print(f"Found {len(sample_photos)} photos for sample run")
+    print(f"Found {len(sample_photos)} photos for full run")
     
     output_dir = REPO_ROOT / "storage" / "forensic_passports"
     progress_file = REPO_ROOT / "storage" / "extraction_progress.json"

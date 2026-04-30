@@ -10,12 +10,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from datetime import datetime
 from core.config import SETTINGS
-from core.analysis import calculate_bayesian_evidence, BayesianEvidence
+from core.analysis import calculate_bayesian_evidence
 from core.jobs import JobManager
 from core.models import CalibrationOverrideRequest, ExtractJobRequest, RecomputeMetricsRequest
 from core.service import ForensicWorkbenchService
 from core.utils import IMAGE_EXTENSIONS, read_json
+
+def iso_now() -> str:
+    return datetime.now().isoformat()
 
 service = ForensicWorkbenchService()
 jobs = JobManager()
@@ -66,23 +70,25 @@ def overview() -> dict:
 
 
 @app.get("/api/photos/{dataset}")
-def photos(dataset: str) -> list[dict]:
+def photos(dataset: str) -> dict:
     if dataset not in {"main", "calibration"}:
         raise HTTPException(status_code=404, detail="unknown dataset")
-    return service.main_records() if dataset == "main" else service.calibration_records()
+    items = service.main_records() if dataset == "main" else service.calibration_records()
+    return {"total": len(items), "items": items}
 
 
 @app.get("/api/photo/{dataset}/{photo_id}")
 def photo_detail(dataset: str, photo_id: str) -> dict:
-    record = service.photo_detail(dataset, photo_id)
-    if record is None:
+    detail = service.photo_detail(dataset, photo_id)
+    if detail is None:
         raise HTTPException(status_code=404, detail="photo not found")
-    return record
+    # UI expects { ...detail, record }
+    return {**detail, "record": detail}
 
 
 @app.get("/api/timeline-summary")
 def timeline_summary() -> dict:
-    return service.overview()["timeline_summary"]
+    return service.get_timeline_full()
 
 
 @app.get("/api/calibration/summary")
@@ -143,36 +149,144 @@ def set_override(request: CalibrationOverrideRequest) -> dict:
     return service.set_calibration_override(request.photo_id, request.calibration_photo_id)
 
 
-@app.post("/api/evidence/compare", response_model=BayesianEvidence)
+@app.post("/api/evidence/compare")
 async def compare_evidence(photo_id_a: str, photo_id_b: str):
     """
     Вычисляет криминалистический вердикт на основе реальных данных из summary.json.
+    Возвращает детальный Breakdown для UI.
     """
-    path_a = SETTINGS.storage_root / "main" / photo_id_a / "summary.json"
-    path_b = SETTINGS.storage_root / "main" / photo_id_b / "summary.json"
+    summary_a = service.photo_detail("main", photo_id_a)
+    summary_b = service.photo_detail("main", photo_id_b)
     
-    summary_a = read_json(path_a, {})
-    summary_b = read_json(path_b, {})
-    
-    metrics_a = summary_a.get("metrics", {})
-    metrics_b = summary_b.get("metrics", {})
-    
-    if not metrics_a or not metrics_b:
+    if not summary_a or not summary_b:
         raise HTTPException(
             status_code=404, 
-            detail=f"Данные не найдены для {photo_id_a} или {photo_id_b}. Убедитесь, что фотографии обработаны."
+            detail=f"Данные не найдены для {photo_id_a} или {photo_id_b}."
         )
     
-    # Можно извлечь флаг улыбки из метаданных позы, если он там есть
-    is_smiling = summary_a.get("pose", {}).get("expression") == "smile" or \
-                 summary_b.get("pose", {}).get("expression") == "smile"
-                 
-    evidence = calculate_bayesian_evidence(
-        zone_metrics_photo_a=metrics_a,
-        zone_metrics_photo_b=metrics_b,
-        is_smiling=is_smiling
-    )
+    evidence = calculate_bayesian_evidence(summary_a, summary_b)
     return evidence
+
+
+@app.post("/api/evidence/matrix")
+async def comparison_matrix(photo_ids: list[str]):
+    """
+    Строит матрицу похожести N×N для выбранных фотографий.
+    Использует H0 вероятность как меру похожести.
+    """
+    summaries = []
+    for pid in photo_ids:
+        s = service.photo_detail("main", pid)
+        if s:
+            summaries.append(s)
+    
+    n = len(summaries)
+    matrix = [[0.0] * n for _ in range(n)]
+    
+    for i in range(n):
+        for j in range(i, n):
+            if i == j:
+                matrix[i][j] = 1.0
+            else:
+                ev = calculate_bayesian_evidence(summaries[i], summaries[j])
+                prob = float(ev["posteriors"]["H0"])
+                matrix[i][j] = prob
+                matrix[j][i] = prob
+                
+    return matrix
+
+
+@app.get("/api/similar-photos/{photo_id}")
+async def similar_photos(photo_id: str, limit: int = 5):
+    """
+    Возвращает список наиболее похожих фотографий (по геометрии и позе).
+    """
+    target = service.photo_detail("main", photo_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Photo not found")
+        
+    all_main = service.main_records()
+    candidates = [r for r in all_main if r["photo_id"] != photo_id and r.get("status") == "ready"]
+    
+    scored = []
+    for cand in candidates:
+        ev = calculate_bayesian_evidence(target, cand)
+        scored.append({"record": cand, "score": float(ev["posteriors"]["H0"])})
+        
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return [s["record"] for s in scored[:limit]]
+
+
+@app.get("/api/pipeline/stages")
+def pipeline_stages() -> list[dict]:
+    return service.get_pipeline_stages()
+
+
+@app.get("/api/cache/summary")
+def cache_summary() -> dict:
+    return service.get_cache_summary()
+
+
+@app.get("/api/debug/ageing")
+def ageing_series() -> list[dict]:
+    return service.get_ageing_series()
+
+
+@app.get("/api/debug/catalog")
+def api_catalog() -> list[dict]:
+    """
+    Returns a catalog of all available API endpoints for the audit tool.
+    """
+    return [
+        {"method": "GET", "path": "/api/timeline-summary", "description": "Full timeline data", "group": "debug"},
+        {"method": "GET", "path": "/api/photos/main", "description": "List all photos", "group": "photos"},
+        {"method": "GET", "path": "/api/calibration/summary", "description": "Calibration status", "group": "calibration"},
+        {"method": "GET", "path": "/api/anomalies", "description": "System anomalies", "group": "anomalies"},
+        {"method": "GET", "path": "/api/pipeline/stages", "description": "Pipeline diagnostics", "group": "debug"},
+    ]
+
+
+@app.get("/api/anomalies")
+def list_anomalies() -> list[dict]:
+    """
+    Возвращает список криминалистических аномалий в датасете.
+    """
+    main_records = service.main_records()
+    anomalies = []
+    
+    for r in main_records:
+        flags = r.get("anomaly_flags", [])
+        for f in flags:
+            anomalies.append({
+                "id": f"{r['photo_id']}_{f}",
+                "year": r.get("parsed_year", 2000),
+                "severity": "danger" if "DUP" in f or "SKEW" in f else "warn",
+                "kind": "pose" if "POSE" in f else "chronology",
+                "photoId": r["photo_id"],
+                "title": f"Аномалия: {f}",
+                "detectedAt": r.get("extracted_at", iso_now()),
+                "resolved": False
+            })
+            
+    return anomalies
+
+
+@app.get("/api/diary")
+def get_diary() -> list[dict]:
+    return service.get_diary()
+
+
+@app.post("/api/diary")
+def add_diary_entry(entry: dict) -> dict:
+    return service.add_diary_entry(entry)
+
+
+@app.put("/api/diary/{entry_id}")
+def update_diary_entry(entry_id: str, patch: dict) -> dict:
+    try:
+        return service.update_diary_entry(entry_id, patch)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Entry not found")
 
 
 @app.post("/api/upload")

@@ -21,10 +21,17 @@ async def send_diary(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(response, parse_mode='Markdown')
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print(f"Telegram Bot Error: {context.error}")
+
 if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("diary", send_diary))
-    
-    print("Бот запущен...")
-    app.run_polling()
+    try:
+        app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("diary", send_diary))
+        app.add_error_handler(error_handler)
+        
+        print("Бот запущен...")
+        app.run_polling()
+    except Exception as e:
+        print(f"Критическая ошибка бота: {e}")

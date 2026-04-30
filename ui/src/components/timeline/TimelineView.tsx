@@ -1,7 +1,7 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useMemo } from "react";
 import {
   YEARS,
-  yearPoints,
+  buildYearPoints,
   metrics,
   identitySegments,
   eventMarkers,
@@ -15,13 +15,15 @@ import EventsRow from "./EventsRow";
 import SelectionOverlay from "./SelectionOverlay";
 import Scrubber from "./Scrubber";
 import PhotoDetailModal from "../photo/PhotoDetailModal";
-import StubBanner from "../common/StubBanner";
 
 export default function TimelineView() {
   const [selectedYear, setSelectedYear] = useState(2012);
   const [openYear, setOpenYear] = useState<number | null>(null);
   const [range, setRange] = useState<[number, number]>([1999, 2025]);
+  const [poseFilter, setPoseFilter] = useState<string>("");
   const years = YEARS;
+  
+  const currentPoints = useMemo(() => buildYearPoints(poseFilter || undefined), [poseFilter]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -35,15 +37,24 @@ export default function TimelineView() {
   }, [selectedYear, years]);
 
   const openIdx = openYear !== null ? years.indexOf(openYear) : -1;
-  const openPoint = openIdx >= 0 ? yearPoints[openIdx] : null;
+  const openPoint = openIdx >= 0 ? currentPoints[openIdx] : null;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <div className="px-3 pt-2">
-        <StubBanner
-          fields={["7 top metric rows (skull, neuro, orbital, BMI, synth, LBP, age)", "anomaly markers", "identity clusters", "events"]}
-          note="Year anchor photos are REAL (frontal pick from main). Bottom 3 metric rows (Photos/year, Mean |yaw|/year, Frontal ratio/year) are REAL from the head-pose pipeline. Top 7 metric rows are still synthetic until texture/zone pipelines run."
-        />
+      <div className="px-3 pt-2 flex justify-between items-center mb-1">
+        <div className="text-text-muted text-sm font-medium">Timeline Anchors</div>
+        <select 
+          value={poseFilter} 
+          onChange={e => setPoseFilter(e.target.value)} 
+          className="bg-bg-dark border border-border rounded px-2 py-1 text-xs text-text-muted focus:outline-none"
+        >
+          <option value="">Auto (Frontal preferred)</option>
+          <option value="frontal">Frontal</option>
+          <option value="three_quarter_left">3/4 Left</option>
+          <option value="three_quarter_right">3/4 Right</option>
+          <option value="profile_left">Profile Left</option>
+          <option value="profile_right">Profile Right</option>
+        </select>
       </div>
       <div ref={scrollRef} className="relative flex-1 overflow-auto bg-bg min-h-0">
         <div
@@ -53,7 +64,7 @@ export default function TimelineView() {
           <YearsRow years={years} selectedYear={selectedYear} onSelect={setSelectedYear} />
 
           <PhotoStrip
-            points={yearPoints}
+            points={currentPoints}
             selectedYear={selectedYear}
             onSelect={setSelectedYear}
             onOpen={setOpenYear}

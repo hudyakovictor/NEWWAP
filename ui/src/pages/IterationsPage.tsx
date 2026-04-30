@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { buildIterations, type Iteration, type PhotoCompare } from "../data/iterationPlan";
+import { buildIterations, type PhotoCompare } from "../data/iterationPlan";
 import type { RealPhoto } from "../data/photoRegistry";
 import { useApp } from "../store/appStore";
 

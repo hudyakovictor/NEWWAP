@@ -8,6 +8,7 @@ from .cascade import CascadeEngine
 from .types import ReconstructionResult
 from core.utils import iso_now, json_ready
 from .constants import ARTIFACT_VERSION
+from core.constants import EXCLUDED_FROM_ANALYSIS
 
 class ForensicBatchProcessor:
     """
@@ -42,6 +43,10 @@ class ForensicBatchProcessor:
                 # In a real system, this would be more robust.
                 photo_id = img_path.stem
                 
+                if photo_id in EXCLUDED_FROM_ANALYSIS:
+                    print(f"Skipping {photo_id} (excluded from analysis)")
+                    continue
+                
                 # Run Cascade Analysis
                 passport = self.cascade.analyze_single(img_path)
                 
@@ -66,4 +71,17 @@ class ForensicBatchProcessor:
         bundle_path = output_dir / "forensic_bundle.json"
         bundle_path.write_text(json.dumps(json_ready(bundle), indent=2), encoding="utf-8")
         
+        # Cleanup temporary artifacts
+        try:
+            from .cleanup_artifacts import cleanup_artifacts
+            cleanup_artifacts()
+        except ImportError:
+            # Fallback if module structure differs
+            import sys
+            sys.path.append(str(Path(__file__).resolve().parent))
+            from cleanup_artifacts import cleanup_artifacts
+            cleanup_artifacts()
+        except Exception as e:
+            print(f"Cleanup failed: {e}")
+            
         return bundle

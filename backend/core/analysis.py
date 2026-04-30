@@ -63,57 +63,142 @@ ZONE_WEIGHTS = {
 
 
 def calculate_bayesian_evidence(
-    zone_metrics_photo_a: Dict[str, float], 
-    zone_metrics_photo_b: Dict[str, float],
-    is_smiling: bool = False
-) -> BayesianEvidence:
+    summary_a: Dict[str, Any],
+    summary_b: Dict[str, Any],
+) -> Dict[str, Any]:
     """
-    Вычисляет вероятности гипотез H0, H1, H2 на основе дельты зон.
+    [ITER-5] Advanced Forensic Bayesian Evidence Breakdown.
+    Computes probabilities for H0 (Same), H1 (Synthetic), H2 (Different)
+    and returns a structured breakdown for the Evidence UI.
     """
-    # Априорные вероятности
-    prior_h0 = 0.80  # Изначально предполагаем, что это один человек
-    prior_h1 = 0.01  # Подмена (маска)
-    prior_h2 = 0.19  # Разные люди
+    metrics_a = summary_a.get("metrics", {})
+    metrics_b = summary_b.get("metrics", {})
+    tex_a = summary_a.get("texture_forensics", {})
+    tex_b = summary_b.get("texture_forensics", {})
+    pose_a = summary_a.get("pose", {})
+    pose_b = summary_b.get("pose", {})
 
+    # 1. Geometric Comparison
     total_weight = 0.0
     weighted_delta = 0.0
+    
+    # We use a subset of zones for the UI quick breakdown
+    bone_zones = ["nasal_bridge", "orbital_rims", "zygomatic_bones", "mandible"]
+    soft_zones = ["lips", "cheeks"]
+    
+    is_smiling = pose_a.get("expression") == "smile" or pose_b.get("expression") == "smile"
+    
+    bone_delta_sum = 0.0
+    ligament_delta_sum = 0.0
+    soft_delta_sum = 0.0
 
     for zone, weight in ZONE_WEIGHTS.items():
-        # Динамическое исключение зон при мимике (ТЗ: Устойчивость к выражениям)
         if is_smiling and zone in ["lips", "cheeks"]:
             continue
             
-        val_a = zone_metrics_photo_a.get(zone, 0.0)
-        val_b = zone_metrics_photo_b.get(zone, 0.0)
+        val_a = metrics_a.get(zone, 0.5) # Default to 0.5 if missing
+        val_b = metrics_b.get(zone, 0.5)
         delta = abs(val_a - val_b)
         
         weighted_delta += delta * weight
         total_weight += weight
+        
+        if zone in bone_zones:
+            bone_delta_sum += delta
+        elif "ligament" in zone:
+            ligament_delta_sum += delta
+        elif zone in soft_zones:
+            soft_delta_sum += delta
 
-    # Средневзвешенное отклонение
     mean_divergence = (weighted_delta / total_weight) if total_weight > 0 else 1.0
-    
-    # Расчет Отношения Сигнал/Шум (SNR). Чем меньше отклонение, тем выше SNR.
-    structural_snr = max(0.1, 10.0 - mean_divergence)
+    structural_snr = max(0.1, 10.0 - mean_divergence * 20.0) # Scaled for UI
 
-    # Байесовское обновление (упрощенная модель для старта)
-    likelihood_h0 = 1.0 / (1.0 + mean_divergence)
-    likelihood_h2 = mean_divergence / 10.0
+    # 2. Texture Comparison (H1 evidence)
+    # If either photo shows high silicone probability, H1 likelihood increases
+    silicone_a = float(tex_a.get("silicone_probability", 0.0))
+    silicone_b = float(tex_b.get("silicone_probability", 0.0))
+    max_silicone = max(silicone_a, silicone_b)
     
-    posterior_h0 = prior_h0 * likelihood_h0
-    posterior_h1 = prior_h1 # Для H1 нужны текстурные метрики (добавим позже)
-    posterior_h2 = prior_h2 * likelihood_h2
+    # Complexity/Uniformity (LBP)
+    lbp_a = float(tex_a.get("lbp_complexity", 0.5))
+    lbp_b = float(tex_b.get("lbp_complexity", 0.5))
+    
+    # 3. Bayesian Logic
+    priors = {"H0": 0.78, "H1": 0.02, "H2": 0.20}
+    
+    # Bone structures are extremely stable for the same person.
+    # Ligaments are stable but affected by resolution/aging.
+    # Likelihood of observing delta given H0 (Same Person)
+    # Using Gaussian-like decay: exp(-delta^2 / (2 * sigma^2))
+    l_h0_bone = math.exp(-(bone_delta_sum**2) / (2 * 0.04**2))
+    l_h0_lig = math.exp(-(ligament_delta_sum**2) / (2 * 0.06**2))
+    l_h0_geom = l_h0_bone * 0.7 + l_h0_lig * 0.3
+    
+    # Likelihood given H2 (Different Person) - uniform-ish over range
+    l_h2_geom = 1.0 - l_h0_geom
+    
+    # Likelihood of observing texture given H1 (Synthetic)
+    # Sigmoid on silicone probability
+    l_h1_tex = 1.0 / (1.0 + math.exp(-12.0 * (max_silicone - 0.42)))
+    
+    # Combined evidence synthesis
+    # H0 needs both geometry stability AND low synthetic probability
+    ev_h0 = priors["H0"] * l_h0_geom * (1.0 - l_h1_tex)
+    # H1 is driven mostly by texture but usually has good geometry (mask on face)
+    ev_h1 = priors["H1"] * l_h1_tex * 20.0 # Prior boost for forensic notice
+    # H2 is driven by geometric divergence
+    ev_h2 = priors["H2"] * l_h2_geom * (1.0 - l_h1_tex)
+    
+    z = ev_h0 + ev_h1 + ev_h2
+    posteriors = {
+        "H0": round(ev_h0 / z, 4),
+        "H1": round(ev_h1 / z, 4),
+        "H2": round(ev_h2 / z, 4),
+    }
 
-    # Нормализация до 1.0 (100%)
-    total_prob = posterior_h0 + posterior_h1 + posterior_h2
+    # 4. Chronology Flags
+    year_a = summary_a.get("parsed_year", 2000)
+    year_b = summary_b.get("parsed_year", 2000)
+    delta_years = abs(year_a - year_b)
     
-    return BayesianEvidence(
-        h0_same_person=round(posterior_h0 / total_prob, 4),
-        h1_synthetic_mask=round(posterior_h1 / total_prob, 4),
-        h2_different_person=round(posterior_h2 / total_prob, 4),
-        structural_snr=round(structural_snr, 2),
-        anomalies_flagged=1 if mean_divergence > 5.0 else 0
-    )
+    # 5. Pose Mutual Visibility
+    yaw_a = abs(pose_a.get("yaw", 0.0))
+    yaw_b = abs(pose_b.get("yaw", 0.0))
+    # Mutual visibility is high if both are frontal
+    mutual_vis = max(0.0, 1.0 - (yaw_a + yaw_b) / 180.0)
+
+    # Final breakdown in UI-expected shape
+    return {
+        "aId": summary_a.get("photo_id"),
+        "bId": summary_b.get("photo_id"),
+        "geometric": {
+            "snr": round(structural_snr, 2),
+            "boneScore": round(max(0, 1.0 - bone_delta_sum), 3),
+            "ligamentScore": round(max(0, 1.0 - ligament_delta_sum), 3),
+            "softTissueScore": round(max(0, 1.0 - soft_delta_sum), 3),
+        },
+        "texture": {
+            "syntheticProb": round(max_silicone, 3),
+            "fft": round(float(tex_a.get("fft_high_freq_ratio", 0.5)), 3),
+            "lbp": round(lbp_a, 3),
+            "albedo": round(float(tex_a.get("albedo_uniformity", 0.5)), 3),
+            "specular": round(float(tex_a.get("specular_gloss", 0.5)), 3),
+        },
+        "chronology": {
+            "deltaYears": delta_years,
+            "boneJump": round(bone_delta_sum, 3),
+            "ligamentJump": round(ligament_delta_sum, 3),
+            "flags": ["POSSIBLE_AGING"] if delta_years > 5 else [],
+        },
+        "pose": {
+            "mutualVisibility": round(mutual_vis, 2),
+            "expressionExcluded": 1 if is_smiling else 0,
+        },
+        "likelihoods": {"H0": round(l_h0_geom, 3), "H1": round(l_h1_tex, 3), "H2": round(l_h2_geom, 3)},
+        "priors": priors,
+        "posteriors": posteriors,
+        "verdict": "H0" if posteriors["H0"] > 0.6 else ("H1" if posteriors["H1"] > 0.5 else "H2"),
+    }
 
 
 

@@ -43,6 +43,50 @@
     "source": "real_dataset",
     "syntheticProb": 0.6559919968794716
   },
+  "1999_11_01-2": {
+    "photo_id": "1999_11_01-2",
+    "quality": {
+      "sharpness_variance": 163.0452751976929,
+      "noise_level": 0.6764218807220459,
+      "is_rejected": false,
+      "flags": {
+        "REJECTED_BLUR": false,
+        "REJECTED_NOISE": false
+      }
+    },
+    "texture": {
+      "lbp_complexity": 3.354419521892596,
+      "lbp_uniformity": 0.4937722222222223,
+      "specular_gloss": 0.729411780834198,
+      "silicone_probability": 0.5341335663528607,
+      "reliability_weight": 0.3203665219498035,
+      "pore_density": 0.35502930971230673,
+      "wrinkle_forehead": 0.8435658030110007,
+      "wrinkle_nasolabial": 2.5006861730280137,
+      "global_smoothness": 0.2981140836318848,
+      "quality": {
+        "quality_index": 0.41006914809574846,
+        "sharpness_score": 0.3259281817880811,
+        "jpeg_score": 0.0,
+        "noise_score": 0.9323262512683869,
+        "laplacian_var": 162.96409089404054,
+        "blockiness": 80.6338952020202,
+        "noise_level": 0.6767374873161316
+      }
+    },
+    "reconstruction_summary": {
+      "vertex_count": 35709,
+      "pose": [
+        7.936323165893555,
+        -21.01541519165039,
+        -0.9400733709335327
+      ]
+    },
+    "md5": "d431c6bfd68839eecd1a7a79935b16d7",
+    "resolution": "800x800",
+    "source": "real_dataset",
+    "syntheticProb": 0.5341335663528607
+  },
   "1999_09_01-2": {
     "photo_id": "1999_09_01-2",
     "quality": {
@@ -86,6 +130,50 @@
     "resolution": "800x800",
     "source": "real_dataset",
     "syntheticProb": 0.5644429724374568
+  },
+  "1999_10_01": {
+    "photo_id": "1999_10_01",
+    "quality": {
+      "sharpness_variance": 63.092174904287106,
+      "noise_level": 1.0106797218322754,
+      "is_rejected": true,
+      "flags": {
+        "REJECTED_BLUR": true,
+        "REJECTED_NOISE": false
+      }
+    },
+    "texture": {
+      "lbp_complexity": 3.4399470332987905,
+      "lbp_uniformity": 0.4286777777777777,
+      "specular_gloss": 0.9137254953384399,
+      "silicone_probability": 0.6401191480492915,
+      "reliability_weight": 0.2501198033347355,
+      "pore_density": 0.9192093708017588,
+      "wrinkle_forehead": 4.333286402197326,
+      "wrinkle_nasolabial": 6.90288889488969,
+      "global_smoothness": 0.29070206593819814,
+      "quality": {
+        "quality_index": 0.3201533482684614,
+        "sharpness_score": 0.1261843498085742,
+        "jpeg_score": 0.0,
+        "noise_score": 0.8989320278167725,
+        "laplacian_var": 63.092174904287106,
+        "blockiness": 103.8570643939394,
+        "noise_level": 1.0106797218322754
+      }
+    },
+    "reconstruction_summary": {
+      "vertex_count": 35709,
+      "pose": [
+        20.12774085998535,
+        -2.257802963256836,
+        0.022302348166704178
+      ]
+    },
+    "md5": "8717c02592567af45bdc49c4212e2b1e",
+    "resolution": "800x800",
+    "source": "real_dataset",
+    "syntheticProb": 0.6401191480492915
   },
   "1999_08_16": {
     "photo_id": "1999_08_16",
@@ -174,6 +262,50 @@
     "resolution": "1737x3088",
     "source": "real_dataset",
     "syntheticProb": 0.6081359364856705
+  },
+  "1999_09_01": {
+    "photo_id": "1999_09_01",
+    "quality": {
+      "sharpness_variance": 37.36832187464844,
+      "noise_level": 0.6663827896118164,
+      "is_rejected": true,
+      "flags": {
+        "REJECTED_BLUR": true,
+        "REJECTED_NOISE": false
+      }
+    },
+    "texture": {
+      "lbp_complexity": 3.68134066118247,
+      "lbp_uniformity": 0.3562722222222222,
+      "specular_gloss": 0.9137254953384399,
+      "silicone_probability": 0.6533519057195333,
+      "reliability_weight": 0.2421101494530626,
+      "pore_density": 0.5744873101320599,
+      "wrinkle_forehead": 5.000507985585019,
+      "wrinkle_nasolabial": 3.720001296890705,
+      "global_smoothness": 0.2716400953881563,
+      "quality": {
+        "quality_index": 0.30990099129992016,
+        "sharpness_score": 0.07472462499929688,
+        "jpeg_score": 0.0,
+        "noise_score": 0.9333704710006714,
+        "laplacian_var": 37.36231249964844,
+        "blockiness": 91.96559974747476,
+        "noise_level": 0.6662952899932861
+      }
+    },
+    "reconstruction_summary": {
+      "vertex_count": 35709,
+      "pose": [
+        9.296893119812012,
+        2.8269002437591553,
+        0.2100462168455124
+      ]
+    },
+    "md5": "fc3f28dddf93654e5c2fb9c10fcecec9",
+    "resolution": "800x800",
+    "source": "real_dataset",
+    "syntheticProb": 0.6533519057195333
   },
   "2": {
     "photo_id": "2",
@@ -306,6 +438,94 @@
     "resolution": "1024x1024",
     "source": "real_dataset",
     "syntheticProb": 0.3043242557610397
+  },
+  "1999_09_03": {
+    "photo_id": "1999_09_03",
+    "quality": {
+      "sharpness_variance": 36.026627603896486,
+      "noise_level": 0.47101718187332153,
+      "is_rejected": true,
+      "flags": {
+        "REJECTED_BLUR": true,
+        "REJECTED_NOISE": false
+      }
+    },
+    "texture": {
+      "lbp_complexity": 2.8962714528745606,
+      "lbp_uniformity": 0.7292083333333333,
+      "specular_gloss": 0.6941176652908325,
+      "silicone_probability": 0.4686114391477924,
+      "reliability_weight": 0.2458458885438939,
+      "pore_density": 0.5753501898133004,
+      "wrinkle_forehead": 7.090756459699589,
+      "wrinkle_nasolabial": 2.288741691848604,
+      "global_smoothness": 0.3452713846059256,
+      "quality": {
+        "quality_index": 0.3146827373361842,
+        "sharpness_score": 0.07201602395779297,
+        "jpeg_score": 0.0,
+        "noise_score": 0.9529210925102234,
+        "laplacian_var": 36.008011978896484,
+        "blockiness": 76.70473484848485,
+        "noise_level": 0.4707890748977661
+      }
+    },
+    "reconstruction_summary": {
+      "vertex_count": 35709,
+      "pose": [
+        -18.18053436279297,
+        26.34916114807129,
+        -26.427066802978516
+      ]
+    },
+    "md5": "c5d771b612f221b2c8870a41dd8a20c4",
+    "resolution": "800x800",
+    "source": "real_dataset",
+    "syntheticProb": 0.4686114391477924
+  },
+  "1999_11_01-1": {
+    "photo_id": "1999_11_01-1",
+    "quality": {
+      "sharpness_variance": 424.6566601249609,
+      "noise_level": 1.7048218250274658,
+      "is_rejected": false,
+      "flags": {
+        "REJECTED_BLUR": false,
+        "REJECTED_NOISE": false
+      }
+    },
+    "texture": {
+      "lbp_complexity": 3.408920886738988,
+      "lbp_uniformity": 0.5311444444444444,
+      "specular_gloss": 0.9490196108818054,
+      "silicone_probability": 0.6383074742508148,
+      "reliability_weight": 0.4597867162571335,
+      "pore_density": 0.6025798384591704,
+      "wrinkle_forehead": 6.791172488546008,
+      "wrinkle_nasolabial": 3.5907123397376846,
+      "global_smoothness": 0.2933478774888007,
+      "quality": {
+        "quality_index": 0.5885269968091309,
+        "sharpness_score": 0.8491678815034179,
+        "jpeg_score": 0.0,
+        "noise_score": 0.8295328140258789,
+        "laplacian_var": 424.58394075170895,
+        "blockiness": 96.60680555555555,
+        "noise_level": 1.704671859741211
+      }
+    },
+    "reconstruction_summary": {
+      "vertex_count": 35709,
+      "pose": [
+        16.940107345581055,
+        -43.2814826965332,
+        -1.2325962781906128
+      ]
+    },
+    "md5": "de9074a593b9ed193dce32ea66ed658b",
+    "resolution": "800x800",
+    "source": "real_dataset",
+    "syntheticProb": 0.6383074742508148
   },
   "\u0421\u043d\u0438\u043c\u043e\u043a \u044d\u043a\u0440\u0430\u043d\u0430 2026-04-09 \u0432 21.07.10": {
     "photo_id": "\u0421\u043d\u0438\u043c\u043e\u043a \u044d\u043a\u0440\u0430\u043d\u0430 2026-04-09 \u0432 21.07.10",

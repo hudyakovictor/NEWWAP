@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-04-30T19:14:33.567Z",
-  "durationMs": 1345,
+  "generatedAt": "2026-04-30T21:32:41.672Z",
+  "durationMs": 7747,
   "environment": {
     "runtime": "node",
     "nodeVersion": "v22.14.0"
@@ -9,94 +9,180 @@
     {
       "name": "getTimeline",
       "status": "ok",
-      "ms": 31
+      "ms": 158
     },
     {
       "name": "listPhotos",
       "status": "ok",
-      "ms": 31
+      "ms": 167
     },
     {
       "name": "getPhotoDetail",
-      "status": "ok",
-      "ms": 32
+      "status": "fail",
+      "ms": 156,
+      "note": "Backend error: Not Found"
     },
     {
       "name": "similarPhotos",
-      "status": "ok",
-      "ms": 33
+      "status": "fail",
+      "ms": 156,
+      "note": "Backend error: Not Found"
     },
     {
       "name": "getCalibration",
       "status": "ok",
-      "ms": 32
+      "ms": 20
     },
     {
       "name": "photosInBucket",
       "status": "ok",
-      "ms": 32
+      "ms": 30
     },
     {
       "name": "listJobs",
       "status": "ok",
-      "ms": 31
+      "ms": 2
     },
     {
       "name": "listInvestigations",
       "status": "ok",
-      "ms": 33
+      "ms": 31
     },
     {
       "name": "listAnomalies",
       "status": "ok",
-      "ms": 32
+      "ms": 180
     },
     {
       "name": "getPipelineStages",
       "status": "ok",
-      "ms": 32
+      "ms": 157
     },
     {
       "name": "getCacheSummary",
       "status": "ok",
-      "ms": 33
+      "ms": 1
     },
     {
       "name": "getAgeingSeries",
       "status": "ok",
-      "ms": 32
+      "ms": 156
     },
     {
       "name": "getEvidence",
       "status": "ok",
-      "ms": 32
+      "ms": 400
     },
     {
       "name": "getApiCatalog",
       "status": "ok",
-      "ms": 31
+      "ms": 2
     },
     {
       "name": "comparisonMatrix",
       "status": "ok",
-      "ms": 34
+      "ms": 468
     }
   ],
   "findings": [
     {
+      "id": "timeline.year_coverage",
+      "area": "timeline",
+      "severity": "warn",
+      "message": "Year coverage must be 1999..2025 per TZ",
+      "expected": "1999..2025",
+      "actual": "1999..2026"
+    },
+    {
+      "id": "timeline.expected_anomaly.2012",
+      "area": "timeline",
+      "severity": "warn",
+      "message": "Year 2012 is a known suspicion window; expected a non-ok anomaly marker",
+      "expected": "warn | danger",
+      "actual": "none",
+      "hint": "If this was intentionally relaxed, update expectations.ts accordingly"
+    },
+    {
+      "id": "timeline.expected_anomaly.2014",
+      "area": "timeline",
+      "severity": "warn",
+      "message": "Year 2014 is a known suspicion window; expected a non-ok anomaly marker",
+      "expected": "warn | danger",
+      "actual": "none",
+      "hint": "If this was intentionally relaxed, update expectations.ts accordingly"
+    },
+    {
+      "id": "timeline.cluster_b_empty",
+      "area": "timeline",
+      "severity": "warn",
+      "message": "No photos in cluster B — the B/A alternation declared in TZ is not represented",
+      "expected": "at least 1 year in cluster B",
+      "actual": 0
+    },
+    {
+      "id": "audit.invariant_threw.similar_exclusion",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'similar_exclusion' threw",
+      "actual": "Backend error: Not Found",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+    },
+    {
+      "id": "pipeline.failure_rate",
+      "area": "pipeline",
+      "severity": "warn",
+      "message": "Total pipeline failure rate exceeds 2%",
+      "expected": "<= 2%",
+      "actual": "100.00%"
+    },
+    {
+      "id": "ageing.missing_outlier.2012",
+      "area": "ageing",
+      "severity": "warn",
+      "message": "Year 2012 is a predicted outlier but the ageing model didn't flag it",
+      "actual": {
+        "residual": 0
+      }
+    },
+    {
+      "id": "ageing.missing_outlier.2014",
+      "area": "ageing",
+      "severity": "warn",
+      "message": "Year 2014 is a predicted outlier but the ageing model didn't flag it",
+      "actual": {
+        "residual": 0
+      }
+    },
+    {
+      "id": "ageing.missing_outlier.2023",
+      "area": "ageing",
+      "severity": "warn",
+      "message": "Year 2023 is a predicted outlier but the ageing model didn't flag it",
+      "actual": {
+        "residual": 0
+      }
+    },
+    {
       "id": "calibration.summary",
       "area": "calibration",
       "severity": "info",
-      "message": "Calibration: 8 buckets (5 usable, 5 trusted, 2 unreliable)",
+      "message": "Calibration: 25 buckets (5 usable, 5 trusted, 19 unreliable)",
       "actual": {
-        "bucketCount": 8,
+        "bucketCount": 25,
         "usable": 5,
         "trusted": 5,
-        "unreliable": 2,
+        "unreliable": 19,
         "low": 1,
         "medium": 0,
         "high": 5
       }
+    },
+    {
+      "id": "calibration.missing_bucket.frontal.studio",
+      "area": "calibration",
+      "severity": "warn",
+      "message": "Missing calibration bucket for pose=frontal light=studio",
+      "hint": "Calibration matrix should be a full pose × light cross-product"
     },
     {
       "id": "calibration.missing_bucket.frontal.low_light",
@@ -260,12 +346,10 @@
       "hint": "Calibration matrix should be a full pose × light cross-product"
     },
     {
-      "id": "signals.stale_report",
+      "id": "timeline.age_metric_missing",
       "area": "consistency",
-      "severity": "info",
-      "message": "Signal report is older than 24h",
-      "actual": "2026-04-25T17:51:29.178Z",
-      "hint": "Run `npm run signals` to refresh"
+      "severity": "warn",
+      "message": "Timeline missing 'age' metric row"
     },
     {
       "id": "signals.similar_composition.2016_12_23.jpg.2024_12_19-6.jpg",
@@ -304,6 +388,14 @@
       "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
     },
     {
+      "id": "audit.invariant_threw.similar_photos",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'similar_photos' threw",
+      "actual": "Backend error: Not Found",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+    },
+    {
       "id": "tz_auto_coverage.summary",
       "area": "tz",
       "severity": "info",
@@ -312,95 +404,49 @@
         "totalTopics": 10,
         "gaps": 0
       }
-    },
-    {
-      "id": "assets.photo_missing./photos_main/2020_02_27.jpg",
-      "area": "consistency",
-      "severity": "warn",
-      "message": "Photo URL has no file on disk",
-      "actual": {
-        "url": "/photos_main/2020_02_27.jpg",
-        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_main/2020_02_27.jpg"
-      }
-    },
-    {
-      "id": "assets.photo_missing./photos_main/2025_03_25.jpg",
-      "area": "consistency",
-      "severity": "warn",
-      "message": "Photo URL has no file on disk",
-      "actual": {
-        "url": "/photos_main/2025_03_25.jpg",
-        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_main/2025_03_25.jpg"
-      }
-    },
-    {
-      "id": "assets.photo_missing./photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.06.11.png",
-      "area": "consistency",
-      "severity": "warn",
-      "message": "Photo URL has no file on disk",
-      "actual": {
-        "url": "/photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.06.11.png",
-        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_myface/Снимок экрана 2026-04-09 в 21.06.11.png"
-      }
-    },
-    {
-      "id": "assets.photo_missing./photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.01.png",
-      "area": "consistency",
-      "severity": "warn",
-      "message": "Photo URL has no file on disk",
-      "actual": {
-        "url": "/photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.01.png",
-        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_myface/Снимок экрана 2026-04-09 в 21.10.01.png"
-      }
-    },
-    {
-      "id": "assets.photo_missing./photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.07.png",
-      "area": "consistency",
-      "severity": "warn",
-      "message": "Photo URL has no file on disk",
-      "actual": {
-        "url": "/photos_myface/%D0%A1%D0%BD%D0%B8%D0%BC%D0%BE%D0%BA%20%D1%8D%D0%BA%D1%80%D0%B0%D0%BD%D0%B0%202026-04-09%20%D0%B2%2021.10.07.png",
-        "expectedAt": "/Users/victorkhudyakov/dutin/newapp/ui/public/photos_myface/Снимок экрана 2026-04-09 в 21.10.07.png"
-      }
     }
   ],
   "timings": {
-    "timeline": 31,
+    "timeline": 184,
     "bayes_sum": 1,
-    "evidence_symmetry": 156,
+    "evidence_symmetry": 3380,
     "photo_records": 1,
-    "bucket_membership": 31,
-    "similar_exclusion": 42,
-    "pipeline": 32,
-    "cache": 34,
-    "ageing": 33,
+    "bucket_membership": 33,
+    "similar_exclusion": 157,
+    "pipeline": 155,
+    "cache": 2,
+    "ageing": 155,
     "ground_truth": 0,
-    "api_timings": 228,
-    "determinism": 1,
-    "calibration_cross": 2,
-    "photo_year_coverage": 1,
-    "anomaly_integrity": 34,
-    "calibration_coverage": 32,
+    "api_timings": 654,
+    "determinism": 0,
+    "calibration_cross": 1,
+    "photo_year_coverage": 0,
+    "anomaly_integrity": 155,
+    "calibration_coverage": 20,
     "investigations_integrity": 32,
-    "api_catalog": 32,
-    "timeline_vs_photo_detail": 33,
-    "ageing_vs_timeline": 32,
-    "expanded_determinism": 3,
+    "api_catalog": 2,
+    "timeline_vs_photo_detail": 215,
+    "ageing_vs_timeline": 343,
+    "expanded_determinism": 1,
     "logs_for_errors": 0,
-    "ground_truth_files": 1,
-    "signals": 12,
-    "similar_photos": 37,
-    "tz_auto_coverage": 6,
-    "assets_node": 16
+    "ground_truth_files": 0,
+    "signals": 4,
+    "similar_photos": 157,
+    "tz_auto_coverage": 2,
+    "assets_node": 9
   },
   "counts": {
-    "info": 6,
-    "warn": 28,
-    "danger": 0,
-    "total": 34,
+    "info": 5,
+    "warn": 33,
+    "danger": 2,
+    "total": 40,
     "byArea": {
-      "calibration": 24,
-      "consistency": 9,
+      "timeline": 4,
+      "api": 2,
+      "pipeline": 1,
+      "ageing": 3,
+      "calibration": 25,
+      "consistency": 4,
       "tz": 1
     }
   },
@@ -520,5 +566,5 @@
       "impl": "src/debug/invariants.ts + src/debug/audit.ts + scripts/audit.ts"
     }
   ],
-  "summary": "⚠ AUDIT YELLOW — 28 warning(s), no dangers.\nEndpoints: 15/15 ok\nFindings total: 34 (danger=0, warn=28, info=6).\nBy area: calibration=24 · consistency=9 · tz=1."
+  "summary": "✗ AUDIT RED — 2 danger-level finding(s). Fix before publishing.\nEndpoints: 13/15 ok · failures: getPhotoDetail, similarPhotos\nFindings total: 40 (danger=2, warn=33, info=5).\nBy area: calibration=25 · timeline=4 · consistency=4 · ageing=3 · api=2 · pipeline=1 · tz=1."
 }

@@ -1,10 +1,19 @@
 from __future__ import annotations
-
 import numpy as np
+from core.constants import EXCLUDED_FROM_ANALYSIS
 
 from .types import ReconstructionResult, ZoneMetric
 from .alignment import rigid_umeyama
 from .utils import bounded_score_from_error, weighted_mean_abs, provisional_band_from_score
+
+# --- Exclusion Config ---
+EAR_INDICES = {13, 14, 15, 16}
+
+def filter_indices(indices: set | list | np.ndarray | frozenset) -> set:
+    """Removes ear indices from any given vertex set."""
+    if isinstance(indices, (list, np.ndarray, frozenset)):
+        indices = set(indices)
+    return indices - EAR_INDICES
 
 EXCLUDED_ZONES = frozenset(
     {
@@ -353,7 +362,8 @@ def compute_zone_metrics(
         )
 
     # 2) Макро-зоны из ТЗ
-    for macro_name, indices in MACRO_BONE_INDICES.items():
+    for macro_name, indices_raw in MACRO_BONE_INDICES.items():
+        indices = filter_indices(indices_raw)
         if macro_name in EXCLUDED_FROM_ANALYSIS:
             continue
         if not indices or macro_name == 'full_mesh':

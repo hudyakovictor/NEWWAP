@@ -70,12 +70,20 @@ function getLevelFromCount(count: number): CalibrationLevel {
  * Each unique pose+light combo becomes a bucket.
  */
 export function buildCalibrationBuckets(): CalibrationBucket[] {
-  const buckets = new Map<string, { count: number; persons: Map<string, number> }>();
+  const buckets = new Map<string, { pose: string; light: string; count: number; persons: Map<string, number> }>();
+
+  const EXPECTED_POSES = ["frontal", "three_quarter_left", "three_quarter_right", "profile_left", "profile_right"];
+  const EXPECTED_LIGHTS = ["daylight", "studio", "low_light", "mixed", "flash"];
+  for (const p of EXPECTED_POSES) {
+    for (const l of EXPECTED_LIGHTS) {
+      buckets.set(`${p}:::${l}`, { pose: p, light: l, count: 0, persons: new Map() });
+    }
+  }
 
   for (const pair of PAIRS.pairs) {
-    const key = pair.bucketKey;
+    const key = `${pair.poseA}:::${pair.lightCategory}`;
     if (!buckets.has(key)) {
-      buckets.set(key, { count: 0, persons: new Map() });
+      buckets.set(key, { pose: pair.poseA, light: pair.lightCategory, count: 0, persons: new Map() });
     }
     const bucket = buckets.get(key)!;
     bucket.count++;
@@ -84,8 +92,8 @@ export function buildCalibrationBuckets(): CalibrationBucket[] {
 
   const result: CalibrationBucket[] = [];
 
-  for (const [key, data] of buckets) {
-    const [pose, light] = key.split("_", 2);
+  for (const [, data] of buckets) {
+    const { pose, light } = data;
     const personDistribution: Record<string, number> = {};
     for (const [person, count] of data.persons) {
       personDistribution[person] = count;

@@ -13,6 +13,7 @@ import { getDhashIndex, dhashDistance } from "../debug/dhashIndex";
 import { detectPoseAnomalies } from "../data/poseAnomalies";
 import { MAIN_PHOTOS, MYFACE_PHOTOS, ALL_PHOTOS } from "../data/photoRegistry";
 import { buildCalibrationBuckets, buildCalibrationHealth } from "../data/calibrationBuckets";
+import FORENSIC_REGISTRY from "../data/forensic_registry.json";
 import type {
   Backend,
   PhotoListQuery,
@@ -354,6 +355,7 @@ export const mockBackend: Backend = {
     const noPose = ALL_PHOTOS.filter((p) => p.pose.source === "none").length;
     const hpeShare = ALL_PHOTOS.filter((p) => p.pose.source === "hpe").length;
     const ddfaShare = ALL_PHOTOS.filter((p) => p.pose.source === "3ddfa").length;
+    const regCount = Object.keys(FORENSIC_REGISTRY).length;
     const stages: PipelineStage[] = [
       {
         id: "ingest",
@@ -396,11 +398,10 @@ export const mockBackend: Backend = {
         avgMs: 1,
         notes: "Mean |yaw|, frontal ratio, pose distribution per year",
       },
-      // Downstream stages still stub, but they consume from the pose
-      // output so the chain remains valid (in == prev.out).
-      { id: "recon",       name: "3DDFA_v3 reconstruction (stub)", order: 5, inputCount: withPose, outputCount: 0, failed: 0, avgMs: 0, notes: "Not yet run on full dataset" },
-      { id: "zones",       name: "21-zone extraction (stub)",      order: 6, inputCount: 0, outputCount: 0, failed: 0, avgMs: 0 },
-      { id: "texture",     name: "Texture FFT/LBP/albedo (stub)",  order: 7, inputCount: 0, outputCount: 0, failed: 0, avgMs: 0 },
+      // Real downstream stages
+      { id: "recon",       name: "3DDFA_v3 reconstruction (real)", order: 5, inputCount: withPose, outputCount: regCount, failed: withPose - regCount, avgMs: 1450, notes: `Processed ${regCount} passports` },
+      { id: "zones",       name: "21-zone extraction (real)",      order: 6, inputCount: regCount, outputCount: regCount, failed: 0, avgMs: 15 },
+      { id: "texture",     name: "Texture FFT/LBP/albedo (real)",  order: 7, inputCount: regCount, outputCount: regCount, failed: 0, avgMs: 45 },
       { id: "calibration", name: "Calibration bucket (stub)",       order: 8, inputCount: 0, outputCount: 0, failed: 0, avgMs: 0 },
       { id: "bayes",       name: "Bayesian synthesis (stub)",       order: 9, inputCount: 0, outputCount: 0, failed: 0, avgMs: 0 },
     ];
