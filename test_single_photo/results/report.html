@@ -112,21 +112,27 @@
     <div class="header">
         <h1>🔬 DEEPUTIN Test Report</h1>
         <p>Single Photo Processing Analysis v2</p>
-        <p><strong>File:</strong> 1.png | <strong>Processed:</strong> 2026-04-25T21:35:08.098135</p>
+        <p><strong>File:</strong> 1.png | <strong>Processed:</strong> 2026-04-30T15:28:08.065678</p>
     </div>
 
     <div class="section">
-        <h2>📷 Input Image</h2>
+        <h2>📷 Input Image & UV Data</h2>
         <div class="image-container">
             <div class="image-box">
                 <h4>Original Image</h4>
-                <img src="raw/original.png" alt="Original">
-                <p>872 × 1138 px | RGBA</p>
+                <img src="raw/original.jpg" alt="Original">
             </div>
             <div class="image-box">
-                <h4>Face Crop</h4>
-                <img src="raw/face_crop.png" alt="Face Crop">
-                <p>Detected face region</p>
+                <h4>Skin-only Crop</h4>
+                <img src="raw/face_crop.jpg" alt="Face Crop">
+            </div>
+            <div class="image-box">
+                <h4>UV Texture (Original)</h4>
+                <img src="raw/uv_texture_hd.jpg" alt="UV">
+            </div>
+            <div class="image-box">
+                <h4>UV Confidence Mask</h4>
+                <img src="raw/uv_confidence_mask.jpg" alt="UV Mask">
             </div>
         </div>
     </div>
@@ -136,32 +142,54 @@
         <div class="grid">
             <div class="metric-card">
                 <div class="label">Yaw (поворот)</div>
-                <div class="value">N/A°</div>
+                <div class="value">6.49°</div>
             </div>
             <div class="metric-card">
                 <div class="label">Pitch (наклон)</div>
-                <div class="value">N/A°</div>
+                <div class="value">-0.65°</div>
             </div>
             <div class="metric-card">
                 <div class="label">Roll (наклон головы)</div>
-                <div class="value">N/A°</div>
+                <div class="value">-0.67°</div>
             </div>
             <div class="metric-card">
                 <div class="label">Classification</div>
-                <div class="value" style="font-size: 16px;">unknown</div>
+                <div class="value" style="font-size: 16px;">frontal</div>
             </div>
         </div>
-        <p><strong>Source:</strong> <span class="method-tag">none</span></p>
+        <p><strong>Source:</strong> <span class="method-tag">hpe</span></p>
+    </div>
+
+    <div class="section">
+        <h2>📊 Image Quality</h2>
+        <div class="grid">
+            <div class="metric-card">
+                <div class="label">Overall Quality</div>
+                <div class="value">1.00</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Blur (Laplacian)</div>
+                <div class="value">1184.99</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">Sharpness</div>
+                <div class="value">55.86</div>
+            </div>
+            <div class="metric-card">
+                <div class="label">JPEG Artifacts</div>
+                <div class="value">8.13</div>
+            </div>
+        </div>
     </div>
 
     <div class="section">
         <h2>📦 Bounding Box (SCRFD)</h2>
         <table>
             <tr><th>Parameter</th><th>Value</th></tr>
-            <tr><td>X</td><td>N/A</td></tr>
-            <tr><td>Y</td><td>N/A</td></tr>
-            <tr><td>Width</td><td>N/A</td></tr>
-            <tr><td>Height</td><td>N/A</td></tr>
+            <tr><td>X</td><td>39.0</td></tr>
+            <tr><td>Y</td><td>216.0</td></tr>
+            <tr><td>Width</td><td>750.0</td></tr>
+            <tr><td>Height</td><td>863.0</td></tr>
             <tr><td>Confidence</td><td>N/A</td></tr>
             <tr><td>5 Keypoints</td><td>0 points detected</td></tr>
         </table>
@@ -172,23 +200,23 @@
         <div class="grid">
             <div class="metric-card">
                 <div class="label">Mean Luminance</div>
-                <div class="value">N/A</div>
+                <div class="value">150.61</div>
             </div>
             <div class="metric-card">
                 <div class="label">Luminance Std</div>
-                <div class="value">N/A</div>
+                <div class="value">48.79</div>
             </div>
             <div class="metric-card">
                 <div class="label">Mean R</div>
-                <div class="value" style="color: #dc3545;">N/A</div>
+                <div class="value" style="color: #dc3545;">159.19</div>
             </div>
             <div class="metric-card">
                 <div class="label">Mean G</div>
-                <div class="value" style="color: #28a745;">N/A</div>
+                <div class="value" style="color: #28a745;">148.95</div>
             </div>
             <div class="metric-card">
                 <div class="label">Mean B</div>
-                <div class="value" style="color: #007bff;">N/A</div>
+                <div class="value" style="color: #007bff;">143.70</div>
             </div>
         </div>
     </div>
@@ -198,16 +226,16 @@
         <div class="grid">
             <div class="metric-card">
                 <div class="label">Vertices</div>
-                <div class="value">N/A</div>
+                <div class="value">35709</div>
             </div>
             <div class="metric-card">
                 <div class="label">Triangles</div>
-                <div class="value">N/A</div>
+                <div class="value">70789</div>
             </div>
             <div class="metric-card">
                 <div class="label">Status</div>
                 <div class="value" style="font-size: 14px;">
-                    ❌ Failed
+                    ✅ Success
                 </div>
             </div>
         </div>
@@ -218,16 +246,16 @@
         <h2>📐 Geometric Metrics (21 Facial Zones)</h2>
         <table>
             <tr><th>Metric</th><th>Value</th><th>Method</th></tr>
-            <tr><td>cranial_face_index</td><td>0.72</td><td>-</td></tr>
-<tr><td>jaw_width_ratio</td><td>0.85</td><td>-</td></tr>
-<tr><td>canthal_tilt_L</td><td>5.20</td><td>-</td></tr>
-<tr><td>canthal_tilt_R</td><td>4.80</td><td>-</td></tr>
-<tr><td>nose_projection_ratio</td><td>0.40</td><td>-</td></tr>
-<tr><td>orbit_depth_L_ratio</td><td>0.66</td><td>-</td></tr>
-<tr><td>orbit_depth_R_ratio</td><td>0.65</td><td>-</td></tr>
-<tr><td>method</td><td>pose_based_frontal</td><td>-</td></tr>
+            <tr><td>cranial_face_index</td><td>0.86</td><td>-</td></tr>
+<tr><td>canthal_tilt_L</td><td>42.00</td><td>-</td></tr>
+<tr><td>canthal_tilt_R</td><td>3.11</td><td>-</td></tr>
+<tr><td>true_jaw_width</td><td>150.93</td><td>-</td></tr>
+<tr><td>nose_projection_z</td><td>0.00</td><td>-</td></tr>
+<tr><td>eye_asymmetry_index</td><td>45.11</td><td>-</td></tr>
+<tr><td>calculation_method</td><td>hybrid_mesh_and_landmarks</td><td>-</td></tr>
+<tr><td>vertices_analyzed</td><td>35709.00</td><td>-</td></tr>
 
-            <tr><td colspan="3"><em>Method: <span class="method-tag">pose_based_frontal</span></em></td></tr>
+            <tr><td colspan="3"><em>Method: <span class="method-tag">3d_based</span></em></td></tr>
         </table>
     </div>
 
@@ -240,9 +268,7 @@
             Затем запустил алгоритмы и сравнил результаты.
         </div>
 
-        <div class="notes"><strong>Analysis Notes:</strong><ul><li>No bbox - using full image for texture analysis</li>
-<li>FFT analysis: high_freq_ratio=1.126</li>
-<li>Texture complexity: 0.673</li>
+        <div class="notes"><strong>Analysis Notes:</strong><ul><li>⚠ UV texture missing, falling back to original for all metrics</li>
 </ul></div>
 
         <table>
@@ -258,73 +284,55 @@
         <tr class="close">
             <td><strong>Silicone Probability</strong></td>
             <td>0.22</td>
-            <td>0.07</td>
-            <td>0.15</td>
+            <td>0.05</td>
+            <td>0.17</td>
             <td>⚠️</td>
-            <td><small>Блики на лбу выглядят естественными, не 'жирными' как у силикона</small></td>
+            <td><small>Блики на лбу выглядят естественными (UV анализ)</small></td>
         </tr>
         
         <tr class="mismatch">
             <td><strong>Pore Density</strong></td>
             <td>0.55</td>
-            <td>1.00</td>
-            <td>0.45</td>
+            <td>0.88</td>
+            <td>0.32</td>
             <td>❌</td>
-            <td><small>Мужская кожа среднего возраста, ожидается средняя плотность пор</small></td>
+            <td><small>Средняя плотность пор на оригинальных пикселях щек</small></td>
         </tr>
         
         <tr class="close">
             <td><strong>Spot Density</strong></td>
             <td>0.28</td>
-            <td>0.08</td>
-            <td>0.20</td>
+            <td>0.47</td>
+            <td>0.19</td>
             <td>⚠️</td>
-            <td><small>Небольшое количество пигментных пятен на скулах</small></td>
+            <td><small>Пигментация на скулах (анализ маскированного фото)</small></td>
         </tr>
         
-        <tr class="mismatch">
+        <tr class="match">
             <td><strong>Wrinkle Forehead</strong></td>
             <td>0.42</td>
-            <td>0.11</td>
-            <td>0.31</td>
-            <td>❌</td>
-            <td><small>Видны лобные морщины при поднятых бровях, неглубокие</small></td>
+            <td>0.52</td>
+            <td>0.10</td>
+            <td>✅</td>
+            <td><small>Лобные морщины (анализ маскированного фото)</small></td>
         </tr>
         
-        <tr class="mismatch">
-            <td><strong>Wrinkle Nasolabial</strong></td>
-            <td>0.48</td>
-            <td>0.12</td>
-            <td>0.36</td>
-            <td>❌</td>
-            <td><small>Носогубные складки выражены умеренно</small></td>
-        </tr>
-        
-        <tr class="mismatch">
+        <tr class="match">
             <td><strong>Global Smoothness</strong></td>
             <td>0.45</td>
-            <td>0.00</td>
-            <td>0.45</td>
-            <td>❌</td>
-            <td><small>Естественная текстура кожи без фильтров/over-smoothing</small></td>
+            <td>0.50</td>
+            <td>0.05</td>
+            <td>✅</td>
+            <td><small>Естественная текстура (UV анализ)</small></td>
         </tr>
         
         <tr class="match">
             <td><strong>Albedo Uniformity</strong></td>
             <td>0.58</td>
-            <td>0.54</td>
-            <td>0.04</td>
+            <td>0.50</td>
+            <td>0.08</td>
             <td>✅</td>
-            <td><small>Искусственное освещение создает некоторую неравномерность</small></td>
-        </tr>
-        
-        <tr class="mismatch">
-            <td><strong>Specular Highlights</strong></td>
-            <td>0.52</td>
-            <td>0.10</td>
-            <td>0.42</td>
-            <td>❌</td>
-            <td><small>Умеренные блики на лбу и носу от искусственного света</small></td>
+            <td><small>Нормализованный цвет кожи (UV анализ)</small></td>
         </tr>
         
         </table>
@@ -347,10 +355,12 @@
         <h2>📁 Output Files</h2>
         <table>
             <tr><th>File</th><th>Description</th></tr>
-            <tr><td><code>raw/original.png</code></td><td>Original image copy</td></tr>
-            <tr><td><code>raw/face_crop.png</code></td><td>Detected face region</td></tr>
-            <tr><td><code>mesh/vertices.npy</code></td><td>3D vertices (NumPy)</td></tr>
-            <tr><td><code>mesh/face_mesh.obj</code></td><td>Wavefront OBJ mesh</td></tr>
+            <tr><td><code>raw/original.jpg</code></td><td>Original image copy</td></tr>
+            <tr><td><code>raw/face_crop.jpg</code></td><td>Refined skin-only crop</td></tr>
+            <tr><td><code>raw/uv_texture_hd.jpg</code></td><td>HD UV texture</td></tr>
+            <tr><td><code>raw/uv_confidence_mask.jpg</code></td><td>Confidence Mask</td></tr>
+            <tr><td><code>raw/vertices.npy</code></td><td>3D vertices (NumPy)</td></tr>
+            <tr><td><code>raw/face_mesh.obj</code></td><td>Wavefront OBJ mesh</td></tr>
             <tr><td><code>report.html</code></td><td>This report</td></tr>
             <tr><td><code>processing_v2.log</code></td><td>Console log</td></tr>
             <tr><td><code>result.json</code></td><td>Complete result (JSON)</td></tr>
@@ -359,7 +369,7 @@
 
     <footer style="text-align: center; padding: 20px; color: #666;">
         <p>DEEPUTIN Forensic Analysis Platform | Test Processing Pipeline v2</p>
-        <p>Generated: 2026-04-25T21:35:08.098135</p>
+        <p>Generated: 2026-04-30T15:28:08.065678</p>
     </footer>
 </body>
 </html>

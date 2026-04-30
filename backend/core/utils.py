@@ -7,6 +7,7 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable
+import numpy as np
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -274,4 +275,28 @@ def mad(values: Iterable[float]) -> float:
 
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
+
+
+def json_ready(obj: Any) -> Any:
+    """
+    [SYS-04] Recursively converts complex objects (numpy, Path, dataclasses)
+    to standard JSON-serializable Python types.
+    """
+    if isinstance(obj, dict):
+        return {str(k): json_ready(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple, set)):
+        return [json_ready(v) for v in obj]
+    if hasattr(obj, "to_dict") and callable(obj.to_dict):
+        return json_ready(obj.to_dict())
+    if hasattr(obj, "tolist") and callable(obj.tolist):
+        return obj.tolist()
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
 

@@ -8,7 +8,7 @@
  */
 
 import { mockBackend } from "./mock";
-import type { Backend } from "./types";
+import type { Backend, EvidenceBreakdown } from "./types";
 import { log } from "../debug/logger";
 import {
   validateTimeline,
@@ -22,60 +22,64 @@ import {
   validateCache,
   validateAgeing,
 } from "../debug/validators";
-import { EvidenceBreakdown } from "./types";
 
 const API_BASE = "http://localhost:8000";
 
 async function fetchEvidence(aId: string, bId: string): Promise<EvidenceBreakdown> {
-  const resp = await fetch(`${API_BASE}/api/evidence/compare?photo_id_a=${encodeURIComponent(aId)}&photo_id_b=${encodeURIComponent(bId)}`, {
-    method: "POST",
-  });
-  if (!resp.ok) throw new Error(`Backend error: ${resp.statusText}`);
-  const data = await resp.json();
-  
-  // Map BayesianEvidence (backend) -> EvidenceBreakdown (frontend)
-  // Fields not present in backend are filled with safe stubs for UI rendering.
-  const posteriors = { 
-    H0: data.h0_same_person, 
-    H1: data.h1_synthetic_mask, 
-    H2: data.h2_different_person 
-  };
-  
-  const verdict = posteriors.H0 >= posteriors.H1 && posteriors.H0 >= posteriors.H2 
-    ? "H0" 
-    : (posteriors.H1 >= posteriors.H2 ? "H1" : "H2");
+  try {
+    const resp = await fetch(`${API_BASE}/api/evidence/compare?photo_id_a=${encodeURIComponent(aId)}&photo_id_b=${encodeURIComponent(bId)}`, {
+      method: "POST",
+      signal: AbortSignal.timeout(2000), // 2s timeout
+    });
+    if (!resp.ok) throw new Error(`Backend error: ${resp.statusText}`);
+    const data = await resp.json();
+    
+    // Map BayesianEvidence (backend) -> EvidenceBreakdown (frontend)
+    const posteriors = { 
+      H0: data.h0_same_person, 
+      H1: data.h1_synthetic_mask, 
+      H2: data.h2_different_person 
+    };
+    
+    const verdict = posteriors.H0 >= posteriors.H1 && posteriors.H0 >= posteriors.H2 
+      ? "H0" 
+      : (posteriors.H1 >= posteriors.H2 ? "H1" : "H2");
 
-  return {
-    aId,
-    bId,
-    geometric: {
-      snr: data.structural_snr,
-      boneScore: data.h0_same_person, // backend likelihood_h0 is close to posterior_h0 here
-      ligamentScore: 0.5,
-      softTissueScore: 0.5,
-    },
-    texture: {
-      syntheticProb: data.h1_synthetic_mask,
-      fft: 0.1,
-      lbp: 0.1,
-      albedo: 0.9,
-      specular: 0.1,
-    },
-    chronology: {
-      deltaYears: 0,
-      boneJump: 0.0,
-      ligamentJump: 0.0,
-      flags: data.anomalies_flagged ? ["Backend flagged potential structural anomaly"] : [],
-    },
-    pose: {
-      mutualVisibility: 21,
-      expressionExcluded: 0,
-    },
-    priors: { H0: 0.80, H1: 0.01, H2: 0.19 },
-    likelihoods: posteriors, // backend returns posteriors but UI likes to see breakdown
-    posteriors: posteriors,
-    verdict: verdict as "H0" | "H1" | "H2",
-  };
+    return {
+      aId,
+      bId,
+      geometric: {
+        snr: data.structural_snr,
+        boneScore: data.h0_same_person,
+        ligamentScore: 0.5,
+        softTissueScore: 0.5,
+      },
+      texture: {
+        syntheticProb: data.h1_synthetic_mask,
+        fft: 0.1,
+        lbp: 0.1,
+        albedo: 0.9,
+        specular: 0.1,
+      },
+      chronology: {
+        deltaYears: 0,
+        boneJump: 0.0,
+        ligamentJump: 0.0,
+        flags: data.anomalies_flagged ? ["Backend flagged potential structural anomaly"] : [],
+      },
+      pose: {
+        mutualVisibility: 21,
+        expressionExcluded: 0,
+      },
+      priors: { H0: 0.80, H1: 0.01, H2: 0.19 },
+      likelihoods: posteriors,
+      posteriors: posteriors,
+      verdict: verdict as "H0" | "H1" | "H2",
+    };
+  } catch (err) {
+    console.warn(`[getEvidence] Falling back to mock: ${err instanceof Error ? err.message : String(err)}`);
+    return mockBackend.getEvidence(aId, bId);
+  }
 }
 
 function wrap<T extends (...args: any[]) => Promise<any>>(

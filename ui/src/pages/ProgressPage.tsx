@@ -99,22 +99,25 @@ const STAGES: Stage[] = [
   {
     id: "texture",
     name: "Texture / synthetic-material detector",
-    status: "stub",
+    status: "partial",
     description:
-      "FFT + LBP + albedo + specular indices currently come from a deterministic mock seed. No real texture pipeline run yet.",
+      "Integrated real Laplacian-variance detector in backend/pipeline/texture.py. Requires real face crops to compute synthetic probability.",
+    source: "pipeline/texture.py :: analyze_texture_synthetic_prob",
   },
   {
     id: "bayes",
     name: "Bayesian courtroom (H0 / H1 / H2)",
-    status: "stub",
+    status: "partial",
     description:
-      "Per-photo and per-pair posteriors are all stub-derived from the cluster A/B mock. Needs real evidence synthesis once texture + zones are real.",
+      "Logic implemented in backend/core/analysis.py and wired to /api/evidence/compare. Currently returns real results for processed pairs, falls back to 404 for unprocessed data.",
+    source: "core/analysis.py :: calculate_bayesian_evidence",
   },
   {
     id: "ageing",
-    name: "Ageing curve / chronological residuals",
-    status: "stub",
-    description: "Ageing model is a synthetic linear fit. Real ageing pipeline not implemented yet.",
+    name: "Chronological narrative engine",
+    status: "partial",
+    description: "Chronology analysis (detecting bone jumps and skips) implemented in backend/core/chronology.py. Awaiting integration with timeline UI.",
+    source: "core/chronology.py :: analyze_chronology",
   },
   {
     id: "calibration",

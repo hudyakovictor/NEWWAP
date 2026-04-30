@@ -4,6 +4,8 @@ import numpy as np
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 from .quality_gate import QualityGate
 from .reconstruction import resolve_reconstruction
 from .alignment import rigid_umeyama
@@ -39,6 +41,9 @@ class CascadeEngine:
         self.chronology = ChronologyAnalyzer()
         self.verdict_engine = BayesianMultiHypothesisEngine()
         self.pair_engine = PairComparisonEngine(calibration=self.calibration)
+        from .reconstruction import ReconstructionAdapter
+        self.recon_adapter = ReconstructionAdapter()
+        self.recon_root = Path(self.config.get("recon_root", REPO_ROOT / "storage" / "recon"))
 
     def _collect_timeline_flags(
         self,
@@ -103,8 +108,8 @@ class CascadeEngine:
         silicone_prob = float(max(tex_a.get("silicone_probability", 0), tex_b.get("silicone_probability", 0)))
         
         # --- Stage 2: Deep Geometry ---
-        recon_a = resolve_reconstruction(photo_a)
-        recon_b = resolve_reconstruction(photo_b)
+        recon_a = resolve_reconstruction(self.recon_adapter, photo_a, self.recon_root / photo_a.stem, neutral_expression=False)
+        recon_b = resolve_reconstruction(self.recon_adapter, photo_b, self.recon_root / photo_b.stem, neutral_expression=False)
         
         comp_res = self.pair_engine.compare(recon_a, recon_b)
         if comp_res.status != "ok":
@@ -148,7 +153,7 @@ class CascadeEngine:
         """
         Extracts a forensic passport for a single photo.
         """
-        recon = resolve_reconstruction(photo)
+        recon = resolve_reconstruction(self.recon_adapter, photo, self.recon_root / photo.stem, neutral_expression=False)
         tex = self.texture_analyzer.analyze_image(photo)
         quality = self.quality_gate.evaluate(photo)
         

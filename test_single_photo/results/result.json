@@ -1,111 +1,103 @@
 {
   "photo_path": "/Users/victorkhudyakov/dutin/myface/1.png",
   "filename": "1.png",
-  "timestamp": "2026-04-25T21:35:08.098135",
+  "timestamp": "2026-04-30T15:28:08.065678",
   "image_width": 872,
   "image_height": 1138,
   "image_format": "PNG",
   "image_mode": "RGBA",
-  "pose_yaw": null,
-  "pose_pitch": null,
-  "pose_roll": null,
-  "pose_source": "none",
-  "pose_classification": "unknown",
-  "bbox_x": null,
-  "bbox_y": null,
-  "bbox_w": null,
-  "bbox_h": null,
+  "pose_yaw": 6.490316390991211,
+  "pose_pitch": -0.6511141657829285,
+  "pose_roll": -0.6701062321662903,
+  "pose_source": "hpe",
+  "pose_classification": "frontal",
+  "bbox_x": 39.0,
+  "bbox_y": 216.0,
+  "bbox_w": 750.0,
+  "bbox_h": 863.0,
   "bbox_score": null,
   "bbox_kp5": [],
-  "face_mean_lum": null,
-  "face_std_lum": null,
-  "face_mean_r": null,
-  "face_mean_g": null,
-  "face_mean_b": null,
-  "face_std_r": null,
-  "face_std_g": null,
-  "face_std_b": null,
-  "reconstruction_success": false,
-  "vertices_count": null,
-  "triangles_count": null,
-  "mesh_path": null,
+  "face_mean_lum": 150.60981806267384,
+  "face_std_lum": 48.78678239639498,
+  "face_mean_r": 159.18625495108807,
+  "face_mean_g": 148.94579943979096,
+  "face_mean_b": 143.69739979714254,
+  "face_std_r": 43.37818141348074,
+  "face_std_g": 50.07704839322753,
+  "face_std_b": 51.2539486996386,
+  "quality_blur": 1184.99,
+  "quality_sharpness": 55.86,
+  "quality_jpeg": 8.13,
+  "quality_overall": 1.0,
+  "reconstruction_success": true,
+  "vertices_count": 35709,
+  "triangles_count": 70789,
+  "mesh_path": "/Users/victorkhudyakov/dutin/newapp/test_single_photo/results/raw",
+  "uv_texture_path": null,
+  "uv_normalized_path": null,
+  "uv_confidence_mask_path": "/Users/victorkhudyakov/dutin/newapp/test_single_photo/results/raw/uv_confidence_mask.jpg",
+  "segmented_face_path": "/Users/victorkhudyakov/dutin/newapp/test_single_photo/results/raw/face_crop.jpg",
   "texture_predictions": {
     "silicone_probability": {
       "predicted": 0.22,
-      "predicted_reason": "\u0411\u043b\u0438\u043a\u0438 \u043d\u0430 \u043b\u0431\u0443 \u0432\u044b\u0433\u043b\u044f\u0434\u044f\u0442 \u0435\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u043c\u0438, \u043d\u0435 '\u0436\u0438\u0440\u043d\u044b\u043c\u0438' \u043a\u0430\u043a \u0443 \u0441\u0438\u043b\u0438\u043a\u043e\u043d\u0430",
-      "range": "0.0-0.3 \u043d\u043e\u0440\u043c\u0430, 0.3-0.7 \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e, 0.7+ \u0441\u0438\u043b\u0438\u043a\u043e\u043d"
+      "predicted_reason": "\u0411\u043b\u0438\u043a\u0438 \u043d\u0430 \u043b\u0431\u0443 \u0432\u044b\u0433\u043b\u044f\u0434\u044f\u0442 \u0435\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u043c\u0438 (UV \u0430\u043d\u0430\u043b\u0438\u0437)",
+      "range": "0.0-0.3 \u043d\u043e\u0440\u043c\u0430, 0.7+ \u0441\u0438\u043b\u0438\u043a\u043e\u043d"
     },
     "pore_density": {
       "predicted": 0.55,
-      "predicted_reason": "\u041c\u0443\u0436\u0441\u043a\u0430\u044f \u043a\u043e\u0436\u0430 \u0441\u0440\u0435\u0434\u043d\u0435\u0433\u043e \u0432\u043e\u0437\u0440\u0430\u0441\u0442\u0430, \u043e\u0436\u0438\u0434\u0430\u0435\u0442\u0441\u044f \u0441\u0440\u0435\u0434\u043d\u044f\u044f \u043f\u043b\u043e\u0442\u043d\u043e\u0441\u0442\u044c \u043f\u043e\u0440",
-      "range": "0.0-0.3 \u043d\u0438\u0437\u043a\u0430\u044f, 0.3-0.7 \u0441\u0440\u0435\u0434\u043d\u044f\u044f, 0.7+ \u0432\u044b\u0441\u043e\u043a\u0430\u044f"
+      "predicted_reason": "\u0421\u0440\u0435\u0434\u043d\u044f\u044f \u043f\u043b\u043e\u0442\u043d\u043e\u0441\u0442\u044c \u043f\u043e\u0440 \u043d\u0430 \u043e\u0440\u0438\u0433\u0438\u043d\u0430\u043b\u044c\u043d\u044b\u0445 \u043f\u0438\u043a\u0441\u0435\u043b\u044f\u0445 \u0449\u0435\u043a",
+      "range": "0.3-0.7 \u0441\u0440\u0435\u0434\u043d\u044f\u044f"
     },
     "spot_density": {
       "predicted": 0.28,
-      "predicted_reason": "\u041d\u0435\u0431\u043e\u043b\u044c\u0448\u043e\u0435 \u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u043f\u0438\u0433\u043c\u0435\u043d\u0442\u043d\u044b\u0445 \u043f\u044f\u0442\u0435\u043d \u043d\u0430 \u0441\u043a\u0443\u043b\u0430\u0445",
-      "range": "0.0-0.2 \u0447\u0438\u0441\u0442\u0430\u044f, 0.2-0.5 \u043d\u0435\u0431\u043e\u043b\u044c\u0448\u0438\u0435, 0.5+ \u043c\u043d\u043e\u0433\u043e \u043f\u044f\u0442\u0435\u043d"
+      "predicted_reason": "\u041f\u0438\u0433\u043c\u0435\u043d\u0442\u0430\u0446\u0438\u044f \u043d\u0430 \u0441\u043a\u0443\u043b\u0430\u0445 (\u0430\u043d\u0430\u043b\u0438\u0437 \u043c\u0430\u0441\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u043e\u0433\u043e \u0444\u043e\u0442\u043e)",
+      "range": "0.2-0.5 \u043d\u0435\u0431\u043e\u043b\u044c\u0448\u0438\u0435"
     },
     "wrinkle_forehead": {
       "predicted": 0.42,
-      "predicted_reason": "\u0412\u0438\u0434\u043d\u044b \u043b\u043e\u0431\u043d\u044b\u0435 \u043c\u043e\u0440\u0449\u0438\u043d\u044b \u043f\u0440\u0438 \u043f\u043e\u0434\u043d\u044f\u0442\u044b\u0445 \u0431\u0440\u043e\u0432\u044f\u0445, \u043d\u0435\u0433\u043b\u0443\u0431\u043e\u043a\u0438\u0435",
-      "range": "0.0-0.2 \u0433\u043b\u0430\u0434\u043a\u0430\u044f, 0.2-0.5 \u043d\u0435\u0433\u043b\u0443\u0431\u043e\u043a\u0438\u0435, 0.5+ \u0433\u043b\u0443\u0431\u043e\u043a\u0438\u0435"
-    },
-    "wrinkle_nasolabial": {
-      "predicted": 0.48,
-      "predicted_reason": "\u041d\u043e\u0441\u043e\u0433\u0443\u0431\u043d\u044b\u0435 \u0441\u043a\u043b\u0430\u0434\u043a\u0438 \u0432\u044b\u0440\u0430\u0436\u0435\u043d\u044b \u0443\u043c\u0435\u0440\u0435\u043d\u043d\u043e",
-      "range": "0.0-0.3 \u0441\u043b\u0430\u0431\u044b\u0435, 0.3-0.6 \u0432\u044b\u0440\u0430\u0436\u0435\u043d\u043d\u044b\u0435, 0.6+ \u0433\u043b\u0443\u0431\u043e\u043a\u0438\u0435"
+      "predicted_reason": "\u041b\u043e\u0431\u043d\u044b\u0435 \u043c\u043e\u0440\u0449\u0438\u043d\u044b (\u0430\u043d\u0430\u043b\u0438\u0437 \u043c\u0430\u0441\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u043e\u0433\u043e \u0444\u043e\u0442\u043e)",
+      "range": "0.2-0.5 \u043d\u0435\u0433\u043b\u0443\u0431\u043e\u043a\u0438\u0435"
     },
     "global_smoothness": {
       "predicted": 0.45,
-      "predicted_reason": "\u0415\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0442\u0435\u043a\u0441\u0442\u0443\u0440\u0430 \u043a\u043e\u0436\u0438 \u0431\u0435\u0437 \u0444\u0438\u043b\u044c\u0442\u0440\u043e\u0432/over-smoothing",
-      "range": "0.0-0.3 \u0448\u0435\u0440\u043e\u0445\u043e\u0432\u0430\u0442\u0430\u044f, 0.3-0.7 \u043d\u043e\u0440\u043c\u0430, 0.7+ \u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e \u0433\u043b\u0430\u0434\u043a\u0430\u044f"
+      "predicted_reason": "\u0415\u0441\u0442\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u0430\u044f \u0442\u0435\u043a\u0441\u0442\u0443\u0440\u0430 (UV \u0430\u043d\u0430\u043b\u0438\u0437)",
+      "range": "0.3-0.7 \u043d\u043e\u0440\u043c\u0430"
     },
     "albedo_uniformity": {
       "predicted": 0.58,
-      "predicted_reason": "\u0418\u0441\u043a\u0443\u0441\u0441\u0442\u0432\u0435\u043d\u043d\u043e\u0435 \u043e\u0441\u0432\u0435\u0449\u0435\u043d\u0438\u0435 \u0441\u043e\u0437\u0434\u0430\u0435\u0442 \u043d\u0435\u043a\u043e\u0442\u043e\u0440\u0443\u044e \u043d\u0435\u0440\u0430\u0432\u043d\u043e\u043c\u0435\u0440\u043d\u043e\u0441\u0442\u044c",
-      "range": "0.0-0.4 \u043d\u0435\u0440\u0430\u0432\u043d\u043e\u043c\u0435\u0440\u043d\u043e\u0435, 0.4-0.8 \u0440\u0430\u0432\u043d\u043e\u043c\u0435\u0440\u043d\u043e\u0435, 0.8+ \u0438\u0434\u0435\u0430\u043b\u044c\u043d\u043e\u0435 (\u043f\u043e\u0434\u043e\u0437\u0440\u0438\u0442\u0435\u043b\u044c\u043d\u043e)"
-    },
-    "specular_highlights": {
-      "predicted": 0.52,
-      "predicted_reason": "\u0423\u043c\u0435\u0440\u0435\u043d\u043d\u044b\u0435 \u0431\u043b\u0438\u043a\u0438 \u043d\u0430 \u043b\u0431\u0443 \u0438 \u043d\u043e\u0441\u0443 \u043e\u0442 \u0438\u0441\u043a\u0443\u0441\u0441\u0442\u0432\u0435\u043d\u043d\u043e\u0433\u043e \u0441\u0432\u0435\u0442\u0430",
-      "range": "0.0-0.3 \u043c\u0430\u0442\u043e\u0432\u0430\u044f, 0.3-0.6 \u0443\u043c\u0435\u0440\u0435\u043d\u043d\u044b\u0435 \u0431\u043b\u0438\u043a\u0438, 0.6+ \u044f\u0440\u043a\u0438\u0435 \u0431\u043b\u0438\u043a\u0438 (\u0441\u0438\u043b\u0438\u043a\u043e\u043d?)"
+      "predicted_reason": "\u041d\u043e\u0440\u043c\u0430\u043b\u0438\u0437\u043e\u0432\u0430\u043d\u043d\u044b\u0439 \u0446\u0432\u0435\u0442 \u043a\u043e\u0436\u0438 (UV \u0430\u043d\u0430\u043b\u0438\u0437)",
+      "range": "0.4-0.8 \u0440\u0430\u0432\u043d\u043e\u043c\u0435\u0440\u043d\u043e\u0435"
     }
   },
   "texture_actual": {
-    "silicone_probability": 0.068,
-    "pore_density": 1.0,
-    "spot_density": 0.077,
-    "wrinkle_forehead": 0.107,
-    "wrinkle_nasolabial": 0.121,
-    "global_smoothness": 0.0,
-    "albedo_uniformity": 0.537,
-    "specular_highlights": 0.097,
-    "fft_high_freq_ratio": 1.126,
-    "texture_complexity": 0.673,
-    "method": "fft_lbp_hybrid_v1"
+    "silicone_probability": 0.05,
+    "albedo_uniformity": 0.5,
+    "global_smoothness": 0.5,
+    "specular_highlights": 0.02,
+    "pore_density": 0.875,
+    "wrinkle_forehead": 0.519,
+    "wrinkle_nasolabial": 0.571,
+    "spot_density": 0.471,
+    "method": "hybrid_uv_masked_v2"
   },
   "texture_analysis_notes": [
-    "No bbox - using full image for texture analysis",
-    "FFT analysis: high_freq_ratio=1.126",
-    "Texture complexity: 0.673"
+    "\u26a0 UV texture missing, falling back to original for all metrics"
   ],
   "geometric_metrics": {
-    "success": false,
-    "error": "No 3D reconstruction",
+    "success": true,
     "metrics": {
-      "cranial_face_index": 0.72,
-      "jaw_width_ratio": 0.85,
-      "canthal_tilt_L": 5.2,
-      "canthal_tilt_R": 4.8,
-      "nose_projection_ratio": 0.4,
-      "orbit_depth_L_ratio": 0.66,
-      "orbit_depth_R_ratio": 0.65,
-      "method": "pose_based_frontal"
-    }
+      "cranial_face_index": 0.859,
+      "canthal_tilt_L": 42.0,
+      "canthal_tilt_R": 3.11,
+      "true_jaw_width": 150.93,
+      "nose_projection_z": 0.0,
+      "eye_asymmetry_index": 45.112,
+      "calculation_method": "hybrid_mesh_and_landmarks",
+      "vertices_analyzed": 35709
+    },
+    "pose_yaw": 6.490316390991211,
+    "pose_pitch": -0.6511141657829285,
+    "pose_roll": -0.6701062321662903
   },
-  "errors": [
-    "Pose detection failed",
-    "Bbox detection failed",
-    "3D reconstruction failed"
-  ]
+  "errors": []
 }

@@ -58,11 +58,11 @@ trap cleanup SIGINT SIGTERM
 # Check if uvicorn is available
 if ! command -v uvicorn &> /dev/null; then
     print_warn "uvicorn not found in PATH, trying python -m uvicorn..."
-    if ! python -m uvicorn --version &> /dev/null; then
+    if ! python3 -m uvicorn --version &> /dev/null; then
         print_error "uvicorn not available. Please install it: pip install uvicorn"
         exit 1
     fi
-    UVICORN_CMD="python -m uvicorn"
+    UVICORN_CMD="python3 -m uvicorn"
 else
     UVICORN_CMD="uvicorn"
 fi

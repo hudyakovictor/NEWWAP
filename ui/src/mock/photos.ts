@@ -19,6 +19,9 @@
 
 import { ALL_PHOTOS, type RealPhoto, type PoseClassification } from "../data/photoRegistry";
 import { rngFor } from "../debug/prng";
+import forensicRegistryRaw from "../data/forensic_registry.json";
+
+const FORENSIC_REGISTRY = forensicRegistryRaw as Record<string, any>;
 
 export type PoseEnum = PoseClassification;
 export type ExprEnum = "neutral" | "smile" | "speech" | "serious" | "unknown";
@@ -72,44 +75,61 @@ export interface PhotoRecord {
 }
 
 function stubFromRealPhoto(rp: RealPhoto): PhotoRecord {
-  // Deterministic stubs derived from id so the same photo always gets the
-  // same stub values. This is purely cosmetic — these fields are NOT real.
-  const r = rngFor("stub", rp.id);
-
-  const year = rp.year ?? 0;
-  // Cluster heuristic = same as previous mock: 2015..2020 → "B", else "A".
-  // Still a stub, but matches the existing UI semantics.
-  const cluster: "A" | "B" = year >= 2015 && year <= 2020 ? "B" : "A";
-
-  const synthBase = year === 2012 || year === 2014 || year === 2023 ? 0.5 + r() * 0.3 : 0.1 + r() * 0.2;
-  const syntheticProb = +Math.min(0.95, synthBase).toFixed(2);
-  const bayesH0 = +(cluster === "B" ? 0.25 + r() * 0.2 : 0.6 + r() * 0.25).toFixed(2);
-
-  const flags: FlagId[] = [];
-  if (syntheticProb > 0.5) flags.push("silicone");
-  if (year === 2012 || year === 2014 || year === 2023) flags.push("anomaly");
-  if (cluster === "B") flags.push("cluster_b");
-  if (rp.pose.source === "3ddfa") flags.push("pose_fallback");
-
-  return {
+  // 1. Base values from head-pose pipeline (already real)
+  const base: PhotoRecord = {
     id: rp.id,
-    year,
+    year: rp.year ?? 0,
     date: rp.date ?? "",
     photo: rp.url,
     pose: rp.pose.classification,
     yaw: rp.pose.yaw,
     poseSource: rp.pose.source,
     folder: rp.folder,
-
     expression: "unknown",
     source: "real_dataset",
     resolution: "",
-    flags,
-    syntheticProb,
-    bayesH0,
-    cluster,
+    flags: [],
+    syntheticProb: 0,
+    bayesH0: 0,
+    cluster: "A",
     md5: "",
   };
+
+  // 2. Check for deep forensic analysis results (forensic_registry)
+  // These override stubs with real computed metrics.
+  const real = FORENSIC_REGISTRY[rp.id];
+  if (real) {
+    base.md5 = real.md5;
+    base.resolution = real.resolution;
+    base.syntheticProb = real.syntheticProb;
+    base.source = real.source;
+    
+    // Simple rule-based flags from real metrics
+    if (real.syntheticProb > 0.45) base.flags.push("silicone");
+    if (rp.pose.source === "3ddfa") base.flags.push("pose_fallback");
+    
+    // Cluster and BayesH0 still need comparison logic to be fully real,
+    // but we can at least use real MD5 and resolution.
+    // For now, these remain as "enhanced stubs" if real comparisons don't exist.
+  }
+
+  // 3. Fallback to deterministic stubs for fields still missing from the registry
+  const r = rngFor("stub", rp.id);
+  const cluster: "A" | "B" = base.year >= 2015 && base.year <= 2020 ? "B" : "A";
+  
+  if (!real) {
+    const synthBase = base.year === 2012 || base.year === 2014 || base.year === 2023 ? 0.5 + r() * 0.3 : 0.1 + r() * 0.2;
+    base.syntheticProb = +Math.min(0.95, synthBase).toFixed(2);
+    if (base.syntheticProb > 0.5) base.flags.push("silicone");
+    if (base.year === 2012 || base.year === 2014 || base.year === 2023) base.flags.push("anomaly");
+    if (rp.pose.source === "3ddfa") base.flags.push("pose_fallback");
+  }
+
+  base.bayesH0 = +(cluster === "B" ? 0.25 + r() * 0.2 : 0.6 + r() * 0.25).toFixed(2);
+  base.cluster = cluster;
+  if (cluster === "B") base.flags.push("cluster_b");
+
+  return base;
 }
 
 export const PHOTOS: PhotoRecord[] = ALL_PHOTOS.map(stubFromRealPhoto);

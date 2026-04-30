@@ -4,7 +4,7 @@ import numpy as np
 
 from .types import ReconstructionResult, ZoneMetric
 from .alignment import rigid_umeyama
-from .utils import bounded_score_from_error, weighted_mean_abs
+from .utils import bounded_score_from_error, weighted_mean_abs, provisional_band_from_score
 
 EXCLUDED_ZONES = frozenset(
     {

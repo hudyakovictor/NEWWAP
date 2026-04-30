@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
 from core.constants import REFERENCE_PERIOD_END, RTR_RATIO, RTR_MIN_ABS_DELTA, IMPOSSIBLE_SHORTENING_DAYS
-from .utils import iso_now
+from core.utils import iso_now
 
 class SuspiciousWindow:
     """

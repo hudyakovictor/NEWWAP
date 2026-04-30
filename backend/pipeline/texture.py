@@ -82,8 +82,13 @@ class ImageQualityAnalyzer:
         
         # 2. JPEG Blockiness (8x8 grid detection)
         if h > 16 and w > 16:
-            h_diff = np.abs(gray[8::8, :] - gray[7::8, :]).mean()
-            v_diff = np.abs(gray[:, 8::8] - gray[:, 7::8]).mean()
+            h_a, h_b = gray[8::8, :], gray[7::8, :]
+            n_h = min(h_a.shape[0], h_b.shape[0])
+            h_diff = np.abs(h_a[:n_h] - h_b[:n_h]).mean()
+            
+            v_a, v_b = gray[:, 8::8], gray[:, 7::8]
+            n_v = min(v_a.shape[1], v_b.shape[1])
+            v_diff = np.abs(v_a[:, :n_v] - v_b[:, :n_v]).mean()
             blockiness = float((h_diff + v_diff) / 2.0)
         else:
             blockiness = 0.0

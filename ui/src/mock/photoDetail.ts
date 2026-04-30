@@ -127,7 +127,14 @@ function seeded(seed: number) {
   };
 }
 
+import REGISTRY_RAW from "../data/forensic_registry.json";
+
+const REGISTRY = REGISTRY_RAW as Record<string, any>;
+
 export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
+  const photoId = photo.split("/").pop()?.split(".")[0] || photo;
+  const realData = REGISTRY[photoId] || REGISTRY[photo] || null;
+
   const r = seeded(year * 31 + 7);
   const anomalyYear = year === 2012 || year === 2014 || year === 2023;
   const identityB = year >= 2015 && year <= 2020;
@@ -143,6 +150,23 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
   const smiling = smile > 0.3;
 
   const zones = FACE_ZONES.map((z) => {
+    // Visibility gating based on yaw (Pose-dependent forensics)
+    let visible = true;
+    const yawVal = realData?.reconstruction_summary?.pose?.[0] ?? yaw;
+    if (Math.abs(yawVal) > 40) {
+      if (yawVal > 0) {
+        // Turning right (showing left profile) -> hide right-side zones
+        if (z.id.endsWith("_r") || z.id.endsWith("_R")) visible = false;
+      } else {
+        // Turning left (showing right profile) -> hide left-side zones
+        if (z.id.endsWith("_l") || z.id.endsWith("_L")) visible = false;
+      }
+    }
+    if (Math.abs(yawVal) > 75) {
+      // Extreme profile -> hide central zones too
+      if (["nasal_bridge", "lip_upper", "lip_lower", "chin"].includes(z.id)) visible = false;
+    }
+
     const excluded =
       z.excluded ||
       (smiling && ["lip_upper", "lip_lower", "nose_wing_l", "nose_wing_r", "cheek_l", "cheek_r"].includes(z.id));
@@ -152,8 +176,9 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
     const identityPenalty = identityB && z.group === "bone" ? 0.18 : 0;
     return {
       ...z,
+      visible,
       excluded,
-      score: excluded ? 0 : Math.max(0, baseScore - penalty - identityPenalty),
+      score: !visible || excluded ? 0 : Math.max(0, baseScore - penalty - identityPenalty),
     };
   });
 
@@ -179,11 +204,11 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
     },
     zones,
     pose: {
-      yaw: +yaw.toFixed(1),
-      pitch: +pitch.toFixed(1),
-      roll: +roll.toFixed(1),
+      yaw: realData?.reconstruction_summary?.pose?.[0] ?? +yaw.toFixed(1),
+      pitch: realData?.reconstruction_summary?.pose?.[1] ?? +pitch.toFixed(1),
+      roll: realData?.reconstruction_summary?.pose?.[2] ?? +roll.toFixed(1),
       classification: poseClass,
-      confidence: +(0.72 + r() * 0.25).toFixed(2),
+      confidence: realData?.quality?.sharpness_variance ? Math.min(1, realData.quality.sharpness_variance / 500) : +(0.72 + r() * 0.25).toFixed(2),
       fallback: r() < 0.1,
     },
     expression: {
@@ -195,11 +220,11 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
         : ["lip_upper", "lip_lower"],
     },
     texture: {
-      lbpComplexity: +(anomalyYear ? 0.25 + r() * 0.15 : 0.65 + r() * 0.2).toFixed(2),
-      fftAnomaly: +(anomalyYear ? 0.55 + r() * 0.2 : 0.1 + r() * 0.15).toFixed(2),
-      albedoHealth: +(anomalyYear ? 0.35 + r() * 0.15 : 0.75 + r() * 0.15).toFixed(2),
-      specularIndex: +(anomalyYear ? 0.6 + r() * 0.2 : 0.15 + r() * 0.15).toFixed(2),
-      syntheticProb: +syntheticProb.toFixed(2),
+      lbpComplexity: realData?.texture?.lbp_complexity ?? +(anomalyYear ? 0.25 + r() * 0.15 : 0.65 + r() * 0.2).toFixed(2),
+      fftAnomaly: realData?.texture?.quality?.noise_level ? Math.min(1, realData.texture.quality.noise_level / 5) : +(anomalyYear ? 0.55 + r() * 0.2 : 0.1 + r() * 0.15).toFixed(2),
+      albedoHealth: realData?.texture?.quality?.quality_index ?? +(anomalyYear ? 0.35 + r() * 0.15 : 0.75 + r() * 0.15).toFixed(2),
+      specularIndex: realData?.texture?.specular_gloss ?? +(anomalyYear ? 0.6 + r() * 0.2 : 0.15 + r() * 0.15).toFixed(2),
+      syntheticProb: realData?.syntheticProb ?? +syntheticProb.toFixed(2),
     },
     calibration: {
       bucket:
@@ -231,13 +256,13 @@ export function buildPhotoDetail(year: number, photo: string): PhotoDetail {
       H2: +H2.toFixed(2),
     },
     meta: {
-      id: `main-${year}-${Math.floor(r() * 0xffffff).toString(16).padStart(6, "0")}`,
+      id: realData?.photo_id ?? `main-${year}-${Math.floor(r() * 0xffffff).toString(16).padStart(6, "0")}`,
       filename: photo.split("/").pop() || "photo.jpg",
-      capturedAt: `${year}-${String(Math.floor(r() * 12) + 1).padStart(2, "0")}-${String(Math.floor(r() * 27) + 1).padStart(2, "0")}`,
-      source: year < 2005 ? "archival_scan" : year < 2015 ? "press_photo" : "digital",
-      md5: Array.from({ length: 8 }, () => Math.floor(r() * 16).toString(16)).join("") + "2c92ad0b",
-      resolution: year < 2005 ? "1024×768" : year < 2015 ? "1920×1280" : "3840×2560",
-      sizeKB: 180 + Math.floor(r() * 4800),
+      capturedAt: realData?.capturedAt ?? `${year}-${String(Math.floor(r() * 12) + 1).padStart(2, "0")}-${String(Math.floor(r() * 27) + 1).padStart(2, "0")}`,
+      source: realData?.source ?? (year < 2005 ? "archival_scan" : year < 2015 ? "press_photo" : "digital"),
+      md5: realData?.md5 ?? (Array.from({ length: 8 }, () => Math.floor(r() * 16).toString(16)).join("") + "2c92ad0b"),
+      resolution: realData?.resolution ?? (year < 2005 ? "1024×768" : year < 2015 ? "1920×1280" : "3840×2560"),
+      sizeKB: realData?.file_size_bytes ? Math.round(realData.file_size_bytes / 1024) : 180 + Math.floor(r() * 4800),
     },
     notes: [
       anomalyYear ? "Automatic flag raised — requires expert review." : "No automatic flags.",

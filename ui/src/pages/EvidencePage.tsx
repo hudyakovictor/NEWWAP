@@ -12,10 +12,16 @@ export default function EvidencePage() {
 
   useEffect(() => {
     setLoading(true);
-    api.getEvidence(pairA, pairB).then((r) => {
-      setEv(r);
-      setLoading(false);
-    });
+    api.getEvidence(pairA, pairB)
+      .then((r) => {
+        setEv(r);
+        setError(null);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to fetch evidence");
+        setLoading(false);
+      });
   }, [pairA, pairB]);
 
   const a = PHOTOS.find((p) => p.id === pairA)!;
@@ -34,8 +40,20 @@ export default function EvidencePage() {
         </button>
       }
     >
-      {loading || !ev ? (
+      {loading ? (
         <div className="text-[11px] text-muted">Synthesizing evidence…</div>
+      ) : error ? (
+        <div className="p-4 bg-danger/10 border border-danger/20 rounded text-[11px] text-danger max-w-2xl">
+          <div className="font-bold mb-1">DATA MISSING</div>
+          {error}
+          <div className="mt-2 text-white/50 leading-relaxed">
+            This likely means the real forensic metrics for these photos haven't been extracted yet.
+            The current system requires real <code className="bg-white/10 px-1 rounded">summary.json</code> files from the extraction pipeline.
+            Go to <b>Jobs</b> or <b>Photos</b> to run the extraction for these IDs.
+          </div>
+        </div>
+      ) : !ev ? (
+        <div className="text-[11px] text-muted">No data available.</div>
       ) : (
         <div className="space-y-3">
           {/* Header */}
