@@ -205,7 +205,18 @@ class LongitudinalAnalyzer:
             # Ожидаемый диапазон для последнего года
             last_year = max(years)
             expected_value = intercept + slope * last_year
-            expected_variability = expected["variability"] * math.sqrt(n)  # Уменьшаем с n
+
+            # ИСПРАВЛЕНИЕ: Стандартная ошибка сужается при росте N
+            if n <= 0:
+                expected_variability = expected["variability"]
+            else:
+                # Базовая вариативность делится на корень из размера выборки
+                expected_variability = expected["variability"] / math.sqrt(n)
+
+            # Ограничиваем минимально допустимый разброс, чтобы избежать деления на 0
+            # при проверке аномалий на больших датасетах
+            expected_variability = max(expected_variability, 0.005)
+
             expected_range = (
                 expected_value - 2 * expected_variability,
                 expected_value + 2 * expected_variability,

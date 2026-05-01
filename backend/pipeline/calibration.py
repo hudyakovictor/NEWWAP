@@ -10,6 +10,20 @@ from typing import Any, Dict, List, Optional
 from .types import AlignmentResult, VisibilityResult
 from core.utils import iso_now, read_json, write_json
 
+
+def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
+    """
+    [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
+    """
+    # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
+    # чтобы избежать взрывного роста SNR при идеальных масках.
+    safe_noise = max(abs(noise_baseline), 0.015)
+
+    # Сигнал не может быть отрицательным
+    safe_signal = max(signal_error - safe_noise, 0.0)
+
+    return safe_signal / safe_noise
+
 @dataclass
 class NoiseObservation:
     """A single noise observation from a same-person comparison."""
@@ -140,9 +154,10 @@ class CalibrationAnalyzer:
         for zone, error in measured_errors.items():
             pred_noise = self.model.predict_noise(zone, pose_delta_mag)
             reliability = self.model.get_reliability(zone)
-            
+
+            # [ITER-1] ИСПРАВЛЕНИЕ: Используем унифицированную функцию линейного SNR
+            snr = _compute_linear_snr(error, pred_noise)
             signal = max(0.0, error - pred_noise)
-            snr = signal / (pred_noise + 1e-6)
             
             zone_details.append({
                 "zone": zone,

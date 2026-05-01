@@ -68,7 +68,10 @@ def score_aligned_pair(
 ) -> tuple[float, float, float, float, np.ndarray]:
     """
     [GEOM-03] Forensic 3D Scoring.
-    Projects differences onto the face plane normal.
+
+    [ITER-1] ИСПРАВЛЕНИЕ: Вычисляем истинное евклидово расстояние между точками,
+    а не их проекцию на одну из плоскостей. Это избегает двойного смещения
+    при непараллельных плоскостях из-за погрешности детекции позы.
     """
     scale_b = _get_face_scale_from_points(points_b)
     _centroid_b, plane_normal = fit_best_plane(points_b)
@@ -76,20 +79,21 @@ def score_aligned_pair(
     # 1. Difference vector
     diffs = points_a - points_b
 
-    # 2. Project onto normal (relief changes)
-    perpendicular_offsets = np.abs(np.sum(diffs * plane_normal, axis=1))
+    # [ITER-1] ИСПРАВЛЕНИЕ: Честное L2 расстояние между выровненными вершинами
+    # Вычисляем норму по оси X,Y,Z для каждой точки
+    true_distances = np.linalg.norm(diffs, axis=1)
 
     # Normalize to face scale
-    distances_proj = perpendicular_offsets / scale_b
+    distances_normalized = true_distances / scale_b
 
     # Apply reliability weight (from texture/pose)
     effective_weights = weights * reliability_weight
 
     # Weighted mean
-    primary_error = weighted_mean_abs(distances_proj, effective_weights)
+    primary_error = weighted_mean_abs(distances_normalized, effective_weights)
 
     # Robust variant (trimmed)
-    robust_error = _robust_trimmed_3d_error(distances_proj, effective_weights)
+    robust_error = _robust_trimmed_3d_error(distances_normalized, effective_weights)
 
     return (
         primary_error,

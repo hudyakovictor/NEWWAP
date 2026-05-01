@@ -19,7 +19,8 @@ export type PageId =
   | "clusters"
   | "audit"
   | "logs"
-  | "evidence_map";
+  | "evidence_map"
+  | "upload";
 
 const MENU_GROUPS: { title: string; items: { id: PageId; label: string }[] }[] = [
   {
@@ -127,12 +128,39 @@ export default function TopBar({
       </nav>
 
       <div className="ml-auto flex items-center gap-2 text-[11px] text-muted shrink-0">
-        <span
-          className="px-2 py-1 rounded bg-ok/10 border border-ok/30 text-[10px] text-ok"
-          title="Интерфейс подключён к HTTP backend. Часть страниц всё ещё содержит явно помеченные заглушки."
+        <button
+          onClick={() => onNav("upload")}
+          className="px-3 py-1.5 rounded-lg bg-accent/80 hover:bg-accent transition-all text-[11px] font-medium text-white shadow-lg shadow-accent/20 flex items-center gap-1.5"
+          title="Добавить фото в анализ"
         >
-          ● backend
-        </span>
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Добавить фото
+        </button>
+        <button
+          onClick={async () => {
+            if (confirm("Вы уверены, что хотите очистить все данные?")) {
+              try {
+                const response = await fetch("/api/reset-all", { method: "POST" });
+                if (response.ok) {
+                  localStorage.clear();
+                  sessionStorage.clear();
+                  window.location.reload();
+                } else {
+                  alert("Не удалось очистить данные. Сервер вернул ошибку.");
+                }
+              } catch (error) {
+                console.error("Failed to reset:", error);
+                alert("Не удалось очистить данные. Проверьте соединение с сервером.");
+              }
+            }
+          }}
+          className="px-2 py-1 rounded bg-danger/20 hover:bg-danger/40 text-[10px] text-danger border border-danger/30"
+          title="Очистить все данные и сделать готовым для нового анализа"
+        >
+          Очистить все данные
+        </button>
         <button
           onClick={() => onNav("audit")}
           className="px-2 py-1 rounded text-[10px] border border-line/60 hover:bg-line/40"

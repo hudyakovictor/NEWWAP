@@ -14,6 +14,20 @@ from .zones import MACRO_BONE_INDICES, compute_zone_metrics, provisional_band_fr
 from core.constants import ALIGNMENT_MIN_RANK
 from core.utils import iso_now, json_ready
 
+
+def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
+    """
+    [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
+    """
+    # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
+    # чтобы избежать взрывного роста SNR при идеальных масках.
+    safe_noise = max(abs(noise_baseline), 0.015)
+
+    # Сигнал не может быть отрицательным
+    safe_signal = max(signal_error - safe_noise, 0.0)
+
+    return safe_signal / safe_noise
+
 def _extract_calibrated_geometry_evidence(
     calibration: CalibrationAnalyzer,
     raw_error: float,
@@ -65,8 +79,9 @@ def _extract_calibrated_geometry_evidence(
         break
 
     if snr <= 0.0:
-        baseline_noise = max(noise, 0.01)
-        snr = float(max(signal - baseline_noise, 0.0) / baseline_noise)
+        # [ITER-1] ИСПРАВЛЕНИЕ: Используем унифицированную функцию линейного SNR
+        # с защитой от отрицательного шума и взрывного роста
+        snr = _compute_linear_snr(signal, noise)
 
     return {
         "geometry_signal": float(signal),

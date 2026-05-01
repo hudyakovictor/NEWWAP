@@ -144,18 +144,33 @@ def photos(
 
 @app.get("/api/photo/{dataset}/{photo_id}")
 def photo_detail(dataset: str, photo_id: str) -> dict:
+    logger.info(f"[PHOTO_DETAIL] Fetching photo {dataset}/{photo_id}")
     record = service.photo_detail(dataset, photo_id)
     if record is None:
+        logger.error(f"[PHOTO_DETAIL] Photo not found: {dataset}/{photo_id}")
         raise HTTPException(status_code=404, detail="photo not found")
     
+    logger.info(f"[PHOTO_DETAIL] Record status: {record.get('status')}, has metrics: {'metrics' in record}, has artifacts: {'artifacts' in record}")
+    if 'metrics' in record:
+        logger.info(f"[PHOTO_DETAIL] Metrics keys: {list(record['metrics'].keys())[:10]}")
+    if 'artifacts' in record:
+        logger.info(f"[PHOTO_DETAIL] Artifacts: {record['artifacts']}")
+    
     detail = map_record_to_detail(record)
+    logger.info(f"[PHOTO_DETAIL] Mapped detail keys: {list(detail.keys())}")
+    logger.info(f"[PHOTO_DETAIL] Detail has zones: {'zones' in detail}, texture: {'texture' in detail}, reconstruction: {'reconstruction' in detail}")
+    
     # UI expects { ...detail, record }
     return {**detail, "record": record}
 
 
 @app.get("/api/timeline-summary")
 def timeline_summary() -> dict:
-    return service.get_timeline_full()
+    result = service.get_timeline_full()
+    logger.info(f"[TIMELINE] Timeline summary returned: {len(result.get('years', []))} years, {len(result.get('metrics', []))} metrics")
+    for i, m in enumerate(result.get('metrics', [])[:5]):
+        logger.info(f"[TIMELINE] Metric {i}: {m}")
+    return result
 
 
 @app.get("/api/calibration/summary")
@@ -221,15 +236,59 @@ async def compare_evidence(request: EvidenceRequest):
     """
     Вычисляет криминалистический вердикт на основе реальных данных из summary.json.
     Принимает JSON body: {"photo_id_a": "...", "photo_id_b": "..."}
+    Supports on-demand extraction for temp photos (uploaded via /api/extract/upload).
     """
-    summary_a = service.photo_detail("main", request.photo_id_a)
-    summary_b = service.photo_detail("main", request.photo_id_b)
+    async def get_summary(photo_id: str):
+        # Check if this is a temp photo (uploaded via /api/extract/upload)
+        if photo_id.startswith("temp_"):
+            temp_dir = SETTINGS.storage_root / "temp" / photo_id
+            if not temp_dir.exists():
+                raise HTTPException(status_code=404, detail=f"Temp photo not found: {photo_id}")
+            
+            # Check if already extracted
+            summary_path = temp_dir / "summary.json"
+            if summary_path.exists():
+                return read_json(summary_path)
+            
+            # Perform on-demand extraction
+            # Find the uploaded file in the temp directory
+            uploaded_files = list(temp_dir.glob("*.jpg")) + list(temp_dir.glob("*.jpeg")) + list(temp_dir.glob("*.png"))
+            if not uploaded_files:
+                raise HTTPException(status_code=404, detail=f"No image file found in temp directory: {photo_id}")
+            source_path = uploaded_files[0]
+            
+            from core.analysis import extract_photo_bundle
+            from core.utils import parse_date_from_name, fallback_date_for_file, write_json, BUCKET_LABELS
+            
+            bundle = extract_photo_bundle(
+                source_path=source_path,
+                dataset="temp",
+                photo_id=photo_id,
+                output_dir=temp_dir,
+            )
+            date_str, parsed_date = parse_date_from_name(source_path.name)
+            if not parsed_date:
+                date_str, parsed_date = fallback_date_for_file(source_path)
+            bundle["date_str"] = date_str
+            bundle["parsed_year"] = parsed_date.year
+            bundle["bucket_label"] = BUCKET_LABELS.get(bundle["bucket"], bundle["bucket"])
+            bundle["source_url"] = f"/storage/temp/{photo_id}/{source_path.name}"
+            bundle["artifacts"] = {
+                key: f"/storage/temp/{photo_id}/{value}"
+                for key, value in bundle["artifacts"].items()
+            }
+            # Save summary for future use
+            write_json(summary_path, bundle)
+            return bundle
+        else:
+            # Regular photo from main dataset
+            summary = service.photo_detail("main", photo_id)
+            if not summary:
+                raise HTTPException(status_code=404, detail=f"Photo not found: {photo_id}")
+            return summary
     
-    if not summary_a or not summary_b:
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Данные не найдены для {request.photo_id_a} или {request.photo_id_b}."
-        )
+    summary_a = await get_summary(request.photo_id_a)
+    summary_b = await get_summary(request.photo_id_b)
     
     evidence = calculate_bayesian_evidence(summary_a, summary_b)
     return evidence
@@ -345,11 +404,15 @@ async def get_mesh_data(dataset: str, photo_id: str):
     Returns mesh geometry data (vertices, UVs, triangles) for morphing.
     Reads from cached reconstruction_v1.pkl if available.
     """
+    logger.info(f"[MESH] Fetching mesh data for {dataset}/{photo_id}")
     if dataset not in {"main", "calibration"}:
+        logger.error(f"[MESH] Unknown dataset: {dataset}")
         raise HTTPException(status_code=404, detail="unknown dataset")
 
     storage_dir = SETTINGS.storage_root / dataset / photo_id
+    logger.info(f"[MESH] Storage dir: {storage_dir}, exists: {storage_dir.exists()}")
     if not storage_dir.exists():
+        logger.error(f"[MESH] Photo not extracted: {storage_dir}")
         raise HTTPException(status_code=404, detail="photo not extracted")
 
     # Try to load cached reconstruction
@@ -359,11 +422,15 @@ async def get_mesh_data(dataset: str, photo_id: str):
             source_file = Path(record.get("source_path"))
             break
 
+    logger.info(f"[MESH] Source file: {source_file}, exists: {source_file.exists() if source_file else False}")
     if not source_file or not source_file.exists():
+        logger.error(f"[MESH] Source file not found")
         raise HTTPException(status_code=404, detail="source file not found")
 
     cached = load_reconstruction_cache(storage_dir, source_file, neutral_expression=False)
+    logger.info(f"[MESH] Cache loaded: {cached is not None}")
     if not cached:
+        logger.error(f"[MESH] Reconstruction cache not found")
         raise HTTPException(status_code=404, detail="reconstruction cache not found")
 
     # Extract geometry data for morphing
@@ -371,6 +438,8 @@ async def get_mesh_data(dataset: str, photo_id: str):
     uv_coords = cached.uv_coords.tolist() if cached.uv_coords is not None else []  # N x 2
     triangles = cached.triangles.tolist()  # M x 3
     normals = cached.normals_world.tolist() if cached.normals_world is not None else []  # N x 3
+
+    logger.info(f"[MESH] Extracted: {len(vertices)} vertices, {len(triangles)} triangles, {len(uv_coords)} UVs, {len(normals)} normals")
 
     return {
         "photo_id": photo_id,
@@ -512,15 +581,37 @@ async def upload_photo(file: UploadFile = File(...)) -> dict:
 
 @app.post("/api/reset-all")
 def reset_all() -> dict:
-    """Reset derived storage only. Source photos are NEVER deleted."""
-    main_storage = SETTINGS.storage_root / "main"
-    removed = 0
-    if main_storage.exists():
-        for item in main_storage.iterdir():
-            if item.is_dir():
-                shutil.rmtree(item)
-                removed += 1
-    return {"status": "ok", "removed_storage_dirs": removed}
+    """Reset the interface and clear all directories to make it ready for new analysis."""
+    import shutil
+    # 1. Clear photo directories
+    for path in [SETTINGS.main_photos_dir, SETTINGS.calibration_dir]:
+        if path.exists():
+            shutil.rmtree(path)
+        path.mkdir(parents=True, exist_ok=True)
+
+    # 2. Recreate storage directories and delete individual cached files
+    for sub in ["main", "calibration", "temp", "poses"]:
+        p = SETTINGS.storage_root / sub
+        if p.exists():
+            shutil.rmtree(p)
+        p.mkdir(parents=True, exist_ok=True)
+
+    # 3. Delete clusters and overrides
+    for f in ["duplicate-clusters.json", "calibration_overrides.json", "investigations.json"]:
+        p = SETTINGS.storage_root / f
+        if p.exists():
+            p.unlink()
+
+    # 4. Invalidate memory cache
+    service._records_cache.clear()
+    service._records_cache_ts.clear()
+    service._main_records_cache = None
+    service._main_records_cache_ts = 0.0
+    service._calib_summary_cache = None
+    service._calib_summary_cache_ts = 0.0
+    service._pose_reports.clear()
+
+    return {"status": "ok"}
 
 
 @app.delete("/api/photo/{dataset}/{photo_id}")

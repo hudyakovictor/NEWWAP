@@ -154,6 +154,20 @@ def _get_missing_metrics(metrics: Dict[str, Any], required_zones: list) -> list:
     return [zone for zone in required_zones if zone not in metrics or metrics[zone] is None]
 
 
+def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
+    """
+    [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
+    """
+    # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
+    # чтобы избежать взрывного роста SNR при идеальных масках.
+    safe_noise = max(abs(noise_baseline), 0.015)
+
+    # Сигнал не может быть отрицательным
+    safe_signal = max(signal_error - safe_noise, 0.0)
+
+    return safe_signal / safe_noise
+
+
 def _calculate_real_snr(
     zone_deltas: Dict[str, float],
     zone_weights: Dict[str, float],
@@ -163,10 +177,13 @@ def _calculate_real_snr(
     [FIX-6] Расчёт реального SNR на основе зональных отклонений.
     Если есть калибровка — используем sigma из калибровки.
     Иначе — эвристику на основе ZONE_WEIGHTS.
+
+    [ITER-1] ИСПРАВЛЕНИЕ: Убраны преобразования в децибелы (log10).
+    Теперь SNR всегда в линейной шкале для корректного сравнения с порогами.
     """
     if not zone_deltas:
         return 0.0
-    
+
     # Взвешенное среднее отклонений
     # [FIX-C4] Нет дефолта 0.5 — зона без веса игнорируется (вес 0)
     weighted_delta_sum = sum(
@@ -174,25 +191,27 @@ def _calculate_real_snr(
         for zone, delta in zone_deltas.items()
     )
     total_weight = sum(zone_weights.get(zone, 0.0) for zone in zone_deltas.keys())
-    
+
     if total_weight == 0:
         return 0.0
-    
+
     mean_weighted_delta = weighted_delta_sum / total_weight
-    
+
     # SNR = сигнал / шум. Для H0 (same person) ожидаем delta ≈ 0
-    # Чем больше delta — тем ниже SNR
+    # Чем больше delta — тем ниже SNR (больше сигнал относительно шума)
     if calibration_stats and "sigma_noise" in calibration_stats:
         sigma = calibration_stats["sigma_noise"]
         if sigma > 0:
-            snr = 10.0 * math.log10((sigma ** 2) / (mean_weighted_delta ** 2 + 1e-9))
-            return max(-20.0, min(30.0, snr))
-    
-    # Fallback: эвристический SNR на основе дивергенции
-    # Нормализуем к диапазону [0, 10] для UI
-    snr_linear = max(0.0, 1.0 - mean_weighted_delta * 5.0)
-    snr_db = 10.0 * math.log10(snr_linear + 1e-9) if snr_linear > 0 else -20.0
-    return max(0.0, snr_db + 20.0)  # Сдвигаем к положительному диапазону для UI
+            # [ITER-1] ИСПРАВЛЕНИЕ: Линейный SNR вместо dB
+            snr = _compute_linear_snr(mean_weighted_delta, sigma)
+            return snr
+
+    # Fallback: эвристический линейный SNR на основе дивергенции
+    # [ITER-1] ИСПРАВЛЕНИЕ: Убрано преобразование в dB
+    # Чем меньше delta — тем выше SNR (лучшее совпадение)
+    fallback_noise = 0.02  # Базовый шум для fallback
+    snr = _compute_linear_snr(mean_weighted_delta, fallback_noise)
+    return snr
 
 
 def _compute_adaptive_priors(

@@ -50,8 +50,8 @@ def build_settings() -> Settings:
         repo_root=repo_root,
         newapp_root=newapp_root,
         storage_root=storage_root,
-        main_photos_dir=repo_root / "rebucketed_photos" / "all",
-        calibration_dir=repo_root / "myface",  # Still points to myface folder on disk
+        main_photos_dir=storage_root / "main_photos",
+        calibration_dir=storage_root / "calibration_photos",
         localxpose_env=localxpose_env,
         localxpose_token=_read_localxpose_token(localxpose_env),
     )

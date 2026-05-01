@@ -88,10 +88,11 @@ def rigid_umeyama(
 
 def euler_to_rotation_matrix(angles_rad: np.ndarray) -> np.ndarray:
     """
-    Rotation matrix from Euler angles [yaw, pitch, roll] in ZYX convention.
+    Конвертирует углы Эйлера в матрицу вращения (ZYX convention).
+    Ожидается формат 3DDFA_v3: [pitch, yaw, roll] в радианах.
     R = Rz(roll) @ Ry(yaw) @ Rx(pitch)
     """
-    yaw, pitch, roll = angles_rad
+    pitch, yaw, roll = angles_rad
 
     cx, sx = np.cos(pitch), np.sin(pitch)
     cy, sy = np.cos(yaw),   np.sin(yaw)

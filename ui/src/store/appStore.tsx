@@ -18,8 +18,8 @@ const Ctx = createContext<AppStore | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [page, setPageRaw] = useState<PageId>("timeline");
-  const [pairA, setPairARaw] = useState<string>(PHOTOS[30].id);
-  const [pairB, setPairBRaw] = useState<string>(PHOTOS[PHOTOS.length - 40].id);
+  const [pairA, setPairARaw] = useState<string>(PHOTOS[30]?.id || "");
+  const [pairB, setPairBRaw] = useState<string>(PHOTOS[PHOTOS.length - 40]?.id || "");
 
   const setPage = useCallback((p: PageId) => {
     log.info("nav", "nav:page", `navigate → ${p}`, { from: pageRef.current, to: p });

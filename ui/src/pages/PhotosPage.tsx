@@ -1,6 +1,6 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { PHOTOS, type PhotoRecord } from "../mock/photos";
+import { type PhotoRecord } from "../mock/photos";
 import PhotoDetailModal from "../components/photo/PhotoDetailModal";
 import UploadModal from "../components/upload/UploadModal";
 import { useApp } from "../store/appStore";
@@ -10,6 +10,7 @@ import { EvidenceBadge, EvidenceNote } from "../components/common/EvidenceStatus
 const POSE_GROUPS = ["frontal", "three_quarter_left", "three_quarter_right", "profile_left", "profile_right", "none"] as const;
 const FOLDER_OPTIONS = ["any", "main", "myface"] as const;
 const POSE_SOURCE_OPTIONS = ["any", "hpe", "3ddfa", "none"] as const;
+const DATASET_TABS = ["main", "calibration"] as const;
 
 const POSE_LABELS: Record<string, string> = {
   frontal: "Фронтальный",
@@ -26,6 +27,7 @@ function isProcessed(p: PhotoRecord): boolean {
 }
 
 export default function PhotosPage() {
+  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [query, setQuery] = useState("");
   const [selectedYear, setSelectedYear] = useState<number | "all">("all");
   const [folder, setFolder] = useState<(typeof FOLDER_OPTIONS)[number]>("main");
@@ -36,24 +38,41 @@ export default function PhotosPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [extracting, setExtracting] = useState(false);
   const [extractNotice, setExtractNotice] = useState<string | null>(null);
+  const [datasetTab, setDatasetTab] = useState<(typeof DATASET_TABS)[number]>("main");
   const { setPage } = useApp();
 
-  const availableYears = useMemo(() => {
-    const years = Array.from(new Set(PHOTOS.map(p => p.year).filter(y => y > 0))).sort((a, b) => a - b);
-    return years;
+  useEffect(() => {
+    api.listPhotos({}).then((res) => {
+      setPhotos(res.items);
+    }).catch(console.error);
   }, []);
+
+  const availableYears = useMemo(() => {
+    const years = Array.from(new Set(photos.map(p => p.year || p.parsed_year).filter(y => y > 0))).sort((a, b) => a - b);
+    return years;
+  }, [photos]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return PHOTOS.filter((p) => {
-      if (q && !p.id.toLowerCase().includes(q) && !p.date.includes(q)) return false;
-      if (selectedYear !== "all" && p.year !== selectedYear) return false;
-      if (folder !== "any" && p.folder !== folder) return false;
-      if (poseSource !== "any" && p.poseSource !== poseSource) return false;
-      if (p.yaw !== null && Math.abs(p.yaw) > maxYaw) return false;
+    return photos.filter((p) => {
+      const pFolder = p.folder || p.dataset || "main";
+      const pId = p.id || p.photo_id || "";
+      const pDate = p.date || p.date_str || "";
+      const pYaw = p.yaw ?? p.pose?.yaw ?? null;
+      const pYear = p.year || p.parsed_year || 0;
+
+      // Auto-filter by dataset tab
+      if (datasetTab === "main" && pFolder !== "main") return false;
+      if (datasetTab === "calibration" && pFolder !== "myface") return false;
+
+      if (q && !pId.toLowerCase().includes(q) && !pDate.includes(q)) return false;
+      if (selectedYear !== "all" && pYear !== selectedYear) return false;
+      if (folder !== "any" && pFolder !== folder) return false;
+      if (poseSource !== "any" && (p.poseSource || p.pose?.source || "none") !== poseSource) return false;
+      if (pYaw !== null && Math.abs(pYaw) > maxYaw) return false;
       return true;
     });
-  }, [query, selectedYear, folder, poseSource, maxYaw]);
+  }, [photos, query, selectedYear, folder, poseSource, maxYaw, datasetTab]);
 
   const grouped = useMemo(() => {
     const groups: Record<string, PhotoRecord[]> = {};
@@ -113,9 +132,10 @@ export default function PhotosPage() {
         ids = filtered.filter(p => p.pose === pose).map(p => p.id);
       }
       if (ids.length === 0) return;
-      await api.startJob("extract", { dataset: folder === "myface" ? "calibration" : "main", onlyIds: ids, limit: ids.length });
+      const dataset = datasetTab === "calibration" ? "calibration" : "main";
+      await api.startJob("extract", { dataset, onlyIds: ids, limit: ids.length });
       setExtractNotice(
-        `Задача извлечения запущена для ${ids.length} фото. Список выбранных id передан в backend как only_ids.`
+        `Задача извлечения запущена для ${ids.length} фото. Датасет: ${dataset}.`
       );
     } finally {
       setExtracting(false);
@@ -125,7 +145,7 @@ export default function PhotosPage() {
   return (
     <Page
       title="Фотоархив"
-      subtitle={`${PHOTOS.length} всего · ${filtered.length} по фильтру · ${stats.processed} обработано · ${stats.unprocessed} не обработано`}
+      subtitle={`${photos.length} всего · ${filtered.length} по фильтру · ${stats.processed} обработано · ${stats.unprocessed} не обработано`}
       actions={
         <div className="flex gap-2">
           <button
@@ -143,6 +163,22 @@ export default function PhotosPage() {
         </div>
       }
     >
+      {/* Dataset Tabs */}
+      <div className="flex gap-2 mb-4">
+        {DATASET_TABS.map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setDatasetTab(tab)}
+            className={`px-4 h-9 rounded-lg text-[12px] font-medium transition-all ${
+              datasetTab === tab
+                ? "bg-accent text-white shadow-lg shadow-accent/20"
+                : "bg-white/10 hover:bg-white/20 text-white border border-white/10"
+            }`}
+          >
+            {tab === "main" ? "Основной датасет" : "Калибровочный датасет"}
+          </button>
+        ))}
+      </div>
       {/* Stats bar */}
       <div className="grid grid-cols-4 gap-3 mb-4">
         <MiniStat label="Всего фото" value={stats.total} color="#cfd8e6" />
@@ -316,15 +352,22 @@ export default function PhotosPage() {
                 
                 <div className="flex gap-3 overflow-x-auto pb-3 scrollbar-thin scrollbar-thumb-white/10 hover:scrollbar-thumb-white/20 transition-all">
                   {items.map((p) => {
-                    const processed = isProcessed(p);
-                    const isCalib = p.folder === "myface";
-                    const isSelected = selectedIds.has(p.id);
+                    const pId = p.id || p.photo_id || "";
+                    const pFolder = p.folder || p.dataset || "main";
+                    const pDate = p.date || p.date_str || "Дата неизвестна";
+                    const pPhoto = p.photo || p.source_url || "";
+                    const pYaw = p.yaw ?? p.pose?.yaw ?? null;
+                    const pPoseSource = p.poseSource || p.pose?.source || "none";
+
+                    const processed = pPoseSource !== "none";
+                    const isCalib = pFolder === "myface";
+                    const isSelected = selectedIds.has(pId);
                     return (
                       <button
-                        key={p.id}
+                        key={pId}
                         onClick={(e) => {
                           if (e.shiftKey) {
-                            toggleSelect(p.id);
+                            toggleSelect(pId);
                           } else {
                             setOpened(p);
                           }
@@ -339,8 +382,8 @@ export default function PhotosPage() {
                       >
                         <div className="aspect-[3/4] overflow-hidden relative">
                           <img 
-                            src={p.photo} 
-                            alt={p.id} 
+                            src={pPhoto} 
+                            alt={pId} 
                             className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${
                               !processed ? "grayscale opacity-70" : ""
                             }`} 
@@ -367,19 +410,19 @@ export default function PhotosPage() {
                         </div>
                         
                         {/* Badge Tags */}
-                        {processed && p.flags.includes("silicone") && (
+                        {processed && p.flags && p.flags.includes("silicone") && (
                           <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1">
                             <div className="w-2 h-2 rounded-full bg-danger animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]" title="Силикон"></div>
                           </div>
                         )}
 
                         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-bg-deep via-bg-deep/80 to-transparent p-2.5">
-                          <div className="text-[11px] text-white font-mono font-bold">{p.date || "Дата неизвестна"}</div>
+                          <div className="text-[11px] text-white font-mono font-bold">{pDate}</div>
                           <div className="mt-0.5 flex items-center justify-between">
-                            <span className="text-[9px] text-muted uppercase tracking-tighter">{p.poseSource}</span>
+                            <span className="text-[9px] text-muted uppercase tracking-tighter">{pPoseSource}</span>
                             <EvidenceBadge level={processed ? "real" : "pending"} />
-                            <span className={`text-[10px] font-bold font-mono ${Math.abs(p.yaw ?? 0) < 15 ? 'text-ok' : 'text-info'}`}>
-                              {p.yaw !== null ? `${p.yaw > 0 ? '+' : ''}${p.yaw.toFixed(0)}°` : "—"}
+                            <span className={`text-[10px] font-bold font-mono ${Math.abs(pYaw ?? 0) < 15 ? 'text-ok' : 'text-info'}`}>
+                              {pYaw !== null ? `${pYaw > 0 ? '+' : ''}${pYaw.toFixed(0)}°` : "—"}
                             </span>
                           </div>
                         </div>

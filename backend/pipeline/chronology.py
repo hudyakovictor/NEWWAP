@@ -8,7 +8,18 @@ from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
 from core.constants import REFERENCE_PERIOD_END, RTR_RATIO, RTR_MIN_ABS_DELTA, IMPOSSIBLE_SHORTENING_DAYS
-from core.utils import iso_now
+from core.utils import iso_now, BUCKET_METRIC_KEYS
+
+
+def get_ordered_metric_vector(metrics_dict: dict, required_keys: list) -> np.ndarray:
+    """
+    [ITER-1] ИСПРАВЛЕНИЕ: Гарантированный порядок ключей перед вычислением L2 нормы.
+    """
+    vector = []
+    for key in sorted(required_keys):
+        # Если метрики нет, подставляем 0.0 для сохранения размерности пространства
+        vector.append(metrics_dict.get(key, 0.0))
+    return np.array(vector, dtype=np.float64)
 
 class SuspiciousWindow:
     """
@@ -122,9 +133,11 @@ class ChronologyAnalyzer:
                     })
                 
                 # Deviation Analysis
-                m1 = np.array(list(prev.get("metrics", {}).values()))
-                m2 = np.array(list(curr.get("metrics", {}).values()))
-                
+                # [ITER-1] ИСПРАВЛЕНИЕ: Используем упорядоченные векторы метрик
+                metrics_keys = sorted(set(prev.get("metrics", {}).keys()) | set(curr.get("metrics", {}).keys()))
+                m1 = get_ordered_metric_vector(prev.get("metrics", {}), metrics_keys)
+                m2 = get_ordered_metric_vector(curr.get("metrics", {}), metrics_keys)
+
                 if m1.size > 0 and m1.size == m2.size:
                     dist = float(np.linalg.norm(m1 - m2))
                     if dist > self.deviation_threshold:
@@ -174,9 +187,11 @@ class ChronologyAnalyzer:
                 if not is_reference_period(curr.get("extracted_at")):
                     ref_photos = [p for p in bucket_photos[:i] if is_reference_period(p.get("extracted_at"))]
                     if ref_photos:
-                        ref_metrics = [np.array(list(p.get("metrics", {}).values())) for p in ref_photos]
+                        # [ITER-1] ИСПРАВЛЕНИЕ: Используем упорядоченные векторы метрик
+                        all_ref_keys = sorted(set().union(*[p.get("metrics", {}).keys() for p in ref_photos]))
+                        ref_metrics = [get_ordered_metric_vector(p.get("metrics", {}), all_ref_keys) for p in ref_photos]
                         ref_avg = np.mean(ref_metrics, axis=0)
-                        
+
                         dist_to_ref = float(np.linalg.norm(m2 - ref_avg))
                         dist_to_prev = float(np.linalg.norm(m2 - m1)) if m1.size > 0 else 999.0
                         

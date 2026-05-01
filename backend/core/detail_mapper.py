@@ -49,10 +49,29 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
     """
     Hydrates a basic PhotoRecord into a full PhotoDetail structure for the UI.
     """
+    import logging
+    logger = logging.getLogger("deeputin.detail_mapper")
+    
     photo_id = record.get("photo_id", "")
+    logger.info(f"[DETAIL_MAPPER] Mapping record {photo_id}")
+    logger.info(f"[DETAIL_MAPPER] Record status: {record.get('status')}")
+    logger.info(f"[DETAIL_MAPPER] Has metrics: {'metrics' in record}, Has reconstruction: {'reconstruction' in record}")
+    
     metrics = record.get("metrics", {})
-    recon = record.get("reconstruction_summary", {})
-    pose = recon.get("pose", [0, 0, 0])
+    logger.info(f"[DETAIL_MAPPER] Metrics count: {len(metrics)}, keys: {list(metrics.keys())[:5]}")
+    
+    recon = record.get("reconstruction", {})
+    logger.info(f"[DETAIL_MAPPER] Recon keys: {list(recon.keys())}")
+    
+    # Try to get pose from record.pose (yaw, pitch, roll) or from reconstruction.angles_deg
+    pose_data = record.get("pose", {})
+    if pose_data and "yaw" in pose_data:
+        pose = [pose_data.get("yaw", 0), pose_data.get("pitch", 0), pose_data.get("roll", 0)]
+    elif recon and "angles_deg" in recon:
+        pose = recon["angles_deg"]
+    else:
+        pose = [0, 0, 0]
+    logger.info(f"[DETAIL_MAPPER] Pose: {pose}")
     
     # Map zones
     zones = []
@@ -89,9 +108,16 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             "excluded": excluded,
             "score": score
         })
+    
+    logger.info(f"[DETAIL_MAPPER] Mapped {len(zones)} zones, visible: {sum(1 for z in zones if z['visible'])}")
 
     # Reconstruction URLs
     artifacts = record.get("artifacts", {})
+    logger.info(f"[DETAIL_MAPPER] Artifacts: {artifacts}")
+    logger.info(f"[DETAIL_MAPPER] Texture data in record: {'texture_forensics' in record}")
+    texture_data = record.get("texture_forensics", {})
+    if texture_data:
+        logger.info(f"[DETAIL_MAPPER] Texture keys: {list(texture_data.keys())}")
     
     detail = {
         "year": record.get("parsed_year", 0),
@@ -105,7 +131,7 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             "uvMask": artifacts.get("uv_mask", ""),
             "overlay": artifacts.get("face_overlay", ""),
             "meshObj": artifacts.get("mesh_obj", ""),
-            "meshTriangles": recon.get("face_indices_count", 70122),
+            "meshTriangles": recon.get("triangle_count", 70789),
             "vertices": recon.get("vertex_count", 35709),
         },
         "zones": zones,
@@ -124,11 +150,16 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             "excludedZones": ["lip_upper", "lip_lower"]
         },
         "texture": {
-            "lbpComplexity": record.get("texture", {}).get("lbp_complexity", 0.5),
-            "fftAnomaly": record.get("texture", {}).get("noise_level", 0.1),
-            "albedoHealth": 0.8,
-            "specularIndex": record.get("texture", {}).get("specular_gloss", 0.2),
-            "syntheticProb": record.get("syntheticProb", 0.05),
+            "lbpComplexity": texture_data.get("lbp_complexity", 0.5),
+            "fftAnomaly": texture_data.get("quality", {}).get("noise_level", 0.1),
+            "albedoHealth": texture_data.get("quality", {}).get("quality_index", 0.8),
+            "specularIndex": texture_data.get("specular_gloss", 0.2),
+            "syntheticProb": texture_data.get("silicone_probability", 0.05),
+            "poreDensity": texture_data.get("pore_density", 0.0),
+            "wrinkleForehead": texture_data.get("wrinkle_forehead", 0.0),
+            "wrinkleNasolabial": texture_data.get("wrinkle_nasolabial", 0.0),
+            "globalSmoothness": texture_data.get("global_smoothness", 0.0),
+            "reliabilityWeight": texture_data.get("reliability_weight", 1.0),
         },
         "calibration": {
             "bucket": record.get("bucket", "frontal_unclassified"),

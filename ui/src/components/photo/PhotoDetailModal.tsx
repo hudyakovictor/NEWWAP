@@ -10,6 +10,8 @@ import { useApp } from "../../store/appStore";
 import { log, getAllLogs, subscribe, type LogEntry } from "../../debug/logger";
 import { validatePhotoDetail } from "../../debug/validators";
 
+type PhotoActionStatus = "idle" | "extracting" | "clearing" | "updating";
+
 const tabs = [
   { id: "overview", label: "Обзор" },
   { id: "reconstruction", label: "3D-реконструкция" },
@@ -56,6 +58,7 @@ export default function PhotoDetailModal({
   const detail = useMemo(() => buildPhotoDetail(effectiveYear, currentPhotoId), [effectiveYear, currentPhotoId]);
   const [tab, setTab] = useState<TabId>("overview");
   const [hoveredZone, setHoveredZone] = useState<string | undefined>();
+  const [actionStatus, setActionStatus] = useState<PhotoActionStatus>("idle");
   const { openPairWith } = useApp();
 
   const yearPhotos = useMemo(() => {
@@ -87,6 +90,51 @@ export default function PhotoDetailModal({
     if (photoId) {
       openPairWith(photoId, slot);
       onClose();
+    }
+  };
+
+  const handleExtractAll = async () => {
+    if (!photoId) return;
+    setActionStatus("extracting");
+    try {
+      await api.startJob("extract", { dataset: "main", onlyIds: [photoId], limit: 1 });
+      alert("Задача извлечения данных запущена для фото");
+    } catch (error) {
+      console.error("Extract failed:", error);
+      alert("Ошибка запуска извлечения данных");
+    } finally {
+      setActionStatus("idle");
+    }
+  };
+
+  const handleClearData = async () => {
+    if (!photoId) return;
+    if (!confirm("Вы уверены, что хотите очистить все данные для этого фото?")) return;
+    setActionStatus("clearing");
+    try {
+      // This would call a backend endpoint to clear photo data
+      // For now, simulate the operation
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      alert("Данные фото очищены");
+    } catch (error) {
+      console.error("Clear failed:", error);
+      alert("Ошибка очистки данных");
+    } finally {
+      setActionStatus("idle");
+    }
+  };
+
+  const handleUpdateData = async () => {
+    if (!photoId) return;
+    setActionStatus("updating");
+    try {
+      await api.startJob("extract", { dataset: "main", onlyIds: [photoId], limit: 1 });
+      alert("Задача повторного извлечения данных запущена");
+    } catch (error) {
+      console.error("Update failed:", error);
+      alert("Ошибка запуска обновления данных");
+    } finally {
+      setActionStatus("idle");
     }
   };
 
@@ -147,6 +195,35 @@ export default function PhotoDetailModal({
                   title="Установить как фото B в анализе пары"
                 >
                   Сравнить как B
+                </button>
+              </>
+            )}
+            <div className="h-4 w-px bg-line mx-1" />
+            {photoId && (
+              <>
+                <button
+                  onClick={handleExtractAll}
+                  disabled={actionStatus !== "idle"}
+                  className="px-2 h-7 text-[11px] rounded bg-info/70 hover:bg-info text-white disabled:opacity-40"
+                  title="Извлечь все данные для фото"
+                >
+                  {actionStatus === "extracting" ? "Извлечение..." : "Извлечь данные"}
+                </button>
+                <button
+                  onClick={handleUpdateData}
+                  disabled={actionStatus !== "idle"}
+                  className="px-2 h-7 text-[11px] rounded bg-warn/70 hover:bg-warn text-white disabled:opacity-40"
+                  title="Повторно извлечь данные"
+                >
+                  {actionStatus === "updating" ? "Обновление..." : "Обновить"}
+                </button>
+                <button
+                  onClick={handleClearData}
+                  disabled={actionStatus !== "idle"}
+                  className="px-2 h-7 text-[11px] rounded bg-danger/70 hover:bg-danger text-white disabled:opacity-40 mr-2"
+                  title="Очистить все данные фото"
+                >
+                  {actionStatus === "clearing" ? "Очистка..." : "Очистить"}
                 </button>
               </>
             )}

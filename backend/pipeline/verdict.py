@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import math
 from enum import Enum
 from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, List, Optional
@@ -71,6 +72,42 @@ def normalize_geometry_evidence_mode(value: GeometryEvidenceMode | str | None) -
 def _attenuate_likelihood(likelihood: float, alpha: float) -> float:
     alpha = float(min(1.0, max(0.0, alpha)))
     return float(1.0 + alpha * (float(likelihood) - 1.0))
+
+
+def _update_posteriors_log_domain(
+    priors: Dict[str, float],
+    likelihoods_list: List[Dict[str, float]]
+) -> Dict[str, float]:
+    """
+    Безопасное обновление вероятностей в логарифмическом домене.
+    likelihoods_list: список словарей вида {"H0": val, "H1": val, "H2": val}
+    Использует Log-Sum-Exp trick для защиты от underflow/overflow.
+    """
+    # 1. Переводим priors в логарифмы (защита от log(0))
+    log_posteriors = {
+        hyp: math.log(max(prob, 1e-12)) for hyp, prob in priors.items()
+    }
+
+    # 2. Суммируем логарифмы likelihoods
+    for likelihoods in likelihoods_list:
+        for hyp in log_posteriors.keys():
+            l_val = likelihoods.get(hyp, 1.0)  # Нейтральный множитель, если нет данных
+            log_posteriors[hyp] += math.log(max(l_val, 1e-12))
+
+    # 3. Log-Sum-Exp trick для защиты от переполнения при экспоненцировании
+    max_log = max(log_posteriors.values())
+
+    # Сдвигаем значения и возвращаем в линейное пространство
+    linear_probs = {
+        hyp: math.exp(log_val - max_log) for hyp, log_val in log_posteriors.items()
+    }
+
+    # 4. Нормализация (сумма = 1.0)
+    total = sum(linear_probs.values())
+    if total < 1e-12:
+        # Fallback: равномерное распределение если все вероятности слишком малы
+        return {hyp: 1.0 / len(linear_probs) for hyp in linear_probs.keys()}
+    return {hyp: prob / total for hyp, prob in linear_probs.items()}
 
 
 class BayesianMultiHypothesisEngine:
@@ -145,38 +182,52 @@ class BayesianMultiHypothesisEngine:
         l_tex_h0 = max(1.0 - tex, 1e-3)
         l_tex_h2 = max(0.35, 1.0 - tex * 0.5)
 
-        # Chronology evidence as multiplicative gates.
-        chrono_h0 = 1.0
-        chrono_h1 = 1.0
-        chrono_h2 = 1.0
+        # Chronology evidence as multiplicative gates (converted to log-domain).
+        log_chrono_h0 = 0.0
+        log_chrono_h1 = 0.0
+        log_chrono_h2 = 0.0
         impossible_prior = 0.0
         for flag in chronology_flags:
             flag_type = str(flag.get("type", ""))
             prior_p = float(flag.get("prior_p", 0.0) or 0.0)
             impossible_prior = max(impossible_prior, prior_p)
             if flag_type == "impossible_short":
-                chrono_h0 *= 0.05
-                chrono_h1 *= 1.0 + max(0.5, prior_p)
-                chrono_h2 *= 0.60
+                log_chrono_h0 += math.log(0.05)
+                log_chrono_h1 += math.log(1.0 + max(0.5, prior_p))
+                log_chrono_h2 += math.log(0.60)
             elif flag_type == "return":  # chronology.py generates type="return"
-                chrono_h0 *= 0.15
-                chrono_h1 *= 1.75
-                chrono_h2 *= 0.75
+                log_chrono_h0 += math.log(0.15)
+                log_chrono_h1 += math.log(1.75)
+                log_chrono_h2 += math.log(0.75)
             elif flag_type == "transition":  # chronology.py generates type="transition"
-                chrono_h0 *= 0.60
-                chrono_h1 *= 1.15
-                chrono_h2 *= 1.20
+                log_chrono_h0 += math.log(0.60)
+                log_chrono_h1 += math.log(1.15)
+                log_chrono_h2 += math.log(1.20)
 
-        # 2. Update Priors
-        p_h0 = self.priors["H0"] * l_geom_h0 * l_tex_h0 * chrono_h0
-        p_h1 = self.priors["H1"] * l_geom_h1 * l_tex_h1 * chrono_h1
-        p_h2 = self.priors["H2"] * l_geom_h2 * l_tex_h2 * chrono_h2
-        
-        # Normalize
-        total = p_h0 + p_h1 + p_h2 + 1e-9
-        p_h0 /= total
-        p_h1 /= total
-        p_h2 /= total
+        # 2. Update Priors using log-domain calculation
+        # Build likelihood list for log-domain update
+        likelihoods_list = [
+            {
+                "H0": l_geom_h0,
+                "H1": l_geom_h1,
+                "H2": l_geom_h2,
+            },
+            {
+                "H0": l_tex_h0,
+                "H1": l_tex_h1,
+                "H2": l_tex_h2,
+            },
+            {
+                "H0": math.exp(log_chrono_h0) if chronology_flags else 1.0,
+                "H1": math.exp(log_chrono_h1) if chronology_flags else 1.0,
+                "H2": math.exp(log_chrono_h2) if chronology_flags else 1.0,
+            },
+        ]
+
+        posteriors = _update_posteriors_log_domain(self.priors, likelihoods_list)
+        p_h0 = posteriors["H0"]
+        p_h1 = posteriors["H1"]
+        p_h2 = posteriors["H2"]
         
         probs = {"H0_same": float(p_h0), "H1_swap": float(p_h1), "H2_diff": float(p_h2)}
         

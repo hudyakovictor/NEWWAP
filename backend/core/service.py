@@ -45,6 +45,8 @@ class ForensicWorkbenchService:
             "calibration": DatasetDescriptor("calibration", SETTINGS.calibration_dir),
         }
         self.storage_root = ensure_directory(SETTINGS.storage_root)
+        ensure_directory(SETTINGS.main_photos_dir)
+        ensure_directory(SETTINGS.calibration_dir)
         ensure_directory(self.storage_root / "main")
         ensure_directory(self.storage_root / "calibration")
         self.override_path = self.storage_root / "calibration_overrides.json"
@@ -150,6 +152,7 @@ class ForensicWorkbenchService:
             "pose": pose or {"bucket": bucket},
             "quality": summary.get("quality", {}),
             "texture_forensics": summary.get("texture_forensics", {}),
+            "reconstruction": summary.get("reconstruction", {}),
             "metrics": summary.get("metrics", {}),
             "selected_metric_keys": summary.get("selected_metric_keys", BUCKET_METRIC_KEYS.get(bucket, [])),
             "artifacts": summary.get("artifacts", {}),
@@ -612,6 +615,96 @@ class ForensicWorkbenchService:
             "color": "#a855f7",
             "kind": "line",
             "values": [float(r * 100) for r in ratios]
+        })
+
+        # Bone metrics: mean jaw_width_ratio per year
+        jaw_ratios = []
+        for y in years:
+            with_metrics = [r for r in records_by_year[y] if r.get("metrics") and "jaw_width_ratio" in r.get("metrics", {})]
+            if with_metrics:
+                vals = [r["metrics"]["jaw_width_ratio"] for r in with_metrics]
+                jaw_ratios.append(float(np.mean(vals)))
+            else:
+                jaw_ratios.append(0.0)
+        
+        metric_configs.append({
+            "id": "jaw_width_ratio",
+            "title": "Jaw width ratio (bone)",
+            "color": "#ef4444",
+            "kind": "line",
+            "values": jaw_ratios
+        })
+
+        # Bone metrics: mean cranial_face_index per year
+        cranial_indices = []
+        for y in years:
+            with_metrics = [r for r in records_by_year[y] if r.get("metrics") and "cranial_face_index" in r.get("metrics", {})]
+            if with_metrics:
+                vals = [r["metrics"]["cranial_face_index"] for r in with_metrics]
+                cranial_indices.append(float(np.mean(vals)))
+            else:
+                cranial_indices.append(0.0)
+        
+        metric_configs.append({
+            "id": "cranial_face_index",
+            "title": "Cranial face index (bone)",
+            "color": "#f97316",
+            "kind": "line",
+            "values": cranial_indices
+        })
+
+        # Texture metrics: mean silicone probability per year
+        silicone_probs = []
+        for y in years:
+            with_texture = [r for r in records_by_year[y] if r.get("texture_forensics") and "silicone_probability" in r.get("texture_forensics", {})]
+            if with_texture:
+                vals = [r["texture_forensics"]["silicone_probability"] for r in with_texture]
+                silicone_probs.append(float(np.mean(vals)))
+            else:
+                silicone_probs.append(0.0)
+        
+        metric_configs.append({
+            "id": "silicone_probability",
+            "title": "Silicone probability (texture)",
+            "color": "#ec4899",
+            "kind": "line",
+            "values": silicone_probs
+        })
+
+        # Texture metrics: mean pore density per year
+        pore_densities = []
+        for y in years:
+            with_texture = [r for r in records_by_year[y] if r.get("texture_forensics") and "pore_density" in r.get("texture_forensics", {})]
+            if with_texture:
+                vals = [r["texture_forensics"]["pore_density"] for r in with_texture]
+                pore_densities.append(float(np.mean(vals)))
+            else:
+                pore_densities.append(0.0)
+        
+        metric_configs.append({
+            "id": "pore_density",
+            "title": "Pore density (texture)",
+            "color": "#8b5cf6",
+            "kind": "line",
+            "values": pore_densities
+        })
+
+        # Texture metrics: mean wrinkle_forehead per year
+        wrinkles = []
+        for y in years:
+            with_texture = [r for r in records_by_year[y] if r.get("texture_forensics") and "wrinkle_forehead" in r.get("texture_forensics", {})]
+            if with_texture:
+                vals = [r["texture_forensics"]["wrinkle_forehead"] for r in with_texture]
+                wrinkles.append(float(np.mean(vals)))
+            else:
+                wrinkles.append(0.0)
+        
+        metric_configs.append({
+            "id": "wrinkle_forehead",
+            "title": "Forehead wrinkles (texture)",
+            "color": "#06b6d4",
+            "kind": "line",
+            "values": wrinkles
         })
 
         # Age metric (biological model) [FIX-C2] Use configurable age, None = skip age metrics

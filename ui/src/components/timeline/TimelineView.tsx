@@ -1,15 +1,9 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
-import {
-  buildPhotoPoints,
-  metrics,
-  eventMarkers,
-  photoVolume,
-  YEARS,
-} from "../../mock/data";
 import PhotoStrip from "./PhotoStrip";
 import { SeverityIcon, EventIcon } from "./icons";
 import { evidenceOf } from "../../data/evidencePolicy";
 import { EvidenceNote } from "../../components/common/EvidenceStatus";
+import { api } from "../../api";
 
 const LABEL_W = 168;
 const THUMB_SIZE = 50;
@@ -17,18 +11,36 @@ const METRIC_ROW_H = 60; // taller to fit graphs
 const VB_H = 100; // viewBox height for SVG
 
 export default function TimelineView() {
-  const [selectedIndex, setSelectedIndex] = useState(() => {
-    const points = buildPhotoPoints();
-    const idx2012 = points.findIndex(p => p.year === 2012);
-    return idx2012 >= 0 ? idx2012 : 0;
-  });
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [poseFilter, setPoseFilter] = useState<string>("");
   const [zoom, setZoom] = useState<number>(1);
 
-  const photoPoints = useMemo(() =>
-    buildPhotoPoints(poseFilter || undefined),
-    [poseFilter]
-  );
+  // Fetch real data from API
+  useEffect(() => {
+    api.getTimeline().then(timeline => {
+      console.log("[TIMELINE_VIEW] Real timeline data:", timeline);
+      setData(timeline);
+      setLoading(false);
+    }).catch(err => {
+      console.error("[TIMELINE_VIEW] Failed to fetch timeline:", err);
+      setLoading(false);
+    });
+  }, []);
+
+  // Build photo points from yearPoints
+  const photoPoints = useMemo(() => {
+    if (!data) return [];
+    return data.yearPoints.map((yp: any, idx: number) => ({
+      year: yp.year,
+      photo: yp.photo,
+      pose: { classification: 'frontal', yaw: 0, pitch: 0, source: 'api' }, // TODO: get real pose from photo detail
+      anomaly: yp.anomaly,
+      identity: yp.identity,
+      note: yp.note,
+    }));
+  }, [data]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
@@ -56,7 +68,8 @@ export default function TimelineView() {
 
   // Align all metrics to photoPoints
   const processedMetrics = useMemo(() => {
-    return metrics.map(m => {
+    if (!data || !data.metrics) return [];
+    return data.metrics.map((m: any) => {
       let values: number[] = [];
       let flags: (string | undefined)[] = [];
 
@@ -67,7 +80,7 @@ export default function TimelineView() {
       } else {
         // Per-year (27 values), need to expand to match photos
         photoPoints.forEach((p) => {
-          const yearIdx = YEARS.indexOf(p.year);
+          const yearIdx = data.years.indexOf(p.year);
           values.push(m.values[yearIdx] ?? 0);
           flags.push(m.flags?.[yearIdx]);
         });
@@ -78,7 +91,7 @@ export default function TimelineView() {
       
       return { ...m, values, flags, dmin, dmax };
     });
-  }, [photoPoints]);
+  }, [data, photoPoints]);
 
   const getY = (v: number, dmin: number, dmax: number) => {
     const pad = 10;
@@ -86,6 +99,22 @@ export default function TimelineView() {
     const t = (v - dmin) / range;
     return VB_H - pad - t * (VB_H - pad * 2);
   };
+
+  if (loading) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#0a1523]">
+        <div className="text-white/60">Загрузка таймлайна...</div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[#0a1523]">
+        <div className="text-danger">Не удалось загрузить данные таймлайна</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col flex-1 min-h-0 bg-[#0a1523]">
@@ -207,7 +236,7 @@ export default function TimelineView() {
               </div>
               <div className="flex h-full items-center">
                 {photoPoints.map((p, i) => {
-                  const event = eventMarkers.find(e => e.year === p.year && (i === 0 || p.year !== photoPoints[i-1].year));
+                  const event = data?.eventMarkers?.find((e: any) => e.year === p.year && (i === 0 || p.year !== photoPoints[i-1]?.year));
                   return (
                     <div key={i} style={{ width: colWidth }} className="h-full flex items-center justify-center" title={event?.title}>
                       {event && <EventIcon kind={event.kind} />}
@@ -288,7 +317,7 @@ export default function TimelineView() {
         <div className="flex items-center gap-4">
           <div className="text-[10px] text-muted uppercase tracking-widest font-bold">Навигатор расследования</div>
           <div className="flex gap-1 h-4">
-            {photoVolume.slice(0, 27).map((v, i) => (
+            {(data?.photoVolume || []).slice(0, 27).map((v: number, i: number) => (
               <div key={i} className="w-1 bg-accent/40 rounded-t-sm self-end" style={{ height: `${(v / 100) * 100}%` }} />
             ))}
           </div>
