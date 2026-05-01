@@ -35,6 +35,10 @@ class Settings:
     max_recommendations: int = 60
     localxpose_token: str | None = None
     subject_age_at_earliest_photo: int | None = None  # [FIX-C2] Configurable subject age, None = unknown
+    # [FIX-7] Configurable base priors for Bayesian evidence (H0=same, H1=synthetic, H2=different)
+    base_prior_h0: float = 0.78
+    base_prior_h1: float = 0.02
+    base_prior_h2: float = 0.20
 
 
 def build_settings() -> Settings:

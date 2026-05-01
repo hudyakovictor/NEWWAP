@@ -166,11 +166,12 @@ def _calculate_real_snr(
         return 0.0
     
     # Взвешенное среднее отклонений
+    # [FIX-C4] Нет дефолта 0.5 — зона без веса игнорируется (вес 0)
     weighted_delta_sum = sum(
-        delta * zone_weights.get(zone, 0.5)
+        delta * zone_weights.get(zone, 0.0)
         for zone, delta in zone_deltas.items()
     )
-    total_weight = sum(zone_weights.get(zone, 0.5) for zone in zone_deltas.keys())
+    total_weight = sum(zone_weights.get(zone, 0.0) for zone in zone_deltas.keys())
     
     if total_weight == 0:
         return 0.0
@@ -200,9 +201,15 @@ def _compute_adaptive_priors(
     """
     [FIX-7] Адаптивные априоры на основе метаданных пар.
     Учитываем: временной интервал, качество, ракурс.
+    Базовые значения берутся из SETTINGS (конфигурируемы), не хардкод.
     """
     if base_priors is None:
-        base_priors = {"H0": 0.78, "H1": 0.02, "H2": 0.20}
+        # [FIX-7] Используем конфигурируемые значения из SETTINGS
+        base_priors = {
+            "H0": SETTINGS.base_prior_h0,
+            "H1": SETTINGS.base_prior_h1,
+            "H2": SETTINGS.base_prior_h2,
+        }
     
     priors = dict(base_priors)
     
