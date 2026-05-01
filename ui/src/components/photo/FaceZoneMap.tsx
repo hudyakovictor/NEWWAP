@@ -14,9 +14,10 @@ export default function FaceZoneMap({
   const colorFor = (z: FaceZone) => {
     if (z.excluded) return "#6b7a90";
     if (!z.visible) return "#233657";
-    if (z.score > 0.8) return "#22c55e";
-    if (z.score > 0.6) return "#eab308";
-    if (z.score > 0.4) return "#f59e0b";
+    const score = z.score ?? 0;
+    if (score > 0.8) return "#22c55e";
+    if (score > 0.6) return "#eab308";
+    if (score > 0.4) return "#f59e0b";
     return "#ef4444";
   };
   return (

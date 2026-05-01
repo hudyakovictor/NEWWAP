@@ -3,6 +3,25 @@ import { Page, PanelCard } from "../components/common/Page";
 import { api, type Investigation, type AnomalyRecord, type EvidenceBreakdown } from "../api";
 
 import { useApp } from "../store/appStore";
+import { EvidenceNote } from "../components/common/EvidenceStatus";
+import { evidenceOf } from "../data/evidencePolicy";
+
+interface SavedReport {
+  id: string;
+  title: string;
+  subject: string;
+  verdict: "H0" | "H1" | "H2";
+  createdAt: string;
+  photos: number;
+  format: "pdf" | "json" | "html";
+}
+
+const SAVED_REPORTS: SavedReport[] = [
+  { id: "r-001", title: "Полное расследование 1999–2025", subject: "Субъект 1", verdict: "H1", createdAt: "2025-04-21", photos: 1742, format: "pdf" },
+  { id: "r-002", title: "Аудит кластера B (2015–2020)", subject: "Субъект 1", verdict: "H1", createdAt: "2025-04-22", photos: 432, format: "html" },
+  { id: "r-003", title: "Проверка покрытия калибровки", subject: "калибровка", verdict: "H0", createdAt: "2025-04-23", photos: 1742, format: "json" },
+  { id: "r-004", title: "Кейс подмены 2012", subject: "Субъект 1", verdict: "H1", createdAt: "2025-04-24", photos: 58, format: "pdf" },
+];
 
 interface ReportDraft {
   title: string;
@@ -26,10 +45,11 @@ export default function ReportBuilderPage() {
   const [cases, setCases] = useState<Investigation[]>([]);
   const [anomalies, setAnomalies] = useState<AnomalyRecord[]>([]);
   const [evidence, setEvidence] = useState<EvidenceBreakdown | null>(null);
+  const [showSaved, setShowSaved] = useState(false);
 
   const [draft, setDraft] = useState<ReportDraft>({
     title: "FORENSIC_SNAPSHOT_INTERIM",
-    subject: "Subject 1",
+    subject: "Субъект 1",
     caseId: "inv-001",
     format: "json",
     range: { from: 1999, to: 2025 },
@@ -41,7 +61,7 @@ export default function ReportBuilderPage() {
       calibration: true,
       photos: false,
     },
-    notes: "Automated forensic compilation. High confidence markers only.",
+    notes: "Автоматическая forensic-компиляция. Только маркеры высокой уверенности.",
   });
 
   useEffect(() => {
@@ -81,8 +101,8 @@ export default function ReportBuilderPage() {
 
   return (
     <Page
-      title="Report Architect"
-      subtitle="Configure forensic export bundle"
+      title="Конструктор отчётов"
+      subtitle="Настройка forensic-экспорта"
       actions={
         <button
           id="btn_download_json"
@@ -97,16 +117,79 @@ export default function ReportBuilderPage() {
           }}
           className="px-6 h-10 rounded-full bg-accent text-[12px] font-black tracking-widest text-white shadow-lg shadow-accent/20 hover:scale-105 active:scale-95 transition-all"
         >
-          GENERATE BUNDLE
+          СГЕНЕРИРОВАТЬ БАНДЛ
         </button>
       }
     >
+      <EvidenceNote level={evidenceOf("report_builder")!.level} className="mb-3">
+        <div><strong>Реальная часть:</strong> {evidenceOf("report_builder")!.realPart || "нет"}</div>
+        <div><strong>Заглушка:</strong> {evidenceOf("report_builder")!.stubPart}</div>
+        <div><strong>Для перехода:</strong> {evidenceOf("report_builder")!.upgradeHint}</div>
+      </EvidenceNote>
+      {/* Saved reports (merged from ReportsPage) */}
+      <PanelCard
+        title={`📁 Сохранённые отчёты (${SAVED_REPORTS.length})`}
+        className="mb-4"
+      >
+        <button
+          onClick={() => setShowSaved(!showSaved)}
+          className="text-[10px] text-muted hover:text-white mb-2 transition-colors"
+        >
+          {showSaved ? "▾ Скрыть список" : "▸ Показать список"}
+        </button>
+        {showSaved && (
+          <table className="w-full text-[11px]">
+            <thead className="text-muted border-b border-line">
+              <tr>
+                <th className="text-left p-2">id</th>
+                <th className="text-left p-2">название</th>
+                <th className="text-left p-2">субъект</th>
+                <th className="text-left p-2">вердикт</th>
+                <th className="text-left p-2">фото</th>
+                <th className="text-left p-2">создан</th>
+                <th className="text-left p-2">формат</th>
+                <th className="text-right p-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {SAVED_REPORTS.map((r) => (
+                <tr key={r.id} className="border-b border-line/40">
+                  <td className="p-2 font-mono text-white">{r.id}</td>
+                  <td className="p-2 text-white">{r.title}</td>
+                  <td className="p-2 text-muted">{r.subject}</td>
+                  <td className="p-2">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] ${
+                        r.verdict === "H0" ? "bg-ok/30 text-ok" : r.verdict === "H1" ? "bg-danger/30 text-danger" : "bg-warn/30 text-warn"
+                      }`}
+                    >
+                      {r.verdict}
+                    </span>
+                  </td>
+                  <td className="p-2 font-mono text-white">{r.photos}</td>
+                  <td className="p-2 text-muted">{r.createdAt}</td>
+                  <td className="p-2 uppercase text-white">{r.format}</td>
+                  <td className="p-2 text-right">
+                    <button className="px-2 h-6 rounded bg-line/60 hover:bg-line text-[10px] text-white mr-1">
+                      Открыть
+                    </button>
+                    <button className="px-2 h-6 rounded bg-info/60 hover:bg-info text-[10px] text-white">
+                      Экспорт
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </PanelCard>
+
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
         {/* Left: Controls */}
         <div className="md:col-span-5 space-y-4">
-          <PanelCard title="🏷️ Metadata" className="bg-bg-deep/50">
+          <PanelCard title="🏷️ Метаданные" className="bg-bg-deep/50">
             <div className="space-y-4">
-              <Field label="Document Title">
+              <Field label="Название документа">
                 <input
                   id="inp_title"
                   value={draft.title}
@@ -115,7 +198,7 @@ export default function ReportBuilderPage() {
                 />
               </Field>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Target Subject">
+                <Field label="Целевой субъект">
                   <input
                     id="inp_subject"
                     value={draft.subject}
@@ -123,7 +206,7 @@ export default function ReportBuilderPage() {
                     className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
                   />
                 </Field>
-                <Field label="Active Investigation">
+                <Field label="Активное расследование">
                   <select
                     id="sel_case"
                     value={draft.caseId}
@@ -137,9 +220,9 @@ export default function ReportBuilderPage() {
             </div>
           </PanelCard>
 
-          <PanelCard title="📅 Scope & Format">
+          <PanelCard title="📅 Объём и формат">
             <div className="grid grid-cols-3 gap-3">
-              <Field label="Range From">
+              <Field label="С">
                 <input
                   id="inp_range_from"
                   type="number"
@@ -148,7 +231,7 @@ export default function ReportBuilderPage() {
                   className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
                 />
               </Field>
-              <Field label="Range To">
+              <Field label="По">
                 <input
                   id="inp_range_to"
                   type="number"
@@ -157,7 +240,7 @@ export default function ReportBuilderPage() {
                   className="w-full h-9 px-3 rounded-xl bg-bg-deep border border-line text-white text-[11px]"
                 />
               </Field>
-              <Field label="MIME Type">
+              <Field label="Тип MIME">
                 <select
                   id="sel_format"
                   value={draft.format}
@@ -172,7 +255,7 @@ export default function ReportBuilderPage() {
             </div>
           </PanelCard>
 
-          <PanelCard title="🧩 Component Selection">
+          <PanelCard title="🧩 Выбор компонентов">
             <div className="grid grid-cols-2 gap-x-6 gap-y-2 py-2">
               {(Object.keys(draft.sections) as Array<keyof typeof draft.sections>).map((k) => (
                 <label key={k} className="flex items-center justify-between cursor-pointer group p-2 rounded-xl hover:bg-white/5 transition-colors">
@@ -191,30 +274,30 @@ export default function ReportBuilderPage() {
             </div>
           </PanelCard>
 
-          <PanelCard title="📝 Executive Notes">
+          <PanelCard title="📝 Пояснительные заметки">
             <textarea
               id="txt_notes"
               rows={4}
               className="w-full px-3 py-2 bg-bg-deep border border-line rounded-2xl text-white text-[11px] outline-none focus:border-accent transition-all resize-none"
               value={draft.notes}
               onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-              placeholder="Enter analysis context..."
+              placeholder="Введите контекст анализа..."
             />
           </PanelCard>
         </div>
 
         {/* Right: Preview */}
         <div className="md:col-span-7">
-          <PanelCard title="📦 Final Payload Preview" className="h-full flex flex-col bg-black/20 border-line/20">
+          <PanelCard title="📦 Предпросмотр бандла" className="h-full flex flex-col bg-black/20 border-line/20">
             <div className="flex items-center justify-between mb-4 px-1">
               <div className="flex gap-4">
                 <div className="text-[10px] text-muted font-bold uppercase tracking-widest flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-info"></span>
-                  {Object.values(draft.sections).filter(Boolean).length} Units
+                  {Object.values(draft.sections).filter(Boolean).length} блоков
                 </div>
                 <div className="text-[10px] text-muted font-bold uppercase tracking-widest flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-warn"></span>
-                  {includedAnomalies.length} Flagged
+                  {includedAnomalies.length} помечено
                 </div>
               </div>
               <div className="text-[10px] font-mono text-accent">{draft.format.toUpperCase()} VERSION 1.0</div>

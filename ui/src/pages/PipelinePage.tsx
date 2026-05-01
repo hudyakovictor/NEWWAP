@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { api, type PipelineStage } from "../api";
+import { api, type PipelineStage, type CacheSummary } from "../api";
+import { EvidenceBadge, EvidenceNote } from "../components/common/EvidenceStatus";
 
 export default function PipelinePage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
+  const [cache, setCache] = useState<CacheSummary | null>(null);
+  const [showCache, setShowCache] = useState(false);
 
   useEffect(() => {
     api.getPipelineStages().then(setStages);
+    api.getCacheSummary().then(setCache);
   }, []);
 
   if (!stages.length) {
-    return <Page title="Pipeline diagnostics"><div className="text-[11px] text-muted">Loading…</div></Page>;
+    return <Page title="Пайплайн"><div className="text-[11px] text-muted">Загрузка…</div></Page>;
   }
 
   const totalFailed = stages.reduce((a, s) => a + s.failed, 0);
@@ -19,22 +23,31 @@ export default function PipelinePage() {
 
   return (
     <Page
-      title="Pipeline diagnostics (debug)"
-      subtitle="Per-stage ingest pipeline: throughput, errors, GPU footprint"
+      title="Пайплайн"
+      subtitle="Стадии обработки: пропускная способность, ошибки, ресурсы"
       actions={
-        <button className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white">
-          Re-run failed items
+        <button
+          disabled={totalFailed === 0}
+          title={totalFailed === 0 ? "Ошибок нет; непосчитанные стадии отображаются как pending в примечаниях." : "Перезапуск серверной очереди ошибок"}
+          className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Перезапустить ошибки
         </button>
       }
     >
       <div className="grid grid-cols-4 gap-3 mb-3">
-        <Stat label="stages" value={String(stages.length)} color="#38bdf8" />
-        <Stat label="total failed" value={String(totalFailed)} color={totalFailed > 0 ? "#ef4444" : "#22c55e"} />
-        <Stat label="avg total per item" value={`${totalTime} ms`} color="#a855f7" />
-        <Stat label="peak GPU" value={`${maxGPU} MB`} color="#22c55e" />
+        <Stat label="стадий" value={String(stages.length)} color="#38bdf8" />
+        <Stat label="всего ошибок" value={String(totalFailed)} color={totalFailed > 0 ? "#ef4444" : "#22c55e"} />
+        <Stat label="ср. время на фото" value={`${totalTime} мс`} color="#a855f7" />
+        <Stat label="пик GPU" value={`${maxGPU} МБ`} color="#22c55e" />
       </div>
 
-      <PanelCard title="Stage flow" className="mb-3">
+      <EvidenceNote level="partial" className="mb-3">
+        Важно: «ошибки» — это реальные сбои стадии. Непосчитанные downstream-этапы показываются в примечаниях как pending
+        и не считаются forensic-провалом.
+      </EvidenceNote>
+
+      <PanelCard title="Поток стадий" className="mb-3">
         <div className="flex gap-2 overflow-auto pb-2">
           {stages.map((s, i) => {
             const dropPct =
@@ -50,19 +63,22 @@ export default function PipelinePage() {
                 >
                   <div className="text-[10px] text-muted">#{s.order}</div>
                   <div className="text-[12px] font-semibold text-white leading-tight">{s.name}</div>
+                  <div className="mt-1">
+                    <EvidenceBadge level={s.outputCount === s.inputCount ? "real" : s.failed > 0 ? "partial" : "pending"} />
+                  </div>
                   <div className="mt-1 grid grid-cols-2 gap-1 text-[10px]">
-                    <div className="text-muted">in</div>
+                    <div className="text-muted">вх.</div>
                     <div className="font-mono text-white">{s.inputCount}</div>
-                    <div className="text-muted">out</div>
+                    <div className="text-muted">вых.</div>
                     <div className="font-mono text-white">{s.outputCount}</div>
-                    <div className="text-muted">fail</div>
+                    <div className="text-muted">ошиб.</div>
                     <div className={`font-mono ${s.failed > 0 ? "text-danger" : "text-muted"}`}>{s.failed}</div>
-                    <div className="text-muted">avg</div>
-                    <div className="font-mono text-info">{s.avgMs} ms</div>
+                    <div className="text-muted">ср.</div>
+                    <div className="font-mono text-info">{s.avgMs} мс</div>
                     {s.gpuMemoryMB ? (
                       <>
                         <div className="text-muted">gpu</div>
-                        <div className="font-mono text-accent">{s.gpuMemoryMB} MB</div>
+                        <div className="font-mono text-accent">{s.gpuMemoryMB} МБ</div>
                       </>
                     ) : null}
                   </div>
@@ -80,19 +96,19 @@ export default function PipelinePage() {
         </div>
       </PanelCard>
 
-      <PanelCard title="Details">
+      <PanelCard title="Детали стадий">
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
               <th className="text-left p-2">#</th>
-              <th className="text-left p-2">stage</th>
-              <th className="text-left p-2">in</th>
-              <th className="text-left p-2">out</th>
-              <th className="text-left p-2">failed</th>
-              <th className="text-left p-2">avg ms</th>
-              <th className="text-left p-2">GPU MB</th>
-              <th className="text-left p-2">last error</th>
-              <th className="text-left p-2">notes</th>
+              <th className="text-left p-2">стадия</th>
+              <th className="text-left p-2">вх.</th>
+              <th className="text-left p-2">вых.</th>
+              <th className="text-left p-2">ошибки</th>
+              <th className="text-left p-2">ср. мс</th>
+              <th className="text-left p-2">GPU МБ</th>
+              <th className="text-left p-2">послед. ошибка</th>
+              <th className="text-left p-2">примечания</th>
             </tr>
           </thead>
           <tbody>
@@ -112,6 +128,100 @@ export default function PipelinePage() {
           </tbody>
         </table>
       </PanelCard>
+
+      {/* Cache section (merged from CachePage) */}
+      <button
+        onClick={() => setShowCache(!showCache)}
+        className="mt-3 px-3 h-8 rounded bg-line/70 hover:bg-line text-[11px] text-white flex items-center gap-2"
+      >
+        <span className={`transition-transform ${showCache ? "rotate-180" : ""}`}>▼</span>
+        {showCache ? "Свернуть кэш реконструкций" : "Кэш реконструкций (3DDFA_v3)"}
+      </button>
+
+      {showCache && cache && (
+        <div className="mt-3 space-y-3">
+          {(() => {
+            const budgetUsage = cache.vramFootprintMB / cache.vramBudgetMB;
+            return (
+              <>
+                <div className="grid grid-cols-4 gap-3">
+                  <Stat label="записи" value={`${cache.currentSize}/${cache.maxSize}`} color="#38bdf8" />
+                  <Stat label="VRAM занято" value={`${cache.vramFootprintMB} МБ`} color="#a855f7" />
+                  <Stat label="VRAM бюджет" value={`${cache.vramBudgetMB} МБ`} color="#22c55e" />
+                  <Stat label="утилизация" value={`${(budgetUsage * 100).toFixed(1)}%`} color={budgetUsage > 0.8 ? "#ef4444" : "#22c55e"} />
+                </div>
+
+                <PanelCard title="Бюджет VRAM">
+                  <div className="h-3 bg-bg-deep rounded overflow-hidden">
+                    <div
+                      className="h-full"
+                      style={{
+                        width: `${Math.min(100, budgetUsage * 100)}%`,
+                        background: budgetUsage > 0.8 ? "#ef4444" : budgetUsage > 0.6 ? "#f59e0b" : "#22c55e",
+                      }}
+                    />
+                  </div>
+                  <div className="text-[11px] text-muted mt-2">
+                    Кэш освобождает VRAM при вытеснении. Блокировка новых реконструкций при остатке &lt;200 МБ.
+                  </div>
+                </PanelCard>
+
+                <PanelCard title={`Записи (${cache.entries.length})`}>
+                  <table className="w-full text-[11px]">
+                    <thead className="text-muted border-b border-line">
+                      <tr>
+                        <th className="text-left p-2">md5</th>
+                        <th className="text-left p-2">фото</th>
+                        <th className="text-left p-2">год</th>
+                        <th className="text-left p-2">нейтр.</th>
+                        <th className="text-left p-2">VRAM</th>
+                        <th className="text-left p-2">создано</th>
+                        <th className="text-left p-2">посл. доступ</th>
+                        <th className="text-left p-2">попадания</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cache.entries.map((e) => (
+                        <tr key={e.md5} className="border-b border-line/30">
+                          <td className="p-2 font-mono text-white truncate max-w-[200px]">{e.md5}</td>
+                          <td className="p-2 font-mono text-muted">{e.photoId}</td>
+                          <td className="p-2 font-mono text-white">{e.year}</td>
+                          <td className="p-2">{e.neutral ? <span className="text-ok">да</span> : <span className="text-muted">нет</span>}</td>
+                          <td className="p-2 font-mono text-white">{e.vramMB} МБ</td>
+                          <td className="p-2 text-muted">{e.createdAt}</td>
+                          <td className="p-2 text-muted">{e.lastAccess}</td>
+                          <td className="p-2 font-mono text-info">{e.hits}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </PanelCard>
+
+                <PanelCard title="История вытеснений">
+                  <table className="w-full text-[11px]">
+                    <thead className="text-muted border-b border-line">
+                      <tr>
+                        <th className="text-left p-2">md5</th>
+                        <th className="text-left p-2">когда</th>
+                        <th className="text-left p-2">причина</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cache.evictions.map((ev, i) => (
+                        <tr key={i} className="border-b border-line/30">
+                          <td className="p-2 font-mono text-muted">{ev.md5}</td>
+                          <td className="p-2 text-muted">{ev.at}</td>
+                          <td className={`p-2 ${ev.reason.includes("VRAM") ? "text-warn" : "text-muted"}`}>{ev.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </PanelCard>
+              </>
+            );
+          })()}
+        </div>
+      )}
     </Page>
   );
 }

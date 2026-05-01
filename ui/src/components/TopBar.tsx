@@ -2,66 +2,75 @@ export type PageId =
   | "timeline"
   | "photos"
   | "pairs"
+  | "comparison"
   | "matrix"
-  | "evidence"
   | "ageing"
   | "anomalies"
-  | "investigations"
+  | "iterations"
   | "calibration"
   | "pipeline"
-  | "cache"
   | "jobs"
-  | "reports"
+  | "investigations"
+  | "diary"
   | "report_builder"
-  | "api"
-  | "logs"
-  | "ground_truth"
-  | "audit"
+  | "settings"
   | "signals"
   | "progress"
   | "clusters"
-  | "iterations"
-  | "diary"
-  | "settings";
+  | "audit"
+  | "logs"
+  | "evidence_map";
 
 const MENU_GROUPS: { title: string; items: { id: PageId; label: string }[] }[] = [
   {
-    title: "Main",
+    title: "Фотоархив",
     items: [
-      { id: "progress", label: "Progress" },
-      { id: "iterations", label: "Iterations" },
-      { id: "timeline", label: "Timeline" },
-      { id: "photos", label: "Photos" },
-      { id: "pairs", label: "Pair" },
-      { id: "anomalies", label: "Anomalies" },
-      { id: "investigations", label: "Cases" },
+      { id: "photos", label: "Фото" },
+      { id: "clusters", label: "Кластеры" },
+      { id: "signals", label: "Сигналы" },
     ],
   },
   {
-    title: "Debug",
+    title: "Анализ",
     items: [
-      { id: "audit", label: "Audit" },
-      { id: "logs", label: "Logs" },
+      { id: "timeline", label: "Таймлайн" },
+      { id: "pairs", label: "Пара" },
+      { id: "comparison", label: "Сравнение" },
+      { id: "matrix", label: "Матрица" },
+      { id: "iterations", label: "Итерации" },
+      { id: "anomalies", label: "Аномалии" },
+      { id: "ageing", label: "Возраст" },
+    ],
+  },
+  {
+    title: "Калибровка",
+    items: [
+      { id: "calibration", label: "Бакеты" },
+      { id: "progress", label: "Прогресс" },
+      { id: "evidence_map", label: "Карта доказанности" },
+    ],
+  },
+  {
+    title: "Конвейер",
+    items: [
+      { id: "pipeline", label: "Пайплайн" },
+      { id: "jobs", label: "Задачи" },
+      { id: "investigations", label: "Кейсы" },
       { id: "diary", label: "Дневник" },
-      { id: "ground_truth", label: "Ground truth" },
-      { id: "signals", label: "Real signals" },
-      { id: "clusters", label: "Visual clusters" },
-      { id: "matrix", label: "N×N" },
-      { id: "evidence", label: "Evidence" },
-      { id: "ageing", label: "Ageing" },
-      { id: "pipeline", label: "Pipeline" },
-      { id: "cache", label: "Cache" },
-      { id: "api", label: "API" },
     ],
   },
   {
-    title: "Ops",
+    title: "Отчёты",
     items: [
-      { id: "calibration", label: "Calibration" },
-      { id: "jobs", label: "Jobs" },
-      { id: "reports", label: "Reports" },
-      { id: "report_builder", label: "Report+" },
-      { id: "settings", label: "Settings" },
+      { id: "report_builder", label: "Конструктор" },
+      { id: "settings", label: "Настройки" },
+    ],
+  },
+  {
+    title: "Диагностика",
+    items: [
+      { id: "audit", label: "Аудит" },
+      { id: "logs", label: "Логи" },
     ],
   },
 ];
@@ -90,7 +99,7 @@ export default function TopBar({
         </div>
         <div className="flex flex-col leading-tight text-left">
           <span className="text-xs font-semibold text-white tracking-wide">DEEPUTIN</span>
-          <span className="text-[10px] text-muted -mt-0.5">investigation · 1999–2025</span>
+          <span className="text-[10px] text-muted -mt-0.5">расследование · 1999–2025</span>
         </div>
       </button>
 
@@ -118,13 +127,16 @@ export default function TopBar({
       </nav>
 
       <div className="ml-auto flex items-center gap-2 text-[11px] text-muted shrink-0">
-        <span className="px-2 py-1 rounded bg-line/60 text-[10px]">
-          <span className="text-ok">●</span> mock
+        <span
+          className="px-2 py-1 rounded bg-ok/10 border border-ok/30 text-[10px] text-ok"
+          title="Интерфейс подключён к HTTP backend. Часть страниц всё ещё содержит явно помеченные заглушки."
+        >
+          ● backend
         </span>
         <button
           onClick={() => onNav("audit")}
           className="px-2 py-1 rounded text-[10px] border border-line/60 hover:bg-line/40"
-          title="Click for full audit report"
+          title="Нажмите для полного отчёта аудита"
         >
           {audit ? (
             audit.counts.danger > 0 ? (

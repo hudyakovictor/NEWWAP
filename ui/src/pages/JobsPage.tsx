@@ -33,29 +33,29 @@ export default function JobsPage() {
 
   return (
     <Page
-      title="Jobs"
-      subtitle="Asynchronous pipeline jobs · extract / recompute / calibrate / reindex"
+      title="Задачи"
+      subtitle="Асинхронные задачи конвейера · извлечение / пересчёт / калибровка / реиндексация"
       actions={
         <>
-          <button onClick={() => addJob("extract")} className="px-3 h-8 rounded bg-ok/70 hover:bg-ok text-[11px] text-white">+ Extract</button>
-          <button onClick={() => addJob("recompute_metrics")} className="px-3 h-8 rounded bg-info/70 hover:bg-info text-[11px] text-white">+ Recompute</button>
-          <button onClick={() => addJob("calibrate")} className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white">+ Calibrate</button>
-          <button onClick={() => addJob("reindex")} className="px-3 h-8 rounded bg-line hover:bg-line/80 text-[11px] text-white">+ Reindex</button>
+          <button onClick={() => addJob("extract")} className="px-3 h-8 rounded bg-ok/70 hover:bg-ok text-[11px] text-white">+ Извлечение</button>
+          <button onClick={() => addJob("recompute_metrics")} className="px-3 h-8 rounded bg-info/70 hover:bg-info text-[11px] text-white">+ Пересчёт</button>
+          <button onClick={() => addJob("calibrate")} className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white">+ Калибровка</button>
+          <button onClick={() => addJob("reindex")} className="px-3 h-8 rounded bg-line hover:bg-line/80 text-[11px] text-white">+ Реиндексация</button>
         </>
       }
     >
-      <PanelCard title="Queue">
+      <PanelCard title="Очередь">
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
               <th className="text-left p-2">id</th>
-              <th className="text-left p-2">kind</th>
-              <th className="text-left p-2">status</th>
-              <th className="text-left p-2">progress</th>
-              <th className="text-left p-2">processed</th>
-              <th className="text-left p-2">started</th>
-              <th className="text-left p-2">finished</th>
-              <th className="text-left p-2">note</th>
+              <th className="text-left p-2">тип</th>
+              <th className="text-left p-2">статус</th>
+              <th className="text-left p-2">прогресс</th>
+              <th className="text-left p-2">обработано</th>
+              <th className="text-left p-2">запуск</th>
+              <th className="text-left p-2">завершено</th>
+              <th className="text-left p-2">примечание</th>
               <th className="text-right p-2"></th>
             </tr>
           </thead>
@@ -105,7 +105,7 @@ export default function JobsPage() {
                     onClick={() => setOpened(j)}
                     className="px-2 h-6 rounded bg-line/60 hover:bg-line text-[10px] text-white"
                   >
-                    Log
+                    Журнал
                   </button>
                 </td>
               </tr>
@@ -115,15 +115,15 @@ export default function JobsPage() {
       </PanelCard>
 
       {opened && (
-        <Modal title={`Job log — ${opened.id} (${opened.kind})`} onClose={() => setOpened(null)} width="max-w-4xl">
+        <Modal title={`Журнал задачи — ${opened.id} (${opened.kind})`} onClose={() => setOpened(null)} width="max-w-4xl">
           <div className="grid grid-cols-4 gap-2 text-[11px] mb-3">
-            <KV k="status" v={opened.status} />
-            <KV k="progress" v={`${(opened.progress * 100).toFixed(0)}%`} />
-            <KV k="processed" v={`${opened.processed}/${opened.total}`} />
-            <KV k="started" v={opened.startedAt} />
+            <KV k="статус" v={opened.status} />
+            <KV k="прогресс" v={`${(opened.progress * 100).toFixed(0)}%`} />
+            <KV k="обработано" v={`${opened.processed}/${opened.total}`} />
+            <KV k="запуск" v={opened.startedAt} />
           </div>
           <div className="bg-black/60 border border-line rounded p-2 max-h-[50vh] overflow-auto font-mono text-[11px] leading-relaxed">
-            {(opened.logs ?? ["(no log entries)"]).map((ln, i) => (
+            {(opened.logs ?? ["(нет записей)"]).map((ln, i) => (
               <div key={i} className={ln.includes("OOM") ? "text-danger" : ln.includes("complet") ? "text-ok" : "text-muted"}>
                 {ln}
               </div>

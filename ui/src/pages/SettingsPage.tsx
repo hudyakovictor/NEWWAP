@@ -11,19 +11,19 @@ export default function SettingsPage() {
   const [vramGuard, setVramGuard] = useState(true);
 
   return (
-    <Page title="Settings" subtitle="Algorithm thresholds, pipeline toggles, cache">
+    <Page title="Настройки" subtitle="Пороги алгоритмов, переключатели конвейера, кэш">
       <div className="grid grid-cols-2 gap-3">
-        <PanelCard title="Expression thresholds">
-          <Slider label={`Smile threshold (${smileTh.toFixed(2)})`} value={smileTh} onChange={setSmileTh} />
-          <Slider label={`Jaw-open threshold (${jawTh.toFixed(2)})`} value={jawTh} onChange={setJawTh} />
+        <PanelCard title="Пороги мимики">
+          <Slider label={`Порог улыбки (${smileTh.toFixed(2)})`} value={smileTh} onChange={setSmileTh} />
+          <Slider label={`Порог раскрытия челюсти (${jawTh.toFixed(2)})`} value={jawTh} onChange={setJawTh} />
           <Toggle
-            label="Exclude soft-tissue zones on smile"
+            label="Исключать зоны мягких тканей при улыбке"
             value={excludeSoftOnSmile}
             onChange={setExcludeSoftOnSmile}
           />
         </PanelCard>
 
-        <PanelCard title="Bayesian priors">
+        <PanelCard title="Байесовские априори">
           <Slider
             label={`H1 prior · double / mask (${h1Prior.toFixed(3)})`}
             min={0.001}
@@ -33,25 +33,24 @@ export default function SettingsPage() {
             onChange={setH1Prior}
           />
           <div className="text-[11px] text-muted mt-2">
-            Elevated H1 prior increases sensitivity to synthetic-material detection (recommended for security-critical
-            workflows).
+            Повышенный априори H1 увеличивает чувствительность к обнаружению синтетики (рекомендуется для критичных с точки зрения безопасности рабочих процессов).
           </div>
         </PanelCard>
 
-        <PanelCard title="Pose detection">
+        <PanelCard title="Детекция ракурса">
           <Toggle
-            label="Enable 3DDFA-V3 fallback when primary detector unsure"
+            label="Включить запасной 3DDFA-V3, если основной детектор не уверен"
             value={useFallback}
             onChange={setUseFallback}
           />
           <div className="text-[11px] text-muted mt-2">
-            Adds redundancy for difficult angles / lighting at the cost of extra VRAM.
+            Добавляет избыточность для сложных ракурсов / освещения ценой дополнительного VRAM.
           </div>
         </PanelCard>
 
-        <PanelCard title="Reconstruction cache">
+        <PanelCard title="Кэш реконструкций">
           <Slider
-            label={`Cache size (${cacheSize})`}
+            label={`Размер кэша (${cacheSize})`}
             min={1}
             max={64}
             step={1}
@@ -59,7 +58,7 @@ export default function SettingsPage() {
             onChange={(v) => setCacheSize(Math.round(v))}
           />
           <Toggle
-            label="Guard against VRAM overflow (pre-check + explicit free)"
+            label="Защита от переполнения VRAM (предпроверка + явное освобождение)"
             value={vramGuard}
             onChange={setVramGuard}
           />

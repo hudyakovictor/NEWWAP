@@ -39,27 +39,26 @@ export default function CommandPalette() {
 
   const navCommands: Cmd[] = useMemo(() => {
     const pages: Array<{ id: PageId; label: string; hint?: string }> = [
-      { id: "progress", label: "Open Progress", hint: "real vs stub" },
-      { id: "timeline", label: "Open Timeline", hint: "main view" },
-      { id: "photos", label: "Open Photos" },
-      { id: "pairs", label: "Open Pair analysis" },
-      { id: "matrix", label: "Open N×N matrix", hint: "debug" },
-      { id: "evidence", label: "Open Evidence synthesis", hint: "debug" },
-      { id: "ageing", label: "Open Ageing curve", hint: "debug" },
-      { id: "anomalies", label: "Open Anomalies" },
-      { id: "investigations", label: "Open Cases" },
-      { id: "calibration", label: "Open Calibration" },
-      { id: "pipeline", label: "Open Pipeline diagnostics", hint: "debug" },
-      { id: "cache", label: "Open Cache inspector", hint: "debug" },
-      { id: "jobs", label: "Open Jobs" },
-      { id: "reports", label: "Open Reports" },
-      { id: "report_builder", label: "Open Report builder", hint: "debug" },
-      { id: "api", label: "Open API explorer", hint: "debug" },
-      { id: "audit", label: "Open Audit", hint: "debug · autonomous" },
-      { id: "logs", label: "Open Logs", hint: "debug" },
-      { id: "ground_truth", label: "Open Ground truth", hint: "debug" },
-      { id: "signals", label: "Open Real signals", hint: "debug · real photos" },
-      { id: "settings", label: "Open Settings" },
+      { id: "photos", label: "Фотоархив" },
+      { id: "clusters", label: "Визуальные кластеры" },
+      { id: "signals", label: "Сигналы", hint: "реальные фото" },
+      { id: "timeline", label: "Таймлайн", hint: "главная" },
+      { id: "pairs", label: "Анализ пары" },
+      { id: "matrix", label: "Матрица N×N" },
+      { id: "iterations", label: "Итерации" },
+      { id: "anomalies", label: "Аномалии" },
+      { id: "ageing", label: "Кривая старения" },
+      { id: "calibration", label: "Калибровка" },
+      { id: "progress", label: "Прогресс", hint: "real vs stub" },
+      { id: "pipeline", label: "Пайплайн" },
+      { id: "jobs", label: "Задачи" },
+      { id: "investigations", label: "Кейсы" },
+      { id: "diary", label: "Дневник" },
+      { id: "report_builder", label: "Конструктор отчётов" },
+      { id: "settings", label: "Настройки" },
+      { id: "audit", label: "Аудит", hint: "автономный" },
+      { id: "logs", label: "Логи" },
+      { id: "evidence_map", label: "Карта доказанности", hint: "готовность платформы" },
     ];
     return pages.map((p) => ({
       id: `nav-${p.id}`,
@@ -78,7 +77,7 @@ export default function CommandPalette() {
       PHOTOS.slice(0, 300).map((p) => ({
         id: `photo-${p.id}`,
         label: `Photo ${p.date} — ${p.pose}`,
-        hint: p.cluster,
+        hint: p.cluster ?? undefined,
         group: "photo",
         run: () => {
           // Hop to photos page with the photo pre-opened via focus state not supported,
@@ -128,13 +127,13 @@ export default function CommandPalette() {
                 filtered[activeIdx]?.run();
               }
             }}
-            placeholder="Type to search navigation, photos, actions…"
+            placeholder="Поиск по навигации, фото, действиям…"
             className="w-full h-9 px-3 bg-bg-deep border border-line rounded text-white text-[12px]"
           />
         </div>
         <div className="max-h-[50vh] overflow-auto">
           {filtered.length === 0 && (
-            <div className="p-4 text-[11px] text-muted">No matches for "{query}".</div>
+            <div className="p-4 text-[11px] text-muted">Ничего не найдено для «{query}».</div>
           )}
           {filtered.map((c, i) => (
             <button
@@ -158,7 +157,7 @@ export default function CommandPalette() {
           ))}
         </div>
         <div className="flex items-center justify-between px-3 py-1.5 border-t border-line text-[10px] text-muted">
-          <span>↑↓ navigate · ↵ open · esc close</span>
+          <span>↑↓ навигация · ↵ открыть · esc закрыть</span>
           <span>⌘/Ctrl+K</span>
         </div>
       </div>

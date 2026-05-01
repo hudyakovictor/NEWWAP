@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
 import { api, type AgeingPoint } from "../api";
+import { EvidenceNote } from "../components/common/EvidenceStatus";
+import { evidenceOf } from "../data/evidencePolicy";
 
 export default function AgeingPage() {
   const [data, setData] = useState<AgeingPoint[]>([]);
@@ -15,8 +17,8 @@ export default function AgeingPage() {
 
   if (loading) {
     return (
-      <Page title="Ageing curve" subtitle="Loading…">
-        <div className="text-[11px] text-muted">Fitting ageing model…</div>
+      <Page title="Кривая старения" subtitle="Загрузка…">
+        <div className="text-[11px] text-muted">Подгонка модели старения…</div>
       </Page>
     );
   }
@@ -24,8 +26,8 @@ export default function AgeingPage() {
   const years = data.map((p) => p.year);
   if (years.length === 0) {
     return (
-      <Page title="Ageing curve" subtitle="No data">
-        <div className="text-[11px] text-muted">No ageing data available.</div>
+      <Page title="Кривая старения" subtitle="Нет данных">
+        <div className="text-[11px] text-muted">Нет данных о старении.</div>
       </Page>
     );
   }
@@ -43,8 +45,13 @@ export default function AgeingPage() {
   const outliers = data.filter((p) => p.outlier);
 
   return (
-    <Page title="Ageing curve (debug)" subtitle="Observed vs fitted normal ageing with outlier detection">
-      <PanelCard title="Timeline fit" className="mb-3">
+    <Page title="Кривая старения (debug)" subtitle="Наблюдаемое vs модельное нормальное старение с обнаружением выбросов">
+      <EvidenceNote level={evidenceOf("ageing_curve")!.level} className="mb-3">
+        <div><strong>Реальная часть:</strong> {evidenceOf("ageing_curve")!.realPart || "нет"}</div>
+        <div><strong>Заглушка:</strong> {evidenceOf("ageing_curve")!.stubPart}</div>
+        <div><strong>Для перехода:</strong> {evidenceOf("ageing_curve")!.upgradeHint}</div>
+      </EvidenceNote>
+      <PanelCard title="Подгонка таймлайна" className="mb-3">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-80 bg-bg-deep rounded">
           {/* gridlines */}
           {[0, 0.25, 0.5, 0.75, 1].map((t) => (
@@ -104,44 +111,44 @@ export default function AgeingPage() {
           <g transform={`translate(${W - 220}, 30)`}>
             <rect x={-6} y={-14} width={210} height={46} fill="#0a1523" stroke="#233657" rx={4} />
             <line x1={0} x2={26} y1={0} y2={0} stroke="#38bdf8" strokeDasharray="4 4" strokeWidth={2} />
-            <text x={32} y={3} fontSize={10} fill="#cfd8e6">fitted normal ageing</text>
+            <text x={32} y={3} fontSize={10} fill="#cfd8e6">модельное старение</text>
             <line x1={0} x2={26} y1={18} y2={18} stroke="#22c55e" strokeWidth={2} />
-            <text x={32} y={21} fontSize={10} fill="#cfd8e6">observed</text>
+            <text x={32} y={21} fontSize={10} fill="#cfd8e6">наблюдаемое</text>
             <circle cx={132} cy={18} r={4} fill="#ef4444" stroke="#fff" />
-            <text x={142} y={21} fontSize={10} fill="#cfd8e6">outlier</text>
+            <text x={142} y={21} fontSize={10} fill="#cfd8e6">выброс</text>
           </g>
         </svg>
       </PanelCard>
 
       <div className="grid grid-cols-3 gap-3">
-        <PanelCard title="Outlier summary">
+        <PanelCard title="Сводка выбросов">
           <div className="text-2xl font-semibold text-danger">{outliers.length}</div>
-          <div className="text-[11px] text-muted">years out of {data.length} exceed 2σ threshold</div>
+          <div className="text-[11px] text-muted">лет из {data.length} превышают порог 2σ</div>
         </PanelCard>
-        <PanelCard title="Max residual">
+        <PanelCard title="Макс. остаток">
           <div className="text-2xl font-semibold text-warn">
             {Math.max(...data.map((p) => Math.abs(p.residual))).toFixed(2)}
           </div>
-          <div className="text-[11px] text-muted">largest deviation from fitted ageing</div>
+          <div className="text-[11px] text-muted">наибольшее отклонение от модельного старения</div>
         </PanelCard>
-        <PanelCard title="Fitted rate">
+        <PanelCard title="Скорость модели">
           <div className="text-2xl font-semibold text-info">1.00 yr/yr</div>
-          <div className="text-[11px] text-muted">linear ageing assumption (debug)</div>
+          <div className="text-[11px] text-muted">линейное предположение старения (debug)</div>
         </PanelCard>
       </div>
 
-      <PanelCard title={`Outliers (${outliers.length})`} className="mt-3">
+      <PanelCard title={`Выбросы (${outliers.length})`} className="mt-3">
         {outliers.length === 0 ? (
-          <div className="text-[11px] text-ok">No outliers — ageing is within normal bounds.</div>
+          <div className="text-[11px] text-ok">Нет выбросов — старение в нормальных пределах.</div>
         ) : (
           <table className="w-full text-[11px]">
             <thead className="text-muted border-b border-line">
               <tr>
-                <th className="text-left p-2">year</th>
-                <th className="text-left p-2">observed</th>
-                <th className="text-left p-2">fitted</th>
-                <th className="text-left p-2">residual</th>
-                <th className="text-left p-2">note</th>
+                <th className="text-left p-2">год</th>
+                <th className="text-left p-2">наблюдаемое</th>
+                <th className="text-left p-2">модельное</th>
+                <th className="text-left p-2">остаток</th>
+                <th className="text-left p-2">примечание</th>
               </tr>
             </thead>
             <tbody>
@@ -159,16 +166,16 @@ export default function AgeingPage() {
         )}
       </PanelCard>
 
-      <PanelCard title="All points" className="mt-3">
+      <PanelCard title="Все точки" className="mt-3">
         <div className="overflow-auto">
           <table className="w-full text-[11px]">
             <thead className="text-muted border-b border-line">
               <tr>
-                <th className="text-left p-2">year</th>
-                <th className="text-left p-2">observed</th>
-                <th className="text-left p-2">fitted</th>
-                <th className="text-left p-2">residual</th>
-                <th className="text-left p-2">outlier</th>
+                <th className="text-left p-2">год</th>
+                <th className="text-left p-2">наблюдаемое</th>
+                <th className="text-left p-2">модельное</th>
+                <th className="text-left p-2">остаток</th>
+                <th className="text-left p-2">выброс</th>
               </tr>
             </thead>
             <tbody>

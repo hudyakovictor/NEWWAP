@@ -8,7 +8,6 @@ import {
 } from "../mock/data";
 import { PHOTOS } from "../mock/photos";
 import { buildPhotoDetail } from "../mock/photoDetail";
-import { rngFor } from "../debug/prng";
 import { getDhashIndex, dhashDistance } from "../debug/dhashIndex";
 import { detectPoseAnomalies } from "../data/poseAnomalies";
 import { MAIN_PHOTOS, MYFACE_PHOTOS, ALL_PHOTOS } from "../data/photoRegistry";
@@ -115,45 +114,11 @@ let investigations: Investigation[] = [
 // Real calibration buckets from myface same-person pairs
 const calibrationBuckets: CalibrationBucket[] = buildCalibrationBuckets();
 
-// Build anomalies registry. Real entries first (driven by actual pose
-// data), synthetic entries follow so the UI can show the real ones at the
-// top of the list.
+// Build anomalies registry. Only real entries from the pose pipeline.
+// Synthetic year-based, event-based, and silicone anomalies have been
+// removed — they were derived from PRNG stubs that no longer exist.
 const anomalies: AnomalyRecord[] = [
   ...detectPoseAnomalies(),
-  ...yearPoints
-    .filter((p) => p.anomaly)
-    .map((p, i) => ({
-      id: `anom-y-${p.year}-${i}`,
-      year: p.year,
-      severity: p.anomaly!,
-      kind: "chronology" as const,
-      title: p.note ?? `Year-level anomaly in ${p.year}`,
-      detectedAt: `${p.year}-06-15`,
-      resolved: false,
-    })),
-  ...eventMarkers
-    .filter((e) => e.kind === "warn" || e.kind === "danger" || e.kind === "info")
-    .map((e, i) => ({
-      id: `anom-e-${e.year}-${i}`,
-      year: e.year,
-      severity: e.kind === "danger" ? ("danger" as const) : e.kind === "warn" ? ("warn" as const) : ("info" as const),
-      kind: "calibration" as const,
-      title: e.title,
-      detectedAt: `${e.year}-03-12`,
-      resolved: false,
-    })),
-  ...PHOTOS.filter((p) => p.flags.includes("silicone"))
-    .slice(0, 40)
-    .map((p) => ({
-      id: `anom-s-${p.id}`,
-      year: p.year,
-      severity: "danger" as const,
-      kind: "synthetic" as const,
-      photoId: p.id,
-      title: `High silicone signature (${p.syntheticProb.toFixed(2)})`,
-      detectedAt: p.date,
-      resolved: false,
-    })),
   ...PHOTOS.filter((p) => p.flags.includes("pose_fallback"))
     .slice(0, 15)
     .map((p) => ({
@@ -162,7 +127,7 @@ const anomalies: AnomalyRecord[] = [
       severity: "info" as const,
       kind: "pose" as const,
       photoId: p.id,
-      title: "Primary pose detector fell back to 3DDFA-V3",
+      title: "Основной детектор ракурса переключился на 3DDFA-V3",
       detectedAt: p.date,
       resolved: true,
     })),
@@ -196,9 +161,9 @@ export const mockBackend: Backend = {
     if (q.expression && q.expression !== "any") list = list.filter((p) => p.expression === q.expression);
     if (q.source && q.source !== "any") list = list.filter((p) => p.source === q.source);
     if (q.flag && q.flag !== "any") list = list.filter((p) => p.flags.includes(q.flag as any));
-    if (q.minSyntheticProb) list = list.filter((p) => p.syntheticProb >= q.minSyntheticProb!);
-    if (q.sortBy === "synthetic") list.sort((a, b) => b.syntheticProb - a.syntheticProb);
-    else if (q.sortBy === "bayes") list.sort((a, b) => a.bayesH0 - b.bayesH0);
+    if (q.minSyntheticProb) list = list.filter((p) => (p.syntheticProb ?? 0) >= q.minSyntheticProb!);
+    if (q.sortBy === "synthetic") list.sort((a, b) => (b.syntheticProb ?? 0) - (a.syntheticProb ?? 0));
+    else if (q.sortBy === "bayes") list.sort((a, b) => (a.bayesH0 ?? 0) - (b.bayesH0 ?? 0));
     else list.sort((a, b) => (a.date < b.date ? -1 : 1));
     const total = list.length;
     const offset = q.offset ?? 0;
@@ -214,36 +179,41 @@ export const mockBackend: Backend = {
 
   async similarPhotos(id: string, limit = 8) {
     const rec = PHOTOS.find((p) => p.id === id) ?? PHOTOS[0];
-    // Make sure the dhash index is loaded so we can use real perceptual
-    // distance whenever the photo URL is anchored to a real file.
+    // Use real perceptual distance (dHash) when available, plus
+    // real pose similarity and temporal proximity.
     const idx = await getDhashIndex();
     const seedHash = idx.get(rec.photo);
 
     const scored = PHOTOS.filter((p) => p.id !== rec.id).map((p) => {
-      // Synthetic baseline (kept as a fallback so non-anchored photos still
-      // get a usable score).
-      let synthetic = 1;
-      synthetic -= Math.abs(p.bayesH0 - rec.bayesH0) * 0.4;
-      synthetic -= Math.abs(p.syntheticProb - rec.syntheticProb) * 0.3;
-      if (p.pose !== rec.pose) synthetic -= 0.2;
-      if (p.cluster !== rec.cluster) synthetic -= 0.25;
-      synthetic -= Math.abs(p.year - rec.year) / 50;
-
       // Real perceptual term when both photos point to a hashed file.
       let perceptual = 0;
       let usedDhash = false;
       const candHash = idx.get(p.photo);
       if (seedHash && candHash) {
         const d = dhashDistance(seedHash, candHash);
-        // Map Hamming distance [0..32] → [1..0] linearly (clamped). A 64-bit
-        // dHash rarely exceeds 32 for visually related portraits.
         perceptual = Math.max(0, 1 - d / 32);
         usedDhash = true;
       }
 
-      // Weighted blend: when we have real dHash, trust it more (60/40);
-      // otherwise pure synthetic.
-      const score = usedDhash ? perceptual * 0.6 + synthetic * 0.4 : synthetic;
+      // Real pose similarity
+      let poseScore = 0.5;
+      if (p.pose === rec.pose) poseScore = 1;
+      else if (p.pose && rec.pose) {
+        // Same bucket family (e.g. both 3/4)
+        const pClass = p.pose.replace(/_(left|right)/, "");
+        const rClass = rec.pose.replace(/_(left|right)/, "");
+        if (pClass === rClass) poseScore = 0.7;
+      }
+
+      // Temporal proximity (closer years = more relevant)
+      const yearDist = Math.abs(p.year - rec.year);
+      const temporalScore = Math.max(0, 1 - yearDist / 30);
+
+      // Weighted blend: dHash 60%, pose 25%, temporal 15%
+      const score = usedDhash
+        ? perceptual * 0.6 + poseScore * 0.25 + temporalScore * 0.15
+        : poseScore * 0.55 + temporalScore * 0.45;
+
       return { p, score, usedDhash };
     });
     scored.sort((a, b) => b.score - a.score);
@@ -282,9 +252,8 @@ export const mockBackend: Backend = {
   },
 
   async photosInBucket(pose: string, light: string) {
-    // Deterministic mock: pick photos where pose matches; light is synthetic
-    const list = PHOTOS.filter((p) => p.pose === pose).slice(0, 60);
-    // Apply a cheap "light" hash so different light → different subset
+    // Only return calibration (myface) photos for bucket inspection
+    const list = PHOTOS.filter((p) => p.folder === "myface" && p.pose === pose).slice(0, 60);
     const seed = light.length + pose.length;
     return delay(list.filter((_, i) => (i + seed) % 2 === 0));
   },
@@ -438,176 +407,64 @@ export const mockBackend: Backend = {
   },
 
   async getAgeingSeries() {
-    // fit: fittedAge = 46 + i
-    const series: AgeingPoint[] = yearPoints.map((p, i) => {
-      const fitted = 46 + i;
-      // observed: usually close, jump for 2012 & 2014
-      let observed = fitted + (Math.sin(i * 11.13) * 0.8);
-      const anomaly = p.year === 2012 || p.year === 2014 || p.year === 2023;
-      if (anomaly) observed += 4.5;
-      const residual = +(observed - fitted).toFixed(2);
-      return {
-        year: p.year,
-        observedAge: +observed.toFixed(2),
-        fittedAge: fitted,
-        residual,
-        outlier: Math.abs(residual) > 2,
-        note: anomaly ? "Observed age exceeds fitted normal aging by > 2σ — possible identity substitution or mask." : undefined,
-      };
-    });
-    return delay(series);
+    // No real ageing model has been computed yet.
+    // Previously this returned PRNG-fabricated observed/fitted ages.
+    return delay([] as AgeingPoint[]);
   },
 
   async getEvidence(aId: string, bId: string) {
     const a = PHOTOS.find((p) => p.id === aId) ?? PHOTOS[0];
     const b = PHOTOS.find((p) => p.id === bId) ?? PHOTOS[1];
-    const sameCluster = a.cluster === b.cluster;
-    // Seed by ordered (smaller, larger) so evidence(A,B) === evidence(B,A) — a property
-    // checked by the symmetry invariant.
-    const [k1, k2] = [a.id, b.id].sort();
-    const r = rngFor("evidence", k1, k2);
-    const snr = sameCluster ? 0.78 + r() * 0.1 : 0.32 + r() * 0.15;
-    const syn = Math.max(a.syntheticProb, b.syntheticProb);
-    const boneScore = sameCluster ? 0.82 : 0.48;
-    const ligScore = sameCluster ? 0.74 : 0.51;
-    const softScore = 0.55;
     const deltaYears = Math.abs(a.year - b.year);
-    const boneJump = sameCluster ? 0.12 : 0.64;
-    const ligJump = sameCluster ? 0.09 : 0.58;
-    const flags: string[] = [];
-    if (!sameCluster) flags.push("Cluster mismatch between photos");
-    if (syn > 0.5) flags.push("Synthetic signature on one side");
-    if (deltaYears > 10 && !sameCluster) flags.push("Long temporal gap with cluster switch");
 
-    const priors = { H0: 0.78, H1: 0.02, H2: 0.20 };
-    const likelihoods = {
-      H0: snr,
-      H1: syn > 0.45 ? syn : 0.08,
-      H2: 1 - snr,
-    };
-    const z =
-      priors.H0 * likelihoods.H0 + priors.H1 * likelihoods.H1 + priors.H2 * likelihoods.H2 || 1;
-    const post = {
-      H0: +((priors.H0 * likelihoods.H0) / z).toFixed(3),
-      H1: +((priors.H1 * likelihoods.H1) / z).toFixed(3),
-      H2: +((priors.H2 * likelihoods.H2) / z).toFixed(3),
-    };
-    const verdict = (post.H0 >= post.H1 && post.H0 >= post.H2
-      ? "H0"
-      : post.H1 >= post.H2
-      ? "H1"
-      : "H2") as "H0" | "H1" | "H2";
-
+    // Bayesian courtroom has not run — all numeric fields are fabricated.
+    // Return INSUFFICIENT_DATA verdict with only real fields populated.
     const br: EvidenceBreakdown = {
       aId: a.id,
       bId: b.id,
       geometric: {
-        snr: +snr.toFixed(3),
-        boneScore: +boneScore.toFixed(3),
-        ligamentScore: +ligScore.toFixed(3),
-        softTissueScore: +softScore.toFixed(3),
-        zoneCount: 18,
-        excludedZones: a.expression === "smile" || b.expression === "smile"
-          ? ["texture_wrinkle_nasolabial", "nose_width_ratio"]
-          : [],
-        categoryDivergence: {
-          bone: 0.05,
-          ligament: 0.08,
-          symmetry: 0.03,
-          soft_tissue: 0.12,
-        },
+        snr: 0,
+        boneScore: 0,
+        ligamentScore: 0,
+        softTissueScore: 0,
+        zoneCount: 0,
+        excludedZones: [],
+        categoryDivergence: {},
       },
       texture: {
-        syntheticProb: +syn.toFixed(3),
-        rawSyntheticProb: +Math.min(1, syn * 1.3).toFixed(3), // До корректировки естественностью
-        naturalScore: 0.35, // Признаки естественной кожи
-        fft: +(Math.max(a.syntheticProb, b.syntheticProb) * 0.8).toFixed(3),
-        lbp: +(1 - Math.min(a.syntheticProb, b.syntheticProb) * 0.6).toFixed(3),
-        albedo: +(0.75 - syn * 0.4).toFixed(3),
-        specular: +(syn * 0.9).toFixed(3),
-        textureFeatures: {
-          silicone: +syn.toFixed(3),
-          fft_anomaly: 0.45,
-          albedo_uniformity: 0.62,
-          specular_gloss: 0.38,
-          lbp_uniformity: 0.55,
-        },
-        naturalMarkers: {
-          pore_density: 42,
-          lbp_complexity: 2.8,
-          wrinkle_detail: 18,
-        },
-        epochAdjustments: {
-          fft_boost: 0.05,
-          silicone_threshold_boost: 0.02,
-        },
-        h1Subtype: {
-          primary: syn > 0.4 ? "mask" : "uncertain",
-          confidence: syn > 0.4 ? 0.72 : 0.35,
-          scores: {
-            mask: syn > 0.4 ? 0.65 : 0.25,
-            deepfake: 0.20,
-            prosthetic: syn > 0.3 ? 0.40 : 0.15,
-            uncertain: syn > 0.4 ? 0.15 : 0.60,
-          },
-          indicators: syn > 0.4 ? ["high_specular_uniformity"] : ["insufficient_indicators"],
-        },
+        syntheticProb: 0,
+        fft: 0,
+        lbp: 0,
+        albedo: 0,
+        specular: 0,
+        textureFeatures: {},
       },
       chronology: {
         deltaYears,
-        boneJump: +boneJump.toFixed(3),
-        ligamentJump: +ligJump.toFixed(3),
-        flags,
-        longitudinal: {
-          modelUsed: true,
-          consistent: true,
-          chronologicalLikelihood: 0.92,
-          inconsistenciesCount: 0,
-          note: "Temporal progression consistent with aging model",
-        },
+        boneJump: 0,
+        ligamentJump: 0,
+        flags: [],
       },
       pose: {
         mutualVisibility: a.pose === b.pose ? 0.95 : 0.72,
-        expressionExcluded:
-          a.expression === "smile" || b.expression === "smile" ? 2 : 0,
+        expressionExcluded: 0,
         poseDistanceDeg: a.pose === b.pose ? 5 : 25,
       },
       dataQuality: {
-        coverageRatio: 0.86,
+        coverageRatio: 0,
         missingZonesA: [],
-        missingZonesB: ["texture_spot_density"],
+        missingZonesB: [],
       },
-      priors,
-      likelihoods: {
-        H0: +likelihoods.H0.toFixed(3),
-        H1: +likelihoods.H1.toFixed(3),
-        H2: +likelihoods.H2.toFixed(3),
-        chronological: 0.92,
-        components: {
-          geometricH0: 0.85,
-          geometricH2: 0.15,
-          textureH1: 0.42,
-        },
-      },
-      posteriors: post,
-      verdict: verdict as "H0" | "H1" | "H2" | "INSUFFICIENT_DATA",
-      methodologyVersion: "ITER-6.5-MOCK",
+      priors: { H0: 0, H1: 0, H2: 0 },
+      likelihoods: { H0: 0, H1: 0, H2: 0 },
+      posteriors: { H0: 0, H1: 0, H2: 0 },
+      verdict: "INSUFFICIENT_DATA",
+      methodologyVersion: "NONE",
       computationLog: [
-        "Methodology: ITER-6.5-MOCK",
-        "Zones analyzed: 18/21 (coverage: 86%)",
-        "Zones excluded due to expression: 2 (texture_wrinkle_nasolabial, nose_width_ratio)",
-        "Missing metrics A: 0 zones, B: 1 zones",
-        `Adaptive priors: H0=${priors.H0.toFixed(3)}, H1=${priors.H1.toFixed(3)}, H2=${priors.H2.toFixed(3)}`,
-        `Structural SNR: ${(snr * 10).toFixed(1)} dB`,
-        "Bone divergence: 0.050, Ligament: 0.080",
-        "Texture H1 raw composite: 0.420",
-        "Texture H1 natural score: 0.350",
-        `Texture H1 adjusted: ${(syn * 0.7).toFixed(3)}, likelihood: ${likelihoods.H1.toFixed(3)}`,
-        "Pose distance: 5.0°, mutual visibility: 0.95",
-        `Time delta: ${deltaYears} years`,
-        "Coverage penalty applied: 0.86",
-        `Final posteriors: H0=${post.H0.toFixed(3)}, H1=${post.H1.toFixed(3)}, H2=${post.H2.toFixed(3)}`,
-        `Verdict: ${verdict}`,
+        "Байесовский суд не запускался — данных для вердикта недостаточно.",
+        `Разница в годах: ${deltaYears}`,
+        `Ракурс A: ${a.pose}, ракурс B: ${b.pose}`,
+        "Для запуска анализа необходимы: zone scores, texture metrics, bayesian priors.",
       ],
     };
     return delay(br);
@@ -618,14 +475,14 @@ export const mockBackend: Backend = {
       {
         method: "GET",
         path: "/api/timeline",
-        description: "Year-aggregated timeline (photo anchors, metric rows, identity segments, events, photo volume).",
+        description: "Year-aggregated timeline (photo anchors, real metric rows, photo volume).",
         group: "debug",
         sampleResponse: {
           years: [1999, 2000, 2025],
-          yearPoints: [{ year: 1999, identity: "A", anomaly: null, photo: "/photos/…" }],
-          metrics: [{ id: "skull", kind: "line", values: [1.62, 1.63] }],
-          identitySegments: [{ id: "A", from: 1999, to: 2014 }],
-          eventMarkers: [{ year: 2012, kind: "danger", title: "Suspected identity swap" }],
+          yearPoints: [{ year: 1999, identity: null, anomaly: null, photo: "/photos/…" }],
+          metrics: [{ id: "real_count", kind: "bar", values: [42, 38] }],
+          identitySegments: [],
+          eventMarkers: [],
           totalPhotos: 1742,
         },
       },
@@ -636,7 +493,7 @@ export const mockBackend: Backend = {
         group: "photos",
         sampleResponse: {
           total: 1742,
-          items: [{ id: "main-20120730-00a", year: 2012, pose: "frontal", cluster: "A", flags: ["silicone"] }],
+          items: [{ id: "main-20120730-00a", year: 2012, pose: "frontal", cluster: null, flags: [] }],
         },
       },
       {
@@ -757,14 +614,12 @@ export const mockBackend: Backend = {
 
   async comparisonMatrix(ids: string[]) {
     const recs = ids.map((id) => PHOTOS.find((p) => p.id === id)).filter(Boolean) as typeof PHOTOS;
+    // Use only real fields: pose similarity + temporal proximity
     const matrix = recs.map((a) =>
       recs.map((b) => {
         if (a.id === b.id) return 1;
         let s = 1;
-        s -= Math.abs(a.bayesH0 - b.bayesH0) * 0.4;
-        s -= Math.abs(a.syntheticProb - b.syntheticProb) * 0.3;
         if (a.pose !== b.pose) s -= 0.15;
-        if (a.cluster !== b.cluster) s -= 0.3;
         s -= Math.abs(a.year - b.year) / 60;
         return +Math.max(0, Math.min(1, s)).toFixed(3);
       })

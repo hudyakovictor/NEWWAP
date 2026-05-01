@@ -1,0 +1,66 @@
+{
+  "total_photos": 5,
+  "total_duration_s": 50.8,
+  "avg_duration_s": 10.2,
+  "results": [
+    {
+      "photo": "1999_08_16.jpg",
+      "photo_id": "1999_08_16",
+      "status": "needs_review",
+      "bucket": "left_threequarter_deep",
+      "year": 1999,
+      "metrics_count": 31,
+      "reliability": 0.07705265318385528,
+      "duration_s": 11.2,
+      "issues": [
+        "very low reliability: 0.077"
+      ]
+    },
+    {
+      "photo": "2004_01_15.jpg",
+      "photo_id": "2004_01_15",
+      "status": "needs_review",
+      "bucket": "frontal",
+      "year": 2004,
+      "metrics_count": 36,
+      "reliability": 0.31165386376651005,
+      "duration_s": 9.6,
+      "issues": []
+    },
+    {
+      "photo": "2009_02_01-1.jpg",
+      "photo_id": "2009_02_01-1",
+      "status": "needs_review",
+      "bucket": "right_threequarter_deep",
+      "year": 2009,
+      "metrics_count": 31,
+      "reliability": 0.12324238469093597,
+      "duration_s": 10.4,
+      "issues": []
+    },
+    {
+      "photo": "2014_01_04-2.jpg",
+      "photo_id": "2014_01_04-2",
+      "status": "needs_review",
+      "bucket": "left_threequarter_deep",
+      "year": 2014,
+      "metrics_count": 31,
+      "reliability": 0.1296177839744836,
+      "duration_s": 9.8,
+      "issues": []
+    },
+    {
+      "photo": "2019_01_06-1.jpg",
+      "photo_id": "2019_01_06-1",
+      "status": "needs_review",
+      "bucket": "left_threequarter_mid",
+      "year": 2019,
+      "metrics_count": 31,
+      "reliability": 0.07908875517210603,
+      "duration_s": 9.7,
+      "issues": [
+        "very low reliability: 0.079"
+      ]
+    }
+  ]
+}

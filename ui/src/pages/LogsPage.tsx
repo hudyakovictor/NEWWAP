@@ -85,21 +85,21 @@ export default function LogsPage() {
 
   return (
     <Page
-      title="Logs (notebook stream)"
-      subtitle="Every pipeline event, API call, navigation and validation check in order"
+      title="Логи (поток записей)"
+      subtitle="Каждое событие конвейера, вызов API, навигация и проверка по порядку"
       actions={
         <>
           <button
             onClick={() => runSelfTest()}
             className="px-3 h-8 rounded bg-ok/70 hover:bg-ok text-[11px] text-white"
           >
-            Re-run self-test
+            Перезапустить самотест
           </button>
           <button
             onClick={exportJson}
             className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white"
           >
-            Export JSON
+            Экспорт JSON
           </button>
           <button
             onClick={() => {
@@ -108,15 +108,15 @@ export default function LogsPage() {
             }}
             className="px-3 h-8 rounded bg-danger/60 hover:bg-danger text-[11px] text-white"
           >
-            Clear
+            Очистить
           </button>
         </>
       }
     >
       {/* Counters */}
       <div className="grid grid-cols-7 gap-2 mb-3">
-        <Stat label="total"       value={counts.total}      color="#cfd8e6" />
-        <Stat label="suspicious"  value={counts.suspicious} color="#ef4444" />
+        <Stat label="всего"       value={counts.total}      color="#cfd8e6" />
+        <Stat label="подозрительных"  value={counts.suspicious} color="#ef4444" />
         <Stat label="error"       value={counts.error}      color={LEVEL_COLOR.error} />
         <Stat label="warn"        value={counts.warn}       color={LEVEL_COLOR.warn} />
         <Stat label="info"        value={counts.info}       color={LEVEL_COLOR.info} />
@@ -125,10 +125,10 @@ export default function LogsPage() {
       </div>
 
       {/* Filters */}
-      <PanelCard title="Filters" className="mb-3">
+      <PanelCard title="Фильтры" className="mb-3">
         <div className="flex flex-wrap gap-2 text-[11px] items-center">
           <label className="flex items-center gap-1">
-            <span className="text-muted">category</span>
+            <span className="text-muted">категория</span>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value as any)}
@@ -138,7 +138,7 @@ export default function LogsPage() {
             </select>
           </label>
           <label className="flex items-center gap-1">
-            <span className="text-muted">level</span>
+            <span className="text-muted">уровень</span>
             <select
               value={level}
               onChange={(e) => setLevel(e.target.value as any)}
@@ -148,29 +148,29 @@ export default function LogsPage() {
             </select>
           </label>
           <label className="flex items-center gap-1">
-            <span className="text-muted">search</span>
+            <span className="text-muted">поиск</span>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="scope or text"
+              placeholder="область или текст"
               className="h-7 px-2 rounded bg-bg-deep border border-line text-white w-56"
             />
           </label>
           <label className="flex items-center gap-1 text-white">
             <input type="checkbox" checked={onlySuspicious} onChange={(e) => setOnlySuspicious(e.target.checked)} />
-            only suspicious
+            только подозрительные
           </label>
           <label className="flex items-center gap-1 text-white">
             <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
-            follow new entries
+            следовать за новыми
           </label>
-          <span className="ml-auto text-muted">{filtered.length} matching</span>
+          <span className="ml-auto text-muted">{filtered.length} совпадений</span>
         </div>
       </PanelCard>
 
       {/* Stream */}
       <div className="grid grid-cols-12 gap-3">
-        <PanelCard title="Stream" className="col-span-7">
+        <PanelCard title="Поток" className="col-span-7">
           <div
             ref={(el) => {
               if (follow && el) el.scrollTop = el.scrollHeight;
@@ -178,7 +178,7 @@ export default function LogsPage() {
             className="max-h-[60vh] overflow-auto font-mono text-[11px]"
           >
             {filtered.length === 0 && (
-              <div className="text-muted p-4 text-center">no entries</div>
+              <div className="text-muted p-4 text-center">нет записей</div>
             )}
             {filtered.map((e) => (
               <button
@@ -207,27 +207,27 @@ export default function LogsPage() {
           </div>
         </PanelCard>
 
-        <PanelCard title="Entry details" className="col-span-5">
+        <PanelCard title="Детали записи" className="col-span-5">
           {!selected ? (
-            <div className="text-[11px] text-muted">Click a log entry to inspect its payload.</div>
+            <div className="text-[11px] text-muted">Нажмите на запись для просмотра полезной нагрузки.</div>
           ) : (
             <div className="space-y-3 text-[11px]">
               <div className="grid grid-cols-2 gap-2">
                 <KV k="id"        v={`#${selected.id}`} />
-                <KV k="time"      v={new Date(selected.ts).toISOString().slice(11, 23)} />
-                <KV k="category"  v={selected.category} />
-                <KV k="level"     v={<span style={{ color: LEVEL_COLOR[selected.level] }}>{selected.level}</span>} />
-                <KV k="scope"     v={selected.scope} />
-                <KV k="duration"  v={selected.durationMs !== undefined ? `${selected.durationMs}ms` : "—"} />
+                <KV k="время"      v={new Date(selected.ts).toISOString().slice(11, 23)} />
+                <KV k="категория"  v={selected.category} />
+                <KV k="уровень"     v={<span style={{ color: LEVEL_COLOR[selected.level] }}>{selected.level}</span>} />
+                <KV k="область"     v={selected.scope} />
+                <KV k="длительность"  v={selected.durationMs !== undefined ? `${selected.durationMs}мс` : "—"} />
               </div>
               <div>
-                <div className="text-muted uppercase tracking-widest text-[10px] mb-1">message</div>
+                <div className="text-muted uppercase tracking-widest text-[10px] mb-1">сообщение</div>
                 <div className="text-white">{selected.message}</div>
               </div>
               {selected.violations && selected.violations.length > 0 && (
                 <div>
                   <div className="text-danger uppercase tracking-widest text-[10px] mb-1">
-                    violations ({selected.violations.length})
+                    нарушения ({selected.violations.length})
                   </div>
                   <ul className="space-y-1">
                     {selected.violations.map((v, i) => (
@@ -242,8 +242,8 @@ export default function LogsPage() {
                         }`}
                       >
                         <div className="font-mono">{v.field}</div>
-                        <div>expected: {v.expected}</div>
-                        <div>actual: {JSON.stringify(v.actual)}</div>
+                        <div>ожидается: {v.expected}</div>
+                        <div>фактически: {JSON.stringify(v.actual)}</div>
                         {v.note && <div className="italic opacity-80">{v.note}</div>}
                       </li>
                     ))}
@@ -253,14 +253,14 @@ export default function LogsPage() {
               {selected.data !== undefined && (
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-muted uppercase tracking-widest text-[10px]">payload</span>
+                    <span className="text-muted uppercase tracking-widest text-[10px]">полезная нагрузка</span>
                     <button
                       onClick={() =>
                         navigator.clipboard.writeText(JSON.stringify(selected.data, null, 2))
                       }
                       className="px-2 h-5 rounded bg-line text-[10px] text-white"
                     >
-                      copy JSON
+                      скопировать JSON
                     </button>
                   </div>
                   <pre className="bg-black/60 border border-line rounded p-2 text-muted max-h-72 overflow-auto whitespace-pre-wrap break-all">

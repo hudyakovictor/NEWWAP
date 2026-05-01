@@ -4,6 +4,8 @@ import Modal from "../components/common/Modal";
 import { api, type CalibrationBucket, type CalibrationSummary } from "../api";
 import type { PhotoRecord } from "../mock/photos";
 import PhotoDetailModal from "../components/photo/PhotoDetailModal";
+import { EvidenceNote } from "../components/common/EvidenceStatus";
+import { evidenceOf } from "../data/evidencePolicy";
 
 // Extended bucket type with person distribution from real data
 type Level = CalibrationBucket["level"];
@@ -29,8 +31,8 @@ export default function CalibrationPage() {
 
   if (loading || !summary) {
     return (
-      <Page title="Calibration health" subtitle="Loading…">
-        <div className="text-[11px] text-muted">Fetching calibration summary…</div>
+      <Page title="Калибровка" subtitle="Загрузка…">
+        <div className="text-[11px] text-muted">Загрузка сводки калибровки…</div>
       </Page>
     );
   }
@@ -48,31 +50,37 @@ export default function CalibrationPage() {
 
   return (
     <Page
-      title="Calibration health"
-      subtitle="Self-healing bucket database · click any cell to drill down"
+      title="Калибровка"
+      subtitle="База бакетов калибровки · нажмите на ячейку для деталей"
       actions={
         <button className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white">
-          Recompute metrics
+          Пересчитать метрики
         </button>
       }
     >
       <div className="grid grid-cols-4 gap-3 mb-3">
         {(Object.keys(totals) as Array<keyof typeof totals>).map((k) => (
-          <PanelCard key={k} title={`${k} buckets`}>
+          <PanelCard key={k} title={`${k === "high" ? "Высокие" : k === "medium" ? "Средние" : k === "low" ? "Низкие" : "Ненадёжные"} бакеты`}>
             <div className="text-2xl font-semibold" style={{ color: LEVEL_COLOR[k as Level] }}>
               {totals[k]}
             </div>
-            <div className="text-[11px] text-muted">of {buckets.length} total</div>
+            <div className="text-[11px] text-muted">из {buckets.length} всего</div>
           </PanelCard>
         ))}
       </div>
 
-      <PanelCard title="Bucket matrix" className="mb-3">
+      <EvidenceNote level={evidenceOf("calibration_buckets")!.level} className="mb-3">
+        <div><strong>Реальная часть:</strong> {evidenceOf("calibration_buckets")!.realPart}</div>
+        <div><strong>Заглушка:</strong> {evidenceOf("calibration_buckets")!.stubPart}</div>
+        <div><strong>Для перехода на следующий уровень:</strong> {evidenceOf("calibration_buckets")!.upgradeHint}</div>
+      </EvidenceNote>
+
+      <PanelCard title="Матрица бакетов" className="mb-3">
         <div className="overflow-auto">
           <table className="text-[11px] w-full">
             <thead>
               <tr className="text-muted border-b border-line">
-                <th className="text-left p-1">pose \ light</th>
+                <th className="text-left p-1">ракурс \ освещение</th>
                 {lights.map((l) => <th key={l} className="text-center p-1">{l}</th>)}
               </tr>
             </thead>
@@ -110,7 +118,7 @@ export default function CalibrationPage() {
         </div>
       </PanelCard>
 
-      <PanelCard title="Recommendations">
+      <PanelCard title="Рекомендации">
         <ul className="space-y-1 text-[11px]">
           {recommendations.map((r, i) => (
             <li
@@ -148,20 +156,20 @@ function BucketDetailModal({
 
   return (
     <Modal
-      title={`Bucket: ${bucket.pose} / ${bucket.light}`}
+      title={`Бакет: ${bucket.pose} / ${bucket.light}`}
       onClose={onClose}
       width="max-w-5xl"
     >
       <div className="grid grid-cols-4 gap-3 mb-3">
-        <KV k="level" v={<span style={{ color: LEVEL_COLOR[bucket.level] }}>{bucket.level}</span>} />
-        <KV k="sample count" v={bucket.count} />
-        <KV k="variance" v={bucket.variance} />
-        <KV k="strategy" v={strategyFor(bucket.level)} />
+        <KV k="уровень" v={<span style={{ color: LEVEL_COLOR[bucket.level] }}>{bucket.level === "high" ? "высокий" : bucket.level === "medium" ? "средний" : bucket.level === "low" ? "низкий" : "ненадёжный"}</span>} />
+        <KV k="кол-во образцов" v={bucket.count} />
+        <KV k="дисперсия" v={bucket.variance} />
+        <KV k="стратегия" v={strategyFor(bucket.level)} />
       </div>
       <div className="text-[11px] text-muted mb-2">
         {loading
-          ? "Fetching photos…"
-          : `${photos.length} photo(s) in this bucket (click to inspect, mark outliers)`}
+          ? "Загрузка фото…"
+          : `${photos.length} фото в этом бакете (нажмите для просмотра)`}
       </div>
       <div className="grid grid-cols-8 gap-2">
         {photos.map((p) => (
@@ -187,7 +195,7 @@ function BucketDetailModal({
             photoId: opened.id,
             pose: { yaw: null, pitch: null, classification: "unknown", source: "none" },
             index: 0,
-            identity: opened.cluster,
+            identity: opened.cluster ?? "не определён",
             anomaly: opened.flags.includes("silicone")
               ? "danger"
               : opened.flags.includes("anomaly")
@@ -202,10 +210,10 @@ function BucketDetailModal({
 }
 
 function strategyFor(level: Level): string {
-  if (level === "high") return "standard comparison thresholds";
-  if (level === "medium") return "widened confidence intervals";
-  if (level === "low") return "bone-only fallback weighting";
-  return "excluded from runtime comparisons";
+  if (level === "high") return "стандартные пороги сравнения";
+  if (level === "medium") return "расширенные доверительные интервалы";
+  if (level === "low") return "сравнение только по костным зонам";
+  return "исключён из сравнений при запуске";
 }
 
 function KV({ k, v }: { k: string; v: React.ReactNode }) {

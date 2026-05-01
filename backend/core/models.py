@@ -24,4 +24,6 @@ class RecomputeMetricsRequest(BaseModel):
 class CalibrationOverrideRequest(BaseModel):
     photo_id: str
     calibration_photo_id: str
+    reason: str = ""
+    author: str = "system"
 

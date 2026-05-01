@@ -3,19 +3,19 @@ import { Page, PanelCard } from "../components/common/Page";
 import { api } from "../api";
 import { PHOTOS, type PhotoRecord } from "../mock/photos";
 import { useApp } from "../store/appStore";
-import { rngFor } from "../debug/prng";
+import { EvidenceNote } from "../components/common/EvidenceStatus";
+import { evidenceOf } from "../data/evidencePolicy";
 
-// Debug N×N comparison matrix. Pick any subset of photos, see pairwise
-// similarity heatmap. Clicking a cell sends the pair to PairAnalysis.
+// Only main (non-calibration) photos for the comparison matrix
+const MAIN_PHOTOS = PHOTOS.filter((p) => p.folder === "main");
 
 export default function MatrixPage() {
   const { setPairA, setPairB, setPage } = useApp();
   const defaults = useMemo(() => {
-    // take a spread across years to make the heatmap meaningful
     const spread: PhotoRecord[] = [];
-    const years = Array.from(new Set(PHOTOS.map((p) => p.year)));
+    const years = Array.from(new Set(MAIN_PHOTOS.map((p) => p.year)));
     years.forEach((y) => {
-      const first = PHOTOS.find((p) => p.year === y);
+      const first = MAIN_PHOTOS.find((p) => p.year === y);
       if (first) spread.push(first);
     });
     return spread.filter((_, i) => i % 2 === 0).slice(0, 10);
@@ -48,40 +48,41 @@ export default function MatrixPage() {
 
   return (
     <Page
-      title="N×N comparison matrix (debug)"
-      subtitle="Pairwise similarity heatmap across a selected subset of photos"
+      title="Матрица сравнения N×N"
+      subtitle="Тепловая карта попарного сходства выбранного подмножества фото"
       actions={
         <>
           <button
             onClick={() => setPicker(true)}
             className="px-3 h-8 rounded bg-line/70 hover:bg-line text-[11px] text-white"
           >
-            Pick photos ({selected.length})
+            Выбрать фото ({selected.length})
           </button>
           <button
             onClick={() => {
-              // Seeded "shuffle" so it's reproducible inside one session;
-              // each click bumps the seed for variety.
-              const seedSrc = `matrix-shuffle-${Date.now()}`;
-              const r = rngFor(seedSrc);
-              const decorated = PHOTOS.map((p) => ({ p, k: r() }));
-              decorated.sort((x, y) => x.k - y.k);
-              const sorted = decorated.map((d) => d.p);
-              setSelected(sorted.slice(0, 10));
+              // Deterministic spread: pick one per year
+              const years = Array.from(new Set(MAIN_PHOTOS.map(p => p.year)));
+              const picked = years.map(y => MAIN_PHOTOS.find(p => p.year === y)).filter(Boolean) as PhotoRecord[];
+              setSelected(picked.filter((_, i) => i % 2 === 0).slice(0, 10));
             }}
             className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white"
           >
-            Shuffle
+            По годам
           </button>
         </>
       }
     >
+      <EvidenceNote level={evidenceOf("comparison_matrix")!.level} className="mb-3">
+        <div><strong>Реальная часть:</strong> {evidenceOf("comparison_matrix")!.realPart || "нет"}</div>
+        <div><strong>Заглушка:</strong> {evidenceOf("comparison_matrix")!.stubPart}</div>
+        <div><strong>Для перехода:</strong> {evidenceOf("comparison_matrix")!.upgradeHint}</div>
+      </EvidenceNote>
       {loading ? (
-        <div className="text-[11px] text-muted">Computing matrix…</div>
+        <div className="text-[11px] text-muted">Вычисление матрицы…</div>
       ) : !matrix.length ? (
-        <div className="text-[11px] text-muted">Pick at least two photos to compute matrix.</div>
+        <div className="text-[11px] text-muted">Выберите минимум 2 фото для вычисления матрицы.</div>
       ) : (
-        <PanelCard title={`Similarity matrix ${matrix.length}×${matrix.length}`}>
+        <PanelCard title={`Матрица сходства ${matrix.length}×${matrix.length}`}>
           <div className="overflow-auto">
             <table className="text-[10px]">
               <thead>
@@ -131,8 +132,8 @@ export default function MatrixPage() {
             </table>
           </div>
           <div className="text-[11px] text-muted mt-2">
-            Green = high mutual similarity (likely same cluster). Red = low similarity.
-            Click any cell to open the pair in Pair analysis.
+            Зелёный = высокое сходство (вероятно один кластер). Красный = низкое сходство.
+            Нажмите на ячейку, чтобы открыть пару в анализе пары.
           </div>
         </PanelCard>
       )}
@@ -159,7 +160,7 @@ function PhotoPicker({
 }) {
   const [query, setQuery] = useState("");
   const selectedIds = new Set(selected.map((s) => s.id));
-  const candidates = PHOTOS.filter(
+  const candidates = MAIN_PHOTOS.filter(
     (p) => !query || p.date.includes(query) || p.id.includes(query)
   ).slice(0, 120);
 
@@ -182,15 +183,15 @@ function PhotoPicker({
       >
         <div className="flex items-center justify-between h-10 px-3 border-b border-line">
           <div className="text-sm font-semibold text-white">
-            Pick photos ({selected.length}/20)
+            Выбрать фото ({selected.length}/20)
           </div>
-          <button onClick={onClose} className="px-2 h-7 rounded bg-line text-[11px] text-white">Done</button>
+          <button onClick={onClose} className="px-2 h-7 rounded bg-line text-[11px] text-white">Готово</button>
         </div>
         <div className="p-3 border-b border-line">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="filter id / date"
+            placeholder="фильтр id / дата"
             className="w-full h-8 px-2 rounded bg-bg-deep border border-line text-[11px] text-white"
           />
         </div>

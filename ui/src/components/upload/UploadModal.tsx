@@ -36,7 +36,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <Modal title="Upload photos" onClose={onClose} width="max-w-4xl">
+    <Modal title="Загрузка фото" onClose={onClose} width="max-w-4xl">
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -52,7 +52,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           drag ? "border-info bg-info/10" : "border-line"
         }`}
       >
-        <div className="text-[12px] text-white mb-2">Drop images here or click to select</div>
+        <div className="text-[12px] text-white mb-2">Перетащите изображения или нажмите для выбора</div>
         <input
           type="file"
           multiple
@@ -61,13 +61,13 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           className="block mx-auto text-[11px] text-muted"
         />
         <div className="text-[10px] text-muted mt-2">
-          Supports JPG / PNG. Files are processed through the 3DDFA_v3 pipeline after upload.
+          Поддерживаются JPG / PNG. Файлы обрабатываются через пайплайн 3DDFA_v3 после загрузки.
         </div>
       </div>
 
       {items.length > 0 && (
         <div className="mt-4">
-          <div className="text-[11px] text-muted mb-2">{items.length} file(s) queued</div>
+          <div className="text-[11px] text-muted mb-2">{items.length} файл(ов) в очереди</div>
           <div className="grid grid-cols-6 gap-2 max-h-72 overflow-auto">
             {items.map((it, i) => (
               <div key={i} className="relative bg-bg-deep rounded border border-line/60 overflow-hidden">
@@ -96,20 +96,20 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
 
       {report && (
         <div className="mt-3 text-[11px] p-2 rounded bg-ok/20 text-ok">
-          ✓ Upload complete: {report.accepted} accepted, {report.rejected} rejected. Extract job <span className="font-mono">{report.jobId}</span> started.
+          ✓ Загрузка завершена: {report.accepted} принято, {report.rejected} отклонено. Задача извлечения <span className="font-mono">{report.jobId}</span> запущена.
         </div>
       )}
 
       <div className="flex justify-end gap-2 mt-4">
         <button onClick={onClose} className="px-3 h-8 rounded bg-line text-[11px] text-white">
-          Close
+          Закрыть
         </button>
         <button
           onClick={submit}
           disabled={!items.length || busy}
           className="px-3 h-8 rounded bg-accent/80 hover:bg-accent disabled:opacity-40 text-[11px] text-white"
         >
-          {busy ? "Uploading…" : `Ingest ${items.length} photo(s)`}
+          {busy ? "Загрузка…" : `Загрузить ${items.length} фото`}
         </button>
       </div>
     </Modal>

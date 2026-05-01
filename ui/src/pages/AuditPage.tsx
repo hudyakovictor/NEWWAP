@@ -25,8 +25,8 @@ export default function AuditPage() {
 
   if (!report) {
     return (
-      <Page title="Audit">
-        <div className="text-[11px] text-muted">Running invariants…</div>
+      <Page title="Аудит">
+        <div className="text-[11px] text-muted">Выполнение инвариантов…</div>
       </Page>
     );
   }
@@ -51,8 +51,8 @@ export default function AuditPage() {
 
   return (
     <Page
-      title="Audit (autonomous)"
-      subtitle={`Generated ${report.generatedAt} · ${report.durationMs}ms · ${report.environment.runtime}`}
+      title="Аудит (автономный)"
+      subtitle={`Сгенерировано ${report.generatedAt} · ${report.durationMs}мс · ${report.environment.runtime}`}
       actions={
         <>
           <button
@@ -60,13 +60,13 @@ export default function AuditPage() {
             disabled={busy}
             className="px-3 h-8 rounded bg-ok/70 hover:bg-ok text-[11px] text-white disabled:opacity-40"
           >
-            {busy ? "Running…" : "Re-run audit"}
+            {busy ? "Выполнение…" : "Перезапустить аудит"}
           </button>
           <button
             onClick={snapshot}
             className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white"
           >
-            Download session snapshot
+            Скачать снимок сессии
           </button>
           <button
             onClick={() => {
@@ -74,34 +74,34 @@ export default function AuditPage() {
             }}
             className="px-3 h-8 rounded bg-line/70 hover:bg-line text-[11px] text-white"
           >
-            Copy report JSON
+            Скопировать JSON отчёта
           </button>
         </>
       }
     >
       {/* Summary */}
-      <PanelCard title="Summary" className="mb-3">
+      <PanelCard title="Сводка" className="mb-3">
         <pre className="text-[12px] whitespace-pre-wrap text-white font-mono">{report.summary}</pre>
       </PanelCard>
 
       {/* Counters */}
       <div className="grid grid-cols-5 gap-2 mb-3">
-        <Stat label="findings"   value={report.counts.total}  color="#cfd8e6" />
-        <Stat label="danger"     value={report.counts.danger} color="#ef4444" />
-        <Stat label="warn"       value={report.counts.warn}   color="#f59e0b" />
-        <Stat label="info"       value={report.counts.info}   color="#38bdf8" />
-        <Stat label="endpoints"  value={`${report.endpoints.filter((e) => e.status === "ok").length}/${report.endpoints.length}`} color={report.endpoints.every((e) => e.status === "ok") ? "#22c55e" : "#ef4444"} />
+        <Stat label="находки"   value={report.counts.total}  color="#cfd8e6" />
+        <Stat label="опасность"     value={report.counts.danger} color="#ef4444" />
+        <Stat label="предупреждение"       value={report.counts.warn}   color="#f59e0b" />
+        <Stat label="информация"       value={report.counts.info}   color="#38bdf8" />
+        <Stat label="эндпоинты"  value={`${report.endpoints.filter((e) => e.status === "ok").length}/${report.endpoints.length}`} color={report.endpoints.every((e) => e.status === "ok") ? "#22c55e" : "#ef4444"} />
       </div>
 
       {/* Endpoints */}
-      <PanelCard title="Endpoints" className="mb-3">
+      <PanelCard title="Эндпоинты" className="mb-3">
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
-              <th className="text-left p-2">endpoint</th>
-              <th className="text-left p-2">status</th>
-              <th className="text-left p-2">ms</th>
-              <th className="text-left p-2">note</th>
+              <th className="text-left p-2">эндпоинт</th>
+              <th className="text-left p-2">статус</th>
+              <th className="text-left p-2">мс</th>
+              <th className="text-left p-2">примечание</th>
             </tr>
           </thead>
           <tbody>
@@ -126,20 +126,20 @@ export default function AuditPage() {
       </PanelCard>
 
       {/* Findings */}
-      <PanelCard title={`Findings (${report.findings.length})`} className="mb-3">
+      <PanelCard title={`Находки (${report.findings.length})`} className="mb-3">
         {report.findings.length === 0 ? (
-          <div className="text-[11px] text-ok">All invariants pass. Nothing to investigate.</div>
+          <div className="text-[11px] text-ok">Все инварианты пройдены. Расследовать нечего.</div>
         ) : (
           <table className="w-full text-[11px]">
             <thead className="text-muted border-b border-line">
               <tr>
-                <th className="text-left p-2">sev</th>
-                <th className="text-left p-2">area</th>
+                <th className="text-left p-2">серьёзн.</th>
+                <th className="text-left p-2">область</th>
                 <th className="text-left p-2">id</th>
-                <th className="text-left p-2">message</th>
-                <th className="text-left p-2">expected</th>
-                <th className="text-left p-2">actual</th>
-                <th className="text-left p-2">hint</th>
+                <th className="text-left p-2">сообщение</th>
+                <th className="text-left p-2">ожидается</th>
+                <th className="text-left p-2">фактически</th>
+                <th className="text-left p-2">подсказка</th>
               </tr>
             </thead>
             <tbody>
@@ -167,12 +167,12 @@ export default function AuditPage() {
       </PanelCard>
 
       {/* Timings */}
-      <PanelCard title="Invariant timings" className="mb-3">
+      <PanelCard title="Время инвариантов" className="mb-3">
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
-              <th className="text-left p-2">invariant</th>
-              <th className="text-left p-2">ms</th>
+              <th className="text-left p-2">инвариант</th>
+              <th className="text-left p-2">мс</th>
             </tr>
           </thead>
           <tbody>
@@ -189,7 +189,7 @@ export default function AuditPage() {
       {/* History */}
       {history.length > 1 && (
         <PanelCard
-          title={`Audit history (${history.length} runs)`}
+          title={`История аудита (${history.length} запусков)`}
           className="mb-3"
           actions={
             <button
@@ -199,7 +199,7 @@ export default function AuditPage() {
               }}
               className="px-2 h-6 rounded bg-line text-[10px] text-white"
             >
-              clear
+              очистить
             </button>
           }
         >
@@ -207,14 +207,14 @@ export default function AuditPage() {
           <table className="w-full text-[11px] mt-3">
             <thead className="text-muted border-b border-line">
               <tr>
-                <th className="text-left p-2">at</th>
-                <th className="text-left p-2">total</th>
-                <th className="text-left p-2">danger</th>
-                <th className="text-left p-2">warn</th>
-                <th className="text-left p-2">info</th>
-                <th className="text-left p-2">endpoints</th>
-                <th className="text-left p-2">ms</th>
-                <th className="text-left p-2">Δ vs prev</th>
+                <th className="text-left p-2">когда</th>
+                <th className="text-left p-2">всего</th>
+                <th className="text-left p-2">опасность</th>
+                <th className="text-left p-2">предупр.</th>
+                <th className="text-left p-2">инфо</th>
+                <th className="text-left p-2">эндпоинты</th>
+                <th className="text-left p-2">мс</th>
+                <th className="text-left p-2">Δ vs пред.</th>
               </tr>
             </thead>
             <tbody>
@@ -242,12 +242,12 @@ export default function AuditPage() {
       )}
 
       {/* TZ coverage */}
-      <PanelCard title={`TZ coverage (${report.tzCoverage.length} topics)`}>
+      <PanelCard title={`Покрытие ТЗ (${report.tzCoverage.length} тем)`}>
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
-              <th className="text-left p-2">topic</th>
-              <th className="text-left p-2">implementation</th>
+              <th className="text-left p-2">тема</th>
+              <th className="text-left p-2">реализация</th>
             </tr>
           </thead>
           <tbody>

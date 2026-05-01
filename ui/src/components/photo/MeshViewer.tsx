@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import type * as THREE_NS from "three";
 
-// Minimal OBJ loader — supports v/vn/vt/f with the common subset produced
-// by 3DDFA_v3 exports.
-function parseOBJ(THREE: typeof THREE_NS, src: string): THREE_NS.BufferGeometry {
+interface OBJParseResult {
+  geometry: THREE_NS.BufferGeometry;
+  mtlFile: string | null;
+  materialName: string | null;
+}
+
+// OBJ loader — supports v/vn/vt/f with the common subset produced
+// by 3DDFA_v3 exports. Extracts UV coords and MTL references.
+function parseOBJ(THREE: typeof THREE_NS, src: string): OBJParseResult {
   const positions: number[] = [];
+  const uvs: number[] = [];
   const vertices: number[][] = [];
+  const uvList: number[][] = [];
+  let mtlFile: string | null = null;
+  let materialName: string | null = null;
+
   const lines = src.split(/\r?\n/);
   for (const raw of lines) {
     const line = raw.trim();
@@ -14,25 +25,50 @@ function parseOBJ(THREE: typeof THREE_NS, src: string): THREE_NS.BufferGeometry 
     const cmd = parts[0];
     if (cmd === "v") {
       vertices.push([+parts[1], +parts[2], +parts[3]]);
+    } else if (cmd === "vt") {
+      uvList.push([+parts[1], +parts[2]]);
+    } else if (cmd === "mtllib") {
+      mtlFile = parts[1];
+    } else if (cmd === "usemtl") {
+      materialName = parts[1];
     } else if (cmd === "f") {
-      const idx = parts.slice(1).map((p) => parseInt(p.split("/")[0], 10) - 1);
-      for (let i = 1; i < idx.length - 1; i++) {
-        const a = vertices[idx[0]];
-        const b = vertices[idx[i]];
-        const c = vertices[idx[i + 1]];
-        if (!a || !b || !c) continue;
-        positions.push(...a, ...b, ...c);
+      // Support v, v/vt, v/vt/vn, v//vn formats
+      const faceParts = parts.slice(1);
+      const vIdx: number[] = [];
+      const uvIdx: number[] = [];
+      for (const p of faceParts) {
+        const segs = p.split("/");
+        vIdx.push(parseInt(segs[0], 10) - 1);
+        uvIdx.push(segs.length > 1 && segs[1] !== "" ? parseInt(segs[1], 10) - 1 : -1);
+      }
+      for (let i = 1; i < vIdx.length - 1; i++) {
+        const va = vertices[vIdx[0]];
+        const vb = vertices[vIdx[i]];
+        const vc = vertices[vIdx[i + 1]];
+        if (!va || !vb || !vc) continue;
+        positions.push(...va, ...vb, ...vc);
+        if (uvList.length > 0) {
+          const ua = uvIdx[0] >= 0 ? uvList[uvIdx[0]] : null;
+          const ub = uvIdx[i] >= 0 ? uvList[uvIdx[i]] : null;
+          const uc = uvIdx[i + 1] >= 0 ? uvList[uvIdx[i + 1]] : null;
+          if (ua && ub && uc) {
+            uvs.push(ua[0], ua[1], ub[0], ub[1], uc[0], uc[1]);
+          }
+        }
       }
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  if (uvs.length > 0) {
+    geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  }
   geo.computeVertexNormals();
   geo.center();
-  return geo;
+  return { geometry: geo, mtlFile, materialName };
 }
 
-export default function MeshViewer({ objUrl }: { objUrl: string }) {
+export default function MeshViewer({ objUrl, textureUrl }: { objUrl: string; textureUrl?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,13 +114,41 @@ export default function MeshViewer({ objUrl }: { objUrl: string }) {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const text = await resp.text();
         if (disposed) return;
-        const geo = parseOBJ(THREE, text);
+        const { geometry: geo, mtlFile } = parseOBJ(THREE, text);
         geo.computeBoundingSphere();
         const r = geo.boundingSphere?.radius ?? 1;
         geo.scale(1 / r, 1 / r, 1 / r);
 
+        // Resolve texture: explicit prop > MTL map_Kd > fallback plain
+        const hasUV = geo.getAttribute("uv") != null;
+        let texture: THREE_NS.Texture | null = null;
+
+        if (hasUV && textureUrl) {
+          const texLoader = new THREE.TextureLoader();
+          texture = texLoader.load(textureUrl);
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.flipY = false; // OBJ UVs are already Y-flipped in _save_mesh_assets
+        } else if (hasUV && mtlFile && objUrl) {
+          // Derive texture URL from OBJ URL directory + MTL map_Kd reference
+          const objDir = objUrl.substring(0, objUrl.lastIndexOf("/") + 1);
+          try {
+            const mtlResp = await fetch(objDir + mtlFile);
+            if (mtlResp.ok) {
+              const mtlText = await mtlResp.text();
+              const mapKdMatch = mtlText.match(/^map_Kd\s+(.+)$/m);
+              if (mapKdMatch) {
+                const texLoader = new THREE.TextureLoader();
+                texture = texLoader.load(objDir + mapKdMatch[1].trim());
+                texture.colorSpace = THREE.SRGBColorSpace;
+                texture.flipY = false;
+              }
+            }
+          } catch { /* MTL fetch failed — fall through to plain material */ }
+        }
+
         const material = new THREE.MeshStandardMaterial({
-          color: 0xcfd8e6,
+          color: texture ? 0xffffff : 0xcfd8e6,
+          map: texture,
           metalness: 0.15,
           roughness: 0.55,
           flatShading: false,
@@ -185,7 +249,7 @@ export default function MeshViewer({ objUrl }: { objUrl: string }) {
       disposed = true;
       cleanup?.();
     };
-  }, [objUrl]);
+  }, [objUrl, textureUrl]);
 
   return (
     <div className="relative w-full h-full bg-bg-deep rounded">

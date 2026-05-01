@@ -30,8 +30,8 @@ export default function PhotoStrip({
           style={{ width: LABEL_W }}
           className="flex flex-col justify-center px-3 border-r border-line/60"
         >
-          <div className="text-[11px] text-white font-medium">Subject timeline</div>
-          <div className="text-[10px] text-muted">{points.length} photos</div>
+          <div className="text-[11px] text-white font-medium">Таймлайн субъекта</div>
+          <div className="text-[10px] text-muted">{points.length} фото</div>
         </div>
         <div className="flex items-center pr-4">
           {points.map((p, idx) => {
@@ -65,7 +65,7 @@ export default function PhotoStrip({
                 />
                 {/* Identity badge */}
                 {p.identity === "B" && (
-                  <div className="absolute top-0 right-0 text-[7px] px-0.5 bg-accent/80 text-white rounded-bl">
+                  <div className="absolute top-0 right-0 text-[7px] px-0.5 bg-danger/80 text-white rounded-bl">
                     B
                   </div>
                 )}
@@ -84,7 +84,7 @@ export default function PhotoStrip({
           style={{ width: LABEL_W }}
           className="border-r border-line/60 flex items-center px-3 text-[10px] text-muted"
         >
-          Anomalies
+          Аномалии
         </div>
         <div className="flex items-center">
           {points.map((p) => (
@@ -92,7 +92,7 @@ export default function PhotoStrip({
               key={`${p.photoId}-anomaly`}
               style={{ width: photoSize, marginRight: gapSize }}
               className="h-full flex items-start justify-center pt-0.5 relative"
-              title={p.note}
+              title={p.note ?? undefined}
             >
               {p.anomaly ? <SeverityIcon s={p.anomaly} /> : null}
             </div>

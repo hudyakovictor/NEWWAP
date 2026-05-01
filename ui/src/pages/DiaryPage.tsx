@@ -11,10 +11,10 @@ const STATUS_LABELS: Record<HypothesisStatus, string> = {
 };
 
 const STATUS_COLORS: Record<HypothesisStatus, string> = {
-  open: "bg-yellow-100 text-yellow-800",
-  confirmed: "bg-green-100 text-green-800",
-  rejected: "bg-red-100 text-red-800",
-  needs_data: "bg-blue-100 text-blue-800",
+  open: "bg-warn/20 text-warn",
+  confirmed: "bg-ok/20 text-ok",
+  rejected: "bg-danger/20 text-danger",
+  needs_data: "bg-info/20 text-info",
 };
 
 export default function DiaryPage() {
@@ -95,13 +95,13 @@ export default function DiaryPage() {
             value={newEntry}
             onChange={(e) => setNewEntry(e.target.value)}
             placeholder="Опишите наблюдение, факт или находку..."
-            className="w-full h-24 p-2 border rounded text-sm font-mono"
+            className="w-full h-24 p-2 border border-line rounded bg-bg-deep text-white text-[11px]"
           />
           <div className="flex gap-2 mt-2">
             <button
               onClick={addEntry}
               disabled={!newEntry.trim()}
-              className="px-3 py-1 bg-primary text-white rounded text-sm disabled:opacity-50"
+              className="px-3 py-1 bg-accent text-white rounded text-[11px] disabled:opacity-50"
             >
               Записать наблюдение
             </button>
@@ -113,13 +113,13 @@ export default function DiaryPage() {
             value={newHypothesis}
             onChange={(e) => setNewHypothesis(e.target.value)}
             placeholder="Выдвинуть гипотезу..."
-            className="w-full h-24 p-2 border rounded text-sm font-mono"
+            className="w-full h-24 p-2 border border-line rounded bg-bg-deep text-white text-[11px]"
           />
           <div className="flex gap-2 mt-2">
             <button
               onClick={addHypothesis}
               disabled={!newHypothesis.trim()}
-              className="px-3 py-1 bg-primary text-white rounded text-sm disabled:opacity-50"
+              className="px-3 py-1 bg-accent text-white rounded text-[11px] disabled:opacity-50"
             >
               Выдвинуть гипотезу
             </button>
@@ -136,7 +136,7 @@ export default function DiaryPage() {
                 <div
                   key={h.id}
                   className={`p-2 rounded border cursor-pointer ${
-                    selectedEntry === h.id ? "border-primary bg-primary/5" : "border-border"
+                    selectedEntry === h.id ? "border-info bg-info/5" : "border-line/60 bg-bg-deep/50"
                   }`}
                   onClick={() => setSelectedEntry(h.id === selectedEntry ? null : h.id)}
                 >
@@ -154,19 +154,19 @@ export default function DiaryPage() {
                     <div className="flex gap-1 mt-2 pt-2 border-t">
                       <button
                         onClick={(e) => { e.stopPropagation(); updateStatus(h.id, "confirmed"); }}
-                        className="text-xs px-2 py-1 bg-green-100 rounded hover:bg-green-200"
+                        className="text-xs px-2 py-1 bg-ok/20 text-ok rounded hover:bg-ok/30"
                       >
                         Подтвердить
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); updateStatus(h.id, "rejected"); }}
-                        className="text-xs px-2 py-1 bg-red-100 rounded hover:bg-red-200"
+                        className="text-xs px-2 py-1 bg-danger/20 text-danger rounded hover:bg-danger/30"
                       >
                         Опровергнуть
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); updateStatus(h.id, "needs_data"); }}
-                        className="text-xs px-2 py-1 bg-blue-100 rounded hover:bg-blue-200"
+                        className="text-xs px-2 py-1 bg-info/20 text-info rounded hover:bg-info/30"
                       >
                         Нужны данные
                       </button>
@@ -185,7 +185,7 @@ export default function DiaryPage() {
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {observations.map((o) => (
-                <div key={o.id} className="p-2 rounded border border-border">
+                <div key={o.id} className="p-2 rounded border border-line/60 bg-bg-deep/50">
                   <div className="text-xs text-muted mb-1">
                     {new Date(o.timestamp).toLocaleString("ru-RU")}
                   </div>
@@ -203,7 +203,7 @@ export default function DiaryPage() {
           ) : (
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {conclusions.map((c) => (
-                <div key={c.id} className="p-2 rounded border border-border bg-primary/5">
+                <div key={c.id} className="p-2 rounded border border-line/60 bg-accent/5">
                   <div className="text-xs text-muted mb-1">
                     {new Date(c.timestamp).toLocaleDateString("ru-RU")}
                   </div>

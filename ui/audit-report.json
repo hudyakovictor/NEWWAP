@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-05-01T04:03:10.235Z",
-  "durationMs": 91,
+  "generatedAt": "2026-05-01T13:27:17.113Z",
+  "durationMs": 442,
   "environment": {
     "runtime": "node",
     "nodeVersion": "v22.14.0"
@@ -8,159 +8,95 @@
   "endpoints": [
     {
       "name": "getTimeline",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 3
     },
     {
       "name": "listPhotos",
-      "status": "fail",
-      "ms": 0,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "getPhotoDetail",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "similarPhotos",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     },
     {
       "name": "getCalibration",
-      "status": "fail",
-      "ms": 0,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "photosInBucket",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "listJobs",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "listInvestigations",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     },
     {
       "name": "listAnomalies",
-      "status": "fail",
-      "ms": 0,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     },
     {
       "name": "getPipelineStages",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "getCacheSummary",
-      "status": "fail",
-      "ms": 0,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     },
     {
       "name": "getAgeingSeries",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 2
     },
     {
       "name": "getEvidence",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     },
     {
       "name": "getApiCatalog",
-      "status": "fail",
-      "ms": 0,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     },
     {
       "name": "comparisonMatrix",
-      "status": "fail",
-      "ms": 1,
-      "note": "fetch failed"
+      "status": "ok",
+      "ms": 1
     }
   ],
   "findings": [
     {
-      "id": "audit.invariant_threw.timeline",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'timeline' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+      "id": "timeline.cluster_b_empty",
+      "area": "timeline",
+      "severity": "info",
+      "message": "Нет вычисленного разделения кластеров — байесовский суд не запускался",
+      "expected": "cluster B only after Bayesian/geometry evidence supports a split",
+      "actual": 0
     },
     {
-      "id": "audit.invariant_threw.evidence_symmetry",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'evidence_symmetry' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.bucket_membership",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'bucket_membership' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.similar_exclusion",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'similar_exclusion' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.pipeline",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'pipeline' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.cache",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'cache' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.ageing",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'ageing' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.api_timings",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'api_timings' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+      "id": "ageing.no_data",
+      "area": "ageing",
+      "severity": "info",
+      "message": "Кривая старения не построена — нет данных для проверки",
+      "hint": "Запустить pipeline расчёта возраста → построить модель старения"
     },
     {
       "id": "calibration.summary",
@@ -178,52 +114,20 @@
       }
     },
     {
-      "id": "audit.invariant_threw.anomaly_integrity",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'anomaly_integrity' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+      "id": "timeline.age_metric_missing",
+      "area": "consistency",
+      "severity": "info",
+      "message": "Timeline omits the age metric because subject age is not configured",
+      "hint": "Keep this informational unless backend config sets subject_age_at_earliest_photo"
     },
     {
-      "id": "audit.invariant_threw.calibration_coverage",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'calibration_coverage' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.investigations_integrity",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'investigations_integrity' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.api_catalog",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'api_catalog' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.timeline_vs_photo_detail",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'timeline_vs_photo_detail' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
-    },
-    {
-      "id": "audit.invariant_threw.ageing_vs_timeline",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'ageing_vs_timeline' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+      "id": "ageing.length_mismatch",
+      "area": "ageing",
+      "severity": "info",
+      "message": "Ageing series is empty — subject age not configured (subject_age_at_earliest_photo is null)",
+      "expected": "27",
+      "actual": 0,
+      "hint": "Set subject_age_at_earliest_photo in backend config to enable ageing model"
     },
     {
       "id": "signals.similar_composition.2016_12_23.jpg.2024_12_19-6.jpg",
@@ -262,12 +166,15 @@
       "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
     },
     {
-      "id": "audit.invariant_threw.similar_photos",
-      "area": "api",
-      "severity": "danger",
-      "message": "Invariant 'similar_photos' threw",
-      "actual": "fetch failed",
-      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
+      "id": "similar.no_dhash_anchor",
+      "area": "consistency",
+      "severity": "info",
+      "message": "similarPhotos result barely uses real dHash anchoring",
+      "actual": {
+        "anchored": 0,
+        "total": 1
+      },
+      "hint": "Confirm the seed photo URL is in signal-report.json"
     },
     {
       "id": "tz_auto_coverage.summary",
@@ -281,43 +188,44 @@
     }
   ],
   "timings": {
-    "timeline": 29,
-    "bayes_sum": 3,
-    "evidence_symmetry": 6,
-    "photo_records": 0,
-    "bucket_membership": 2,
+    "timeline": 312,
+    "bayes_sum": 0,
+    "evidence_symmetry": 25,
+    "photo_records": 1,
+    "bucket_membership": 5,
     "similar_exclusion": 2,
-    "pipeline": 1,
-    "cache": 1,
-    "ageing": 1,
+    "pipeline": 3,
+    "cache": 2,
+    "ageing": 2,
     "ground_truth": 0,
-    "api_timings": 2,
-    "determinism": 1,
-    "calibration_cross": 3,
+    "api_timings": 17,
+    "determinism": 0,
+    "calibration_cross": 5,
     "photo_year_coverage": 0,
     "anomaly_integrity": 2,
     "calibration_coverage": 1,
-    "investigations_integrity": 1,
-    "api_catalog": 0,
-    "timeline_vs_photo_detail": 1,
-    "ageing_vs_timeline": 1,
-    "expanded_determinism": 0,
+    "investigations_integrity": 2,
+    "api_catalog": 1,
+    "timeline_vs_photo_detail": 4,
+    "ageing_vs_timeline": 5,
+    "expanded_determinism": 1,
     "logs_for_errors": 0,
     "ground_truth_files": 0,
-    "signals": 5,
-    "similar_photos": 1,
-    "tz_auto_coverage": 3,
-    "assets_node": 13
+    "signals": 6,
+    "similar_photos": 6,
+    "tz_auto_coverage": 2,
+    "assets_node": 10
   },
   "counts": {
-    "info": 5,
+    "info": 10,
     "warn": 0,
-    "danger": 15,
-    "total": 20,
+    "danger": 0,
+    "total": 10,
     "byArea": {
-      "api": 15,
+      "timeline": 1,
+      "ageing": 2,
       "calibration": 1,
-      "consistency": 3,
+      "consistency": 5,
       "tz": 1
     }
   },
@@ -339,7 +247,7 @@
     },
     {
       "topic": "Bayesian courtroom (H0/H1/H2)",
-      "impl": "src/api/mock.ts :: getEvidence + src/pages/EvidencePage.tsx",
+      "impl": "src/api/mock.ts :: getEvidence + src/pages/PairAnalysisPage.tsx",
       "aliases": [
         "Байесовский зал судебных заседаний"
       ]
@@ -392,7 +300,7 @@
     },
     {
       "topic": "Reconstruction cache with VRAM guard",
-      "impl": "src/pages/CachePage.tsx + api.getCacheSummary",
+      "impl": "src/pages/PipelinePage.tsx + api.getCacheSummary",
       "aliases": [
         "Умное кэширование с защитой от переполнения памяти"
       ]
@@ -418,15 +326,15 @@
     },
     {
       "topic": "Reports (list + builder)",
-      "impl": "src/pages/ReportsPage.tsx + src/pages/ReportBuilderPage.tsx"
+      "impl": "src/pages/ReportBuilderPage.tsx"
     },
     {
       "topic": "API catalog / explorer",
-      "impl": "src/pages/ApiExplorerPage.tsx + api.getApiCatalog"
+      "impl": "src/pages/ReportBuilderPage.tsx + api.getApiCatalog"
     },
     {
       "topic": "Ground truth calibration anchors",
-      "impl": "src/pages/GroundTruthPage.tsx + src/mock/groundTruth.ts"
+      "impl": "src/pages/CalibrationPage.tsx + src/mock/groundTruth.ts"
     },
     {
       "topic": "Logs + validation + self-test",
@@ -437,5 +345,5 @@
       "impl": "src/debug/invariants.ts + src/debug/audit.ts + scripts/audit.ts"
     }
   ],
-  "summary": "✗ AUDIT RED — 15 danger-level finding(s). Fix before publishing.\nEndpoints: 0/15 ok · failures: getTimeline, listPhotos, getPhotoDetail, similarPhotos, getCalibration, photosInBucket, listJobs, listInvestigations, listAnomalies, getPipelineStages, getCacheSummary, getAgeingSeries, getEvidence, getApiCatalog, comparisonMatrix\nFindings total: 20 (danger=15, warn=0, info=5).\nBy area: api=15 · consistency=3 · calibration=1 · tz=1."
+  "summary": "✓ AUDIT GREEN — all invariants pass, all endpoints respond, no validation warnings.\nEndpoints: 15/15 ok\nFindings total: 10 (danger=0, warn=0, info=10).\nBy area: consistency=5 · ageing=2 · timeline=1 · calibration=1 · tz=1."
 }

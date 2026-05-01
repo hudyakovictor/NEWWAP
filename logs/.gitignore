@@ -1,0 +1,6 @@
+# Runtime logs — do not commit
+*.log
+*.log.*
+
+# Keep the directory structure
+!.gitkeep

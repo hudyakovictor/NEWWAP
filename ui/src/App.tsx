@@ -2,27 +2,24 @@ import TopBar from "./components/TopBar";
 import TimelineView from "./components/timeline/TimelineView";
 import PhotosPage from "./pages/PhotosPage";
 import PairAnalysisPage from "./pages/PairAnalysisPage";
+import ComparisonPage from "./pages/ComparisonPage";
 import CalibrationPage from "./pages/CalibrationPage";
 import JobsPage from "./pages/JobsPage";
-import ReportsPage from "./pages/ReportsPage";
+import ReportBuilderPage from "./pages/ReportBuilderPage";
 import SettingsPage from "./pages/SettingsPage";
 import InvestigationsPage from "./pages/InvestigationsPage";
 import AnomaliesPage from "./pages/AnomaliesPage";
-import EvidencePage from "./pages/EvidencePage";
 import MatrixPage from "./pages/MatrixPage";
 import AgeingPage from "./pages/AgeingPage";
-import CachePage from "./pages/CachePage";
 import PipelinePage from "./pages/PipelinePage";
-import ApiExplorerPage from "./pages/ApiExplorerPage";
-import ReportBuilderPage from "./pages/ReportBuilderPage";
 import LogsPage from "./pages/LogsPage";
-import GroundTruthPage from "./pages/GroundTruthPage";
 import AuditPage from "./pages/AuditPage";
 import SignalsPage from "./pages/SignalsPage";
 import ProgressPage from "./pages/ProgressPage";
 import ClustersPage from "./pages/ClustersPage";
 import IterationsPage from "./pages/IterationsPage";
 import DiaryPage from "./pages/DiaryPage";
+import EvidenceMapPage from "./pages/EvidenceMapPage";
 import CommandPalette from "./components/common/CommandPalette";
 import { useApp } from "./store/appStore";
 import "./App.css";
@@ -36,27 +33,24 @@ export default function App() {
       {page === "timeline" && <TimelineView />}
       {page === "photos" && <PhotosPage />}
       {page === "pairs" && <PairAnalysisPage />}
+      {page === "comparison" && <ComparisonPage />}
       {page === "matrix" && <MatrixPage />}
-      {page === "evidence" && <EvidencePage />}
       {page === "ageing" && <AgeingPage />}
       {page === "anomalies" && <AnomaliesPage />}
-      {page === "investigations" && <InvestigationsPage />}
+      {page === "iterations" && <IterationsPage />}
       {page === "calibration" && <CalibrationPage />}
       {page === "pipeline" && <PipelinePage />}
-      {page === "cache" && <CachePage />}
       {page === "jobs" && <JobsPage />}
-      {page === "reports" && <ReportsPage />}
+      {page === "investigations" && <InvestigationsPage />}
+      {page === "diary" && <DiaryPage />}
       {page === "report_builder" && <ReportBuilderPage />}
-      {page === "api" && <ApiExplorerPage />}
-      {page === "logs" && <LogsPage />}
-      {page === "ground_truth" && <GroundTruthPage />}
-      {page === "audit" && <AuditPage />}
+      {page === "settings" && <SettingsPage />}
       {page === "signals" && <SignalsPage />}
       {page === "progress" && <ProgressPage />}
       {page === "clusters" && <ClustersPage />}
-      {page === "iterations" && <IterationsPage />}
-      {page === "diary" && <DiaryPage />}
-      {page === "settings" && <SettingsPage />}
+      {page === "audit" && <AuditPage />}
+      {page === "logs" && <LogsPage />}
+      {page === "evidence_map" && <EvidenceMapPage />}
       <CommandPalette />
     </div>
   );

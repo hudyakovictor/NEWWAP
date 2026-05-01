@@ -21,8 +21,8 @@ export default function IdentityRow({
         style={{ width: LABEL_W, height: H }}
         className="flex flex-col justify-center px-3 border-r border-line/60"
       >
-        <div className="text-[11px] text-white">Identity clusters</div>
-        <div className="text-[10px] text-muted">bayesian H0 / H1</div>
+        <div className="text-[11px] text-white">Кластеры идентичности</div>
+        <div className="text-[10px] text-muted">байесовские H0 / H1</div>
       </div>
       <div className="relative" style={{ width: years.length * COL_W, height: H }}>
         {/* vertical grid lines */}

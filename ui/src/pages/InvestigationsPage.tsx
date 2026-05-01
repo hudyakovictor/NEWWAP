@@ -5,7 +5,7 @@ import { api, type Investigation } from "../api";
 const EMPTY: Investigation = {
   id: "",
   name: "",
-  subject: "Subject 1",
+  subject: "Субъект 1",
   createdAt: "",
   updatedAt: "",
   photoCount: 0,
@@ -34,7 +34,7 @@ export default function InvestigationsPage() {
     const now = new Date().toISOString().slice(0, 10);
     setDraft({
       ...EMPTY,
-      id: `inv-${Math.random().toString(36).slice(2, 7)}`,
+      id: `inv-${Date.now().toString(36)}`,
       createdAt: now,
       updatedAt: now,
     });
@@ -65,20 +65,20 @@ export default function InvestigationsPage() {
 
   return (
     <Page
-      title="Cases"
-      subtitle="Forensic investigations · subjects, notes, verdicts"
+      title="Кейсы"
+      subtitle="Форензические расследования · субъекты, заметки, вердикты"
       actions={
         <button onClick={startNew} className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white">
-          + New case
+          + Новый кейс
         </button>
       }
     >
       {loading ? (
-        <div className="text-[11px] text-muted">Loading…</div>
+        <div className="text-[11px] text-muted">Загрузка…</div>
       ) : (
         <div className="grid grid-cols-12 gap-3">
           <div className="col-span-4">
-            <PanelCard title={`All cases (${items.length})`}>
+            <PanelCard title={`Все кейсы (${items.length})`}>
               <div className="flex flex-col gap-1">
                 {items.map((i) => (
                   <button
@@ -110,7 +110,7 @@ export default function InvestigationsPage() {
                       </span>
                     </div>
                     <div className="text-[10px] text-muted">
-                      {i.subject} · {i.photoCount} photos · upd {i.updatedAt}
+                      {i.subject} · {i.photoCount} фото · обн. {i.updatedAt}
                     </div>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {i.tags.map((t) => (
@@ -142,33 +142,33 @@ export default function InvestigationsPage() {
                       onClick={() => setDraft(selected)}
                       className="px-2 h-6 rounded bg-info/60 hover:bg-info text-[10px] text-white"
                     >
-                      Edit
+                      Ред.
                     </button>
                     <button
                       onClick={() => remove(selected.id)}
                       className="px-2 h-6 rounded bg-danger/60 hover:bg-danger text-[10px] text-white"
                     >
-                      Delete
+                      Удалить
                     </button>
                   </div>
                 }
               >
                 <div className="grid grid-cols-4 gap-2 text-[11px] mb-3">
                   <KV k="id" v={selected.id} />
-                  <KV k="subject" v={selected.subject} />
-                  <KV k="created" v={selected.createdAt} />
-                  <KV k="updated" v={selected.updatedAt} />
-                  <KV k="photos" v={selected.photoCount} />
-                  <KV k="verdict" v={selected.verdict} />
-                  <KV k="tags" v={selected.tags.join(", ") || "—"} />
+                  <KV k="субъект" v={selected.subject} />
+                  <KV k="создано" v={selected.createdAt} />
+                  <KV k="обновлено" v={selected.updatedAt} />
+                  <KV k="фото" v={selected.photoCount} />
+                  <KV k="вердикт" v={selected.verdict} />
+                  <KV k="теги" v={selected.tags.join(", ") || "—"} />
                 </div>
-                <div className="text-[11px] text-muted uppercase tracking-widest mb-1">Notes</div>
+                <div className="text-[11px] text-muted uppercase tracking-widest mb-1">Заметки</div>
                 <div className="text-[11px] text-white whitespace-pre-wrap bg-bg-deep/50 border border-line/60 rounded p-2">
-                  {selected.notes || "No notes yet."}
+                  {selected.notes || "Нет заметок."}
                 </div>
               </PanelCard>
             ) : (
-              <div className="text-[11px] text-muted">Select a case on the left.</div>
+              <div className="text-[11px] text-muted">Выберите кейс слева.</div>
             )}
           </div>
         </div>
@@ -190,24 +190,24 @@ function EditForm({
 }) {
   return (
     <PanelCard
-      title={value.id.startsWith("inv-") && !value.name ? "New case" : `Edit — ${value.name || value.id}`}
+      title={value.id.startsWith("inv-") && !value.name ? "Новый кейс" : `Ред. — ${value.name || value.id}`}
     >
       <div className="grid grid-cols-2 gap-3 text-[11px]">
-        <Field label="Name">
+        <Field label="Название">
           <input
             className="w-full h-8 px-2 bg-bg-deep border border-line rounded text-white"
             value={value.name}
             onChange={(e) => onChange({ ...value, name: e.target.value })}
           />
         </Field>
-        <Field label="Subject">
+        <Field label="Субъект">
           <input
             className="w-full h-8 px-2 bg-bg-deep border border-line rounded text-white"
             value={value.subject}
             onChange={(e) => onChange({ ...value, subject: e.target.value })}
           />
         </Field>
-        <Field label="Photo count">
+        <Field label="Кол-во фото">
           <input
             type="number"
             className="w-full h-8 px-2 bg-bg-deep border border-line rounded text-white"
@@ -215,7 +215,7 @@ function EditForm({
             onChange={(e) => onChange({ ...value, photoCount: +e.target.value })}
           />
         </Field>
-        <Field label="Verdict">
+        <Field label="Вердикт">
           <select
             className="w-full h-8 px-2 bg-bg-deep border border-line rounded text-white"
             value={value.verdict}
@@ -226,7 +226,7 @@ function EditForm({
             ))}
           </select>
         </Field>
-        <Field label="Tags (comma-separated)" full>
+        <Field label="Теги (через запятую)" full>
           <input
             className="w-full h-8 px-2 bg-bg-deep border border-line rounded text-white"
             value={value.tags.join(", ")}
@@ -238,7 +238,7 @@ function EditForm({
             }
           />
         </Field>
-        <Field label="Notes" full>
+        <Field label="Заметки" full>
           <textarea
             rows={6}
             className="w-full px-2 py-1 bg-bg-deep border border-line rounded text-white"
@@ -249,10 +249,10 @@ function EditForm({
       </div>
       <div className="flex gap-2 mt-3">
         <button onClick={onSave} className="px-3 h-8 rounded bg-ok/70 hover:bg-ok text-[11px] text-white">
-          Save
+          Сохранить
         </button>
         <button onClick={onCancel} className="px-3 h-8 rounded bg-line text-[11px] text-white">
-          Cancel
+          Отмена
         </button>
       </div>
     </PanelCard>

@@ -28,6 +28,9 @@ from .utils import (
     write_json,
 )
 
+UI_EXPECTED_POSES = ["frontal", "three_quarter_left", "three_quarter_right", "profile_left", "profile_right"]
+UI_EXPECTED_LIGHTS = ["daylight", "studio", "low_light", "mixed", "flash"]
+
 
 @dataclass
 class DatasetDescriptor:
@@ -52,7 +55,25 @@ class ForensicWorkbenchService:
         self._main_records_cache_ts: float = 0.0
         self._calib_summary_cache: dict[str, Any] | None = None
         self._calib_summary_cache_ts: float = 0.0
+        self._pose_reports: dict[str, dict[str, Any]] = {}
         self._CACHE_TTL = 30.0  # seconds
+
+    def _pose_report(self, dataset: str) -> dict[str, Any]:
+        if dataset in self._pose_reports:
+            return self._pose_reports[dataset]
+        filename = "poses_main.json" if dataset == "main" else "poses_myface.json"
+        candidates = [
+            SETTINGS.newapp_root / "ui" / "src" / "data" / filename,
+            SETTINGS.storage_root / "poses" / filename,
+        ]
+        report: dict[str, Any] = {}
+        for path in candidates:
+            data = read_json(path, {})
+            if isinstance(data, dict) and data:
+                report = data
+                break
+        self._pose_reports[dataset] = report
+        return report
 
     def _dataset_root(self, dataset: str) -> Path:
         return self.datasets[dataset].root
@@ -91,11 +112,28 @@ class ForensicWorkbenchService:
 
     def _build_stub(self, dataset: str, source_path: Path) -> dict[str, Any]:
         photo_id = self._photo_id(dataset, source_path)
+        # [FIX-D5] Track date source: "filename" (verified) vs "fallback" (heuristic)
         date_str, parsed_date = parse_date_from_name(source_path.name)
+        date_source = "filename"
         if not parsed_date:
             date_str, parsed_date = fallback_date_for_file(source_path)
+            date_source = "fallback"
         summary = read_json(self._summary_path(dataset, photo_id), {})
         bucket = str(summary.get("bucket", "unclassified"))
+        pose_report = self._pose_report(dataset).get(source_path.name, {})
+        pose = summary.get("pose") or {}
+        if pose_report:
+            pose = {
+                **pose,
+                "yaw": pose_report.get("yaw"),
+                "pitch": pose_report.get("pitch"),
+                "roll": pose_report.get("roll"),
+                "source": pose_report.get("source"),
+                "pose_source": pose_report.get("source"),
+                "classification": pose_report.get("classification"),
+                "bucket": pose_report.get("classification"),
+            }
+            bucket = str(pose_report.get("classification") or bucket)
         stub = {
             "photo_id": photo_id,
             "dataset": dataset,
@@ -103,12 +141,13 @@ class ForensicWorkbenchService:
             "source_path": str(source_path),
             "source_url": self._source_url(dataset, source_path),
             "date_str": date_str,
-            "parsed_year": parsed_date.year,
+            "date_source": date_source,
+            "parsed_year": parsed_date.year if parsed_date else None,
             "file_size_bytes": source_path.stat().st_size,
             "bucket": bucket,
             "angle": summary.get("angle", "unknown"),
             "bucket_label": BUCKET_LABELS.get(bucket, bucket),
-            "pose": summary.get("pose", {"bucket": bucket}),
+            "pose": pose or {"bucket": bucket},
             "quality": summary.get("quality", {}),
             "texture_forensics": summary.get("texture_forensics", {}),
             "metrics": summary.get("metrics", {}),
@@ -117,7 +156,7 @@ class ForensicWorkbenchService:
             "status": summary.get("status", "not_extracted"),
             "extracted_at": summary.get("extracted_at"),
             # Top-level fields for PhotoRecord compatibility
-            "year": parsed_date.year,
+            "year": parsed_date.year if parsed_date else None,
             "syntheticProb": float(summary.get("metrics", {}).get("texture_silicone_prob", 0.0)),
             "bayesH0": summary.get("verdict", {}).get("bayesH0"),  # None if not computed
         }
@@ -364,23 +403,37 @@ class ForensicWorkbenchService:
         record: dict[str, Any],
         calibration_records: dict[str, dict[str, Any]],
         calibration_summary: dict[str, Any],
-        overrides: dict[str, str],
+        overrides: dict[str, Any],
     ) -> dict[str, Any] | None:
-        manual = overrides.get(record["photo_id"])
-        if manual and manual in calibration_records:
-            matched = calibration_records[manual]
+        # [FIX-D3] Support both old (string) and new (dict with provenance) override formats
+        override_entry = overrides.get(record["photo_id"])
+        manual_id = None
+        override_provenance = None
+        if isinstance(override_entry, dict):
+            manual_id = override_entry.get("calibration_photo_id")
+            override_provenance = override_entry
+        elif isinstance(override_entry, str):
+            manual_id = override_entry
+        
+        if manual_id and manual_id in calibration_records:
+            matched = calibration_records[manual_id]
+            # [FIX-D4] Don't force score=1.0 for manual overrides — compute real pose distance
+            distance = pose_distance(record.get("pose", {}), matched.get("pose", {}))
+            real_score = max(0.0, 1.0 - min(distance / 40.0, 1.0))
             return {
                 "photo_id": matched["photo_id"],
                 "filename": matched["filename"],
                 "bucket": matched["bucket"],
                 "source": "manual_override",
-                "score": 1.0,
+                "score": real_score,
+                "manually_overridden": True,
                 "url": matched["artifacts"].get("face_overlay") or matched["artifacts"].get("render_face"),
                 "angles": [
                     float(matched.get("pose", {}).get("pitch", 0.0)),
                     float(matched.get("pose", {}).get("yaw", 0.0)),
                     float(matched.get("pose", {}).get("roll", 0.0)),
                 ],
+                "provenance": override_provenance,
             }
 
         candidates = [
@@ -407,12 +460,21 @@ class ForensicWorkbenchService:
             ],
         }
 
-    def set_calibration_override(self, photo_id: str, calibration_photo_id: str) -> dict[str, Any]:
+    def set_calibration_override(self, photo_id: str, calibration_photo_id: str, reason: str = "", author: str = "system") -> dict[str, Any]:
+        # [FIX-D3] Provenance for calibration overrides: audit trail with author, timestamp, reason
         data = read_json(self.override_path, {})
-        data[photo_id] = calibration_photo_id
+        previous_value = data.get(photo_id, {}).get("calibration_photo_id") if isinstance(data.get(photo_id), dict) else data.get(photo_id)
+        entry = {
+            "calibration_photo_id": calibration_photo_id,
+            "changed_at": iso_now(),
+            "changed_by": author,
+            "reason": reason,
+            "previous_calibration_photo_id": previous_value,
+        }
+        data[photo_id] = entry
         write_json(self.override_path, data)
         self._invalidate_cache()
-        return {"status": "ok", "photo_id": photo_id, "calibration_photo_id": calibration_photo_id}
+        return {"status": "ok", "photo_id": photo_id, "calibration_photo_id": calibration_photo_id, "provenance": entry}
 
     def calibration_summary(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -430,6 +492,18 @@ class ForensicWorkbenchService:
                 "count": b_data["observation_count"],
                 "variance": b_data.get("variance", 0.0),
             })
+        existing = {(b["pose"], b["light"]) for b in bucket_list}
+        for pose in UI_EXPECTED_POSES:
+            for light in UI_EXPECTED_LIGHTS:
+                if (pose, light) in existing:
+                    continue
+                bucket_list.append({
+                    "pose": pose,
+                    "light": light,
+                    "level": "unreliable",
+                    "count": 0,
+                    "variance": 0.0,
+                })
         summary["buckets"] = bucket_list
         # recommendations: severity and text
         summary["recommendations"] = []
@@ -447,28 +521,35 @@ class ForensicWorkbenchService:
         main_records = self.main_records()
         ready_main = [record for record in main_records if record.get("status") == "ready"]
         
-        # Aggregate stats by year
-        years = sorted(list({r["parsed_year"] for r in main_records if r.get("parsed_year")}))
+        dated_records = [
+            r for r in main_records
+            if r.get("date_source") == "filename" and r.get("parsed_year") is not None and 1999 <= int(r["parsed_year"]) <= 2025
+        ]
+        # Aggregate only explicit filename dates. Fallback mtimes are provenance,
+        # not investigation chronology, and can otherwise create false 2026 anchors.
+        years = sorted(list({r["parsed_year"] for r in dated_records}))
         if not years:
-            years = [2000]
+            return {"years": [], "yearPoints": [], "metrics": [], "identitySegments": [],
+                    "eventMarkers": [], "photoVolume": [], "totalPhotos": len(main_records),
+                    "calibrationLevel": "none"}
             
         records_by_year = defaultdict(list)
-        for r in main_records:
+        for r in dated_records:
             if r.get("parsed_year"):
                 records_by_year[r["parsed_year"]].append(r)
                 
         year_points = []
         for y in years:
             candidates = records_by_year[y]
-            # Pick best anchor: frontal if possible, else smallest yaw
+            # [FIX-C3] Pick best anchor: composite score of quality + frontal pose
             with_pose = [c for c in candidates if c.get("pose", {}).get("pose_source") != "none"]
             anchor = None
             if with_pose:
-                frontals = [c for c in with_pose if c["pose"].get("bucket") == "frontal"]
-                if frontals:
-                    anchor = min(frontals, key=lambda x: abs(x["pose"].get("yaw", 0)))
-                else:
-                    anchor = min(with_pose, key=lambda x: abs(x["pose"].get("yaw", 0)))
+                def _anchor_score(c: dict) -> float:
+                    yaw = abs(c.get("pose", {}).get("yaw", 90))
+                    quality = c.get("quality", {}).get("overall_score", 0.5)
+                    return (1 - yaw / 90) * 0.6 + quality * 0.4
+                anchor = max(with_pose, key=_anchor_score)
             
             if not anchor and candidates:
                 anchor = candidates[0]
@@ -476,14 +557,14 @@ class ForensicWorkbenchService:
             anomaly = None
             flags = anchor.get("anomaly_flags", []) if anchor else []
             if any(f["severity"] == "critical" for f in flags): anomaly = "danger"
-            elif any(f["severity"] == "high" for f in flags): anomaly = "warn"
-            elif any(f["severity"] == "medium" for f in flags): anomaly = "info"
+            elif any(f["severity"] == "high" for f in flags): anomaly = "danger"  # [FIX-D6] high → danger, not warn
+            elif any(f["severity"] == "medium" for f in flags): anomaly = "warn"
             
             year_points.append({
                 "year": y,
                 "photo": anchor["source_url"] if anchor else "",
                 "anomaly": anomaly,
-                "identity": "A", # TODO: dynamic identity clustering
+                "identity": "A",  # TODO: derive from identitySegments
                 "note": flags[0]["description"] if flags else None
             })
             
@@ -502,7 +583,7 @@ class ForensicWorkbenchService:
         # Mean |yaw|
         yaws = []
         for y in years:
-            poses = [r["pose"].get("yaw", 0) for r in records_by_year[y] if r.get("status") == "ready"]
+            poses = [r["pose"].get("yaw", 0) for r in records_by_year[y] if r.get("pose", {}).get("yaw") is not None]
             yaws.append(float(np.mean([abs(y) for y in poses])) if poses else 0.0)
             
         metric_configs.append({
@@ -517,7 +598,7 @@ class ForensicWorkbenchService:
         # Frontal ratio
         ratios = []
         for y in years:
-            ready = [r for r in records_by_year[y] if r.get("status") == "ready"]
+            ready = [r for r in records_by_year[y] if r.get("pose", {}).get("classification")]
             if not ready:
                 ratios.append(0.0)
                 continue
@@ -535,26 +616,27 @@ class ForensicWorkbenchService:
 
         # Age metric (biological model) [FIX-C2] Use configurable age, None = skip age metrics
         ages = []
-        if years:
+        if years and SETTINGS.subject_age_at_earliest_photo is not None:
             first_year = min(years)
-            base_age = SETTINGS.subject_age_at_earliest_photo if SETTINGS.subject_age_at_earliest_photo is not None else 46
+            base_age = SETTINGS.subject_age_at_earliest_photo
             for y in years:
                 ages.append(float(base_age + (y - first_year)))
-        
-        metric_configs.append({
-            "id": "age",
-            "title": "Biological age (model)",
-            "unit": "y",
-            "color": "#f59e0b",
-            "kind": "line",
-            "values": ages
-        })
+
+        if ages:
+            metric_configs.append({
+                "id": "age",
+                "title": "Biological age (model)",
+                "unit": "y",
+                "color": "#f59e0b",
+                "kind": "line",
+                "values": ages
+            })
 
         return {
             "years": years,
             "yearPoints": year_points,
             "metrics": metric_configs,
-            "identitySegments": [{"id": "A", "from": min(years), "to": max(years)}],
+            "identitySegments": self._build_identity_segments(main_records, years),
             "eventMarkers": [],
             "photoVolume": counts,
             "totalPhotos": len(main_records),
@@ -570,25 +652,40 @@ class ForensicWorkbenchService:
         source_main_size = sum(path.stat().st_size for path in self.list_sources("main"))
         source_cal_size = sum(path.stat().st_size for path in self.list_sources("calibration"))
 
+        # [FIX-D2] Audit metrics based on real field presence & validity, not just file counts
+        def _pct(records: list, predicate) -> int:
+            if not records: return 0
+            return min(100, int(sum(1 for r in records if predicate(r)) / len(records) * 100))
+
+        # Real checks: fields must exist AND have valid values
+        has_metrics = lambda r: bool(r.get("metrics")) and len(r.get("metrics", {})) > 0
+        has_texture = lambda r: bool(r.get("texture_forensics")) and len(r.get("texture_forensics", {})) > 0
+        has_verdict = lambda r: bool(r.get("verdict")) and r.get("verdict", {}).get("dominant_hypothesis") is not None
+        has_forensic = lambda r: bool(r.get("forensic_profile")) and len(r.get("forensic_profile", {})) > 0
+        has_artifacts = lambda r: bool(r.get("artifacts")) and len(r.get("artifacts", {})) > 0
+        has_reasoning = lambda r: bool(r.get("verdict", {}).get("reasoning"))
+        has_valid_date = lambda r: bool(r.get("parsed_year")) and r.get("date_source") != "fallback"
+        has_bucket = lambda r: r.get("bucket") not in (None, "unclassified", "")
+
         current_audit = [
-            {"category": "Соответствие ТЗ", "score": min(100, int(len(ready_main) / max(len(main_records), 1) * 100))},
+            {"category": "Соответствие ТЗ", "score": _pct(ready_main, lambda r: has_metrics(r) and has_texture(r) and has_verdict(r))},
             {"category": "Хронология по ракурсам", "score": min(100, summary["transitions"] + summary["returns"] + 50)},
-            {"category": "Распознавание 9 ракурсов", "score": min(100, int(len({r["bucket"] for r in ready_main if r.get("bucket") != "unclassified"}) / len(ALL_BUCKETS) * 100))},
+            {"category": "Распознавание 9 ракурсов", "score": min(100, int(len({r["bucket"] for r in ready_main if has_bucket(r)}) / max(len(ALL_BUCKETS), 1) * 100))},
             {"category": "Калибровочная модель", "score": int(calibration_summary["stability_score"] * 100)},
             {"category": "Стабильные метрики", "score": int(calibration_summary.get("stable_metrics", 0) / max(calibration_summary.get("stable_metrics", 0) + calibration_summary.get("marginal_metrics", 0) + calibration_summary.get("replace_metrics", 0), 1) * 100)},
-            {"category": "Текстурная аналитика", "score": min(100, int(sum(1 for r in ready_main if r.get("texture_forensics")) / max(len(ready_main), 1) * 100))},
-            {"category": "UV/маски/артефакты", "score": min(100, int(sum(1 for r in ready_main if r.get("artifacts")) / max(len(ready_main), 1) * 100))},
-            {"category": "3D реконструкция", "score": min(100, int(len(ready_main) / max(len(main_records), 1) * 100))},
-            {"category": "Хранение по фото", "score": min(100, int(len(ready_main) / max(len(main_records), 1) * 100))},
+            {"category": "Текстурная аналитика", "score": _pct(ready_main, has_texture)},
+            {"category": "UV/маски/артефакты", "score": _pct(ready_main, has_artifacts)},
+            {"category": "3D реконструкция", "score": _pct(ready_main, has_metrics)},
+            {"category": "Хранение по фото", "score": _pct(ready_main, has_metrics)},
             {"category": "Сравнение внутри bucket", "score": min(100, summary["transitions"] * 5)},
-            {"category": "Инкрементальный пересчёт", "score": min(100, int(sum(1 for r in ready_main if r.get("metrics")) / max(len(ready_main), 1) * 100))},
+            {"category": "Инкрементальный пересчёт", "score": _pct(ready_main, has_metrics)},
             {"category": "Рекомендации", "score": min(100, len(calibration_summary.get("recommendations", [])) * 10 + 50)},
-            {"category": "API-контракт", "score": min(100, int(sum(1 for r in ready_main if r.get("verdict")) / max(len(ready_main), 1) * 100))},
+            {"category": "API-контракт", "score": _pct(ready_main, has_verdict)},
             {"category": "Очереди и прогресс", "score": min(100, int(len(ready_main) / max(len(main_records), 1) * 100))},
             {"category": "Учёт объёма данных", "score": min(100, int(storage_size / max(source_main_size + source_cal_size, 1) * 100))},
-            {"category": "UI-архитектура", "score": min(100, int(len({r["bucket"] for r in ready_main if r.get("bucket") != "unclassified"}) / max(len(ALL_BUCKETS), 1) * 100))},
-            {"category": "Карточка фото", "score": min(100, int(sum(1 for r in ready_main if r.get("forensic_profile")) / max(len(ready_main), 1) * 100))},
-            {"category": "Объяснимость выводов", "score": min(100, int(sum(1 for r in ready_main if r.get("verdict", {}).get("reasoning")) / max(len(ready_main), 1) * 100))},
+            {"category": "UI-архитектура", "score": min(100, int(len({r["bucket"] for r in ready_main if has_bucket(r)}) / max(len(ALL_BUCKETS), 1) * 100))},
+            {"category": "Карточка фото", "score": _pct(ready_main, has_forensic)},
+            {"category": "Объяснимость выводов", "score": _pct(ready_main, has_reasoning)},
             {"category": "Тесты и верификация", "score": min(100, int(calibration_summary["stability_score"] * 80))},
             {"category": "Деплой и tunnel", "score": min(100, 50 + int(len(ready_main) / max(len(main_records), 1) * 50))},
         ]
@@ -619,6 +716,58 @@ class ForensicWorkbenchService:
             "audit_current": current_audit,
         }
 
+    def _build_identity_segments(self, main_records: list[dict[str, Any]], years: list[int]) -> list[dict[str, Any]]:
+        """
+        [FIX-D1] Build identity segments dynamically from Bayesian verdicts.
+        If no verdict data is available, return a single segment marked as 'unverified'.
+        Segments split when consecutive years show H1/H2 verdicts with high confidence.
+        """
+        if not years:
+            return []
+
+        # Check if we have any verdict data
+        records_with_verdict = [r for r in main_records if r.get("verdict") and r.get("parsed_year")]
+        if not records_with_verdict:
+            # No verdict data — single unverified segment
+            return [{"id": "A", "from": min(years), "to": max(years), "status": "unverified"}]
+
+        # Group records by year, pick dominant verdict per year
+        year_verdicts: dict[int, str] = {}
+        for r in records_with_verdict:
+            y = r["parsed_year"]
+            verdict = r.get("verdict", {})
+            dominant = verdict.get("dominant_hypothesis", "H0")
+            confidence = verdict.get("confidence", 0.0)
+            # Only flag identity break if H1/H2 with high confidence
+            if dominant in ("H1", "H2") and confidence > 0.6:
+                year_verdicts[y] = "break"
+            else:
+                year_verdicts[y] = "same"
+
+        # Build segments: split at 'break' years
+        segments = []
+        current_id = ord("A")
+        seg_start = years[0]
+        for i, y in enumerate(years):
+            v = year_verdicts.get(y, "same")
+            is_last = (i == len(years) - 1)
+            if v == "break" or is_last:
+                seg_end = y
+                segments.append({
+                    "id": chr(current_id),
+                    "from": seg_start,
+                    "to": seg_end,
+                    "status": "verified" if any(year_verdicts.get(yy) == "same" for yy in range(seg_start, seg_end + 1) if yy in year_verdicts) else "unverified",
+                })
+                current_id += 1
+                seg_start = y if v == "break" else y + 1
+
+        # Merge single-year segments into neighbors if no actual break
+        if len(segments) == 1:
+            segments[0]["status"] = "unverified"
+
+        return segments
+
     def photo_detail(self, dataset: str, photo_id: str) -> dict[str, Any] | None:
         records = self.main_records() if dataset == "main" else self.calibration_records()
         for record in records:
@@ -634,7 +783,7 @@ class ForensicWorkbenchService:
         ready = len([r for r in main_records if r.get("status") == "ready"])
         
         # Real stats derived from records
-        with_pose = len([r for r in main_records if r.get("pose", {}).get("pose_source") != "none"])
+        with_pose = len([r for r in main_records if r.get("pose", {}).get("pose_source") not in (None, "none")])
         hpe_count = len([r for r in main_records if r.get("pose", {}).get("pose_source") == "hpe"])
         ddfa_count = len([r for r in main_records if r.get("pose", {}).get("pose_source") == "3ddfa"])
         
@@ -664,8 +813,9 @@ class ForensicWorkbenchService:
                 "order": 3,
                 "inputCount": with_pose,
                 "outputCount": ready,
-                "failed": with_pose - ready,
-                "avgMs": 1200
+                "failed": 0,
+                "avgMs": 1200,
+                "notes": f"{max(with_pose - ready, 0)} pending; not counted as failed"
             }
         ]
 

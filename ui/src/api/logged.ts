@@ -19,7 +19,14 @@ import {
   validateAgeing,
 } from "../debug/validators";
 
-const API_BASE = "http://localhost:8011";
+const API_BASE = (((import.meta as any).env?.VITE_API_BASE as string | undefined) ?? "http://localhost:8000").replace(/\/$/, "");
+
+function cleanId(id: string): string {
+  return id
+    .replace(/^main-/, "")
+    .replace(/^myface-/, "")
+    .replace(/\.(jpg|png|jpeg|webp)$/i, "");
+}
 
 async function fetchJson(path: string, options: RequestInit = {}) {
   const resp = await fetch(`${API_BASE}${path}`, {
@@ -34,7 +41,7 @@ async function fetchEvidence(aId: string, bId: string): Promise<EvidenceBreakdow
   return await fetchJson(`/api/evidence/compare`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ photo_id_a: aId, photo_id_b: bId }),
+    body: JSON.stringify({ photo_id_a: cleanId(aId), photo_id_b: cleanId(bId) }),
   });
 }
 
@@ -42,7 +49,7 @@ async function fetchComparisonMatrix(ids: string[]): Promise<number[][]> {
   return await fetchJson(`/api/evidence/matrix`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(ids),
+    body: JSON.stringify(ids.map(cleanId)),
   });
 }
 
@@ -90,20 +97,26 @@ export const loggedBackend: Backend = {
     const qs = params.toString();
     return fetchJson(`/api/photos/main${qs ? `?${qs}` : ""}`);
   }, (r) => validatePhotoList(r)),
-  getPhotoDetail: wrap("getPhotoDetail", (id) => fetchJson(`/api/photo/main/${id}`), (r) => validatePhotoDetail(r)),
-  similarPhotos: wrap("similarPhotos", (id) => fetchJson(`/api/similar-photos/${id}`)),
+  getPhotoDetail: wrap("getPhotoDetail", (id) => fetchJson(`/api/photo/main/${cleanId(id)}`), (r) => validatePhotoDetail(r)),
+  similarPhotos: wrap("similarPhotos", (id) => fetchJson(`/api/similar-photos/${cleanId(id)}`)),
   getCalibration: wrap("getCalibration", () => fetchJson("/api/calibration/summary"), (r) => validateCalibration(r)),
   photosInBucket: wrap("photosInBucket", (p, l) => fetchJson(`/api/photos-in-bucket?pose=${encodeURIComponent(p)}&light=${encodeURIComponent(l)}`)),
   listJobs:       wrap("listJobs", () => fetchJson("/api/jobs"), (r) => validateJobs(r)),
-  startJob:       wrap("startJob", (kind) => {
+  startJob:       wrap("startJob", (kind, options = {}) => {
     const endpoint = kind === "extract" ? "extract"
-      : kind === "recompute-metrics" ? "recompute-metrics"
-      : kind === "calibrate" ? "recompute-metrics"  // calibrate maps to recompute with metric_keys
-      : "recompute-metrics";  // reindex also maps to recompute for now
+      : kind === "recompute_metrics" ? "recompute-metrics"
+      : kind === "calibrate" ? "recompute-metrics"
+      : "recompute-metrics";
+    const metricKeys = options.metricKeys ?? (kind === "calibrate" ? ["calibration"] : undefined);
     return fetchJson(`/api/jobs/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dataset: "main", limit: 100, metric_keys: kind === "calibrate" ? ["calibration"] : undefined }),
+      body: JSON.stringify({
+        dataset: options.dataset ?? "main",
+        limit: options.limit ?? 100,
+        only_ids: options.onlyIds,
+        metric_keys: metricKeys,
+      }),
     });
   }),
   listInvestigations: wrap("listInvestigations", () => fetchJson("/api/investigations")),

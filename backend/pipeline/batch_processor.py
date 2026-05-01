@@ -44,6 +44,12 @@ class ForensicBatchProcessor:
                 photo_id = img_path.stem
                 
                 if photo_id in EXCLUDED_FROM_ANALYSIS:
+                    # [FIX-E1] Log exclusion at WARNING level for audit trail
+                    import logging
+                    logging.getLogger("forensic.batch").warning(
+                        "AUDIT: Photo excluded from analysis — photo_id=%s, reason=EXCLUDED_FROM_ANALYSIS, timestamp=%s",
+                        photo_id, iso_now()
+                    )
                     print(f"Skipping {photo_id} (excluded from analysis)")
                     continue
                 

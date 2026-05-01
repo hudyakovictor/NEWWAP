@@ -8,34 +8,23 @@
  *
  * Fields that have NOT yet been derived from a real pipeline run
  * (synthetic-material probability, bayesian posteriors, identity cluster,
- * texture flags, md5, resolution, expression, source-of-photo) are filled
- * with deterministic stub values so the existing UI keeps rendering.
- * They are marked via the `stubFields` array and via UI banners on pages
- * that still depend on them.
+ * texture flags, md5, resolution, expression, source-of-photo) are set
+ * to **null** — not fake values.  The UI must handle null explicitly
+ * and show "нет данных" rather than a misleading number.
  *
- * Once a real pipeline computes any of these fields, drop the field from
- * `STUB_FIELDS` and have the registry return the real value.
+ * When a real pipeline computes any of these fields, replace the null
+ * with the real value and remove the field from NULL_FIELDS.
  */
 
 import { ALL_PHOTOS, type RealPhoto, type PoseClassification } from "../data/photoRegistry";
-import { rngFor } from "../debug/prng";
 import forensicRegistryRaw from "../data/forensic_registry.json";
 
 const FORENSIC_REGISTRY = forensicRegistryRaw as Record<string, any>;
 
 export type PoseEnum = PoseClassification;
-export type ExprEnum = "neutral" | "smile" | "speech" | "serious" | "unknown";
-export type SourceEnum = "archival_scan" | "press_photo" | "digital" | "video_frame" | "real_dataset";
-export type FlagId =
-  | "anomaly"
-  | "silicone"
-  | "chrono"
-  | "cluster_b"
-  | "pose_fallback"
-  | "low_cal";
 
-/** Per-record list of fields that are not yet derived from a real pipeline. */
-export const STUB_FIELDS = [
+/** Per-record list of fields that are still null (no real pipeline output). */
+export const NULL_FIELDS = [
   "expression",
   "source",
   "resolution",
@@ -63,19 +52,18 @@ export interface PhotoRecord {
   /** Folder this photo was loaded from. Real. */
   folder: "main" | "myface";
 
-  /* === fields below are stubs until their real pipeline runs === */
-  expression: ExprEnum;
-  source: SourceEnum;
-  resolution: string;
-  flags: FlagId[];
-  syntheticProb: number;
-  bayesH0: number;
-  cluster: "A" | "B";
-  md5: string;
+  /* === fields below are null until their real pipeline runs === */
+  expression: string | null;
+  source: string | null;
+  resolution: string | null;
+  flags: string[];
+  syntheticProb: number | null;
+  bayesH0: number | null;
+  cluster: string | null;
+  md5: string | null;
 }
 
-function stubFromRealPhoto(rp: RealPhoto): PhotoRecord {
-  // 1. Base values from head-pose pipeline (already real)
+function recordFromRealPhoto(rp: RealPhoto): PhotoRecord {
   const base: PhotoRecord = {
     id: rp.id,
     year: rp.year ?? 0,
@@ -85,51 +73,35 @@ function stubFromRealPhoto(rp: RealPhoto): PhotoRecord {
     yaw: rp.pose.yaw,
     poseSource: rp.pose.source,
     folder: rp.folder,
-    expression: "unknown",
-    source: "real_dataset",
-    resolution: "",
+
+    // All stubs removed — null until real pipeline computes them
+    expression: null,
+    source: null,
+    resolution: null,
     flags: [],
-    syntheticProb: 0,
-    bayesH0: 0,
-    cluster: "A",
-    md5: "",
+    syntheticProb: null,
+    bayesH0: null,
+    cluster: null,
+    md5: null,
   };
 
-  // 2. Check for deep forensic analysis results (forensic_registry)
-  // These override stubs with real computed metrics.
+  // Check for deep forensic analysis results (forensic_registry)
+  // These are the ONLY source of real non-null values for these fields.
   const real = FORENSIC_REGISTRY[rp.id];
   if (real) {
-    base.md5 = real.md5;
-    base.resolution = real.resolution;
-    base.syntheticProb = real.syntheticProb;
-    base.source = real.source;
-    
-    // Simple rule-based flags from real metrics
+    if (real.md5) base.md5 = real.md5;
+    if (real.resolution) base.resolution = real.resolution;
+    if (typeof real.syntheticProb === "number") base.syntheticProb = real.syntheticProb;
+    if (real.source) base.source = real.source;
+
+    // Rule-based flags from real metrics only
     if (real.syntheticProb > 0.45) base.flags.push("silicone");
-    if (rp.pose.source === "3ddfa") base.flags.push("pose_fallback");
-    
-    // Cluster and BayesH0 still need comparison logic to be fully real,
-    // but we can at least use real MD5 and resolution.
-    // For now, these remain as "enhanced stubs" if real comparisons don't exist.
   }
 
-  // 3. Fallback to deterministic stubs for fields still missing from the registry
-  const r = rngFor("stub", rp.id);
-  const cluster: "A" | "B" = base.year >= 2015 && base.year <= 2020 ? "B" : "A";
-  
-  if (!real) {
-    const synthBase = base.year === 2012 || base.year === 2014 || base.year === 2023 ? 0.5 + r() * 0.3 : 0.1 + r() * 0.2;
-    base.syntheticProb = +Math.min(0.95, synthBase).toFixed(2);
-    if (base.syntheticProb > 0.5) base.flags.push("silicone");
-    if (base.year === 2012 || base.year === 2014 || base.year === 2023) base.flags.push("anomaly");
-    if (rp.pose.source === "3ddfa") base.flags.push("pose_fallback");
-  }
-
-  base.bayesH0 = +(cluster === "B" ? 0.25 + r() * 0.2 : 0.6 + r() * 0.25).toFixed(2);
-  base.cluster = cluster;
-  if (cluster === "B") base.flags.push("cluster_b");
+  // Pose fallback flag is real data, not a stub
+  if (rp.pose.source === "3ddfa") base.flags.push("pose_fallback");
 
   return base;
 }
 
-export const PHOTOS: PhotoRecord[] = ALL_PHOTOS.map(stubFromRealPhoto);
+export const PHOTOS: PhotoRecord[] = ALL_PHOTOS.map(recordFromRealPhoto);

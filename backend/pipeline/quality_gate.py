@@ -37,9 +37,17 @@ class QualityGate:
         
         is_texture_rejected = blur_score < self.blur_threshold or noise_score > self.noise_threshold
 
+        # [FIX-QG1] overall_score: normalized composite [0,1] for downstream status_detail.
+        # sharpness_score: Laplacian variance mapped to [0,1] (saturates at 500).
+        # noise_score: inverse mapping (0 noise → 1, high noise → 0).
+        sharpness_score = min(1.0, blur_score / 500.0)
+        noise_quality = max(0.0, 1.0 - noise_score / 10.0)
+        overall_score = float(sharpness_score * 0.6 + noise_quality * 0.4)
+
         return {
             "sharpness_variance": blur_score,
             "noise_level": noise_score,
+            "overall_score": overall_score,
             "is_rejected": is_texture_rejected,
             "flags": {
                 "REJECTED_BLUR": blur_score < self.blur_threshold,

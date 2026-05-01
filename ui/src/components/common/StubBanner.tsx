@@ -12,10 +12,10 @@ export default function StubBanner({
 }) {
   return (
     <div className="bg-warn/10 border border-warn/40 rounded p-2 mb-3 text-[11px] text-warn">
-      <span className="font-semibold">⚠ Stub data on this page.</span>{" "}
-      {note ?? "The values shown are deterministic placeholders, not real pipeline output."}
+      <span className="font-semibold">⚠ Заглушка на этой странице.</span>{" "}
+      {note ?? "Отображаемые значения — детерминированные заглушки, а не реальный вывод пайплайна."}
       {fields && fields.length > 0 && (
-        <span> Stub fields: <span className="font-mono">{fields.join(", ")}</span>.</span>
+        <span> Поля-заглушки: <span className="font-mono">{fields.join(", ")}</span>.</span>
       )}
     </div>
   );

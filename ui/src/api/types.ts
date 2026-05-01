@@ -235,7 +235,7 @@ export interface Backend {
   getCalibration(): Promise<CalibrationSummary>;
   photosInBucket(pose: string, light: string): Promise<PhotoRecord[]>;
   listJobs(): Promise<Job[]>;
-  startJob(kind: Job["kind"]): Promise<Job>;
+  startJob(kind: Job["kind"], options?: { dataset?: "main" | "calibration"; onlyIds?: string[]; limit?: number; metricKeys?: string[] }): Promise<Job>;
   listInvestigations(): Promise<Investigation[]>;
   upsertInvestigation(i: Investigation): Promise<Investigation>;
   deleteInvestigation(id: string): Promise<void>;

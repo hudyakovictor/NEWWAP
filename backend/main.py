@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import shutil
 import subprocess
 from contextlib import asynccontextmanager
@@ -19,6 +20,21 @@ from core.jobs import JobManager
 from core.models import CalibrationOverrideRequest, ExtractJobRequest, RecomputeMetricsRequest
 from core.service import ForensicWorkbenchService
 from core.utils import IMAGE_EXTENSIONS, read_json
+from pipeline.reconstruction import load_reconstruction_cache, RECONSTRUCTION_CACHE_NAME
+
+# --- Logging setup ---
+LOG_DIR = SETTINGS.newapp_root / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_DIR / "backend.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger("deeputin")
 
 
 class EvidenceRequest(BaseModel):
@@ -36,6 +52,8 @@ UI_DIST_DIR = SETTINGS.newapp_root / "ui" / "dist"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("Backend starting on port %d", SETTINGS.port)
+    logger.info("Log directory: %s", LOG_DIR)
     tunnel = None
     if SETTINGS.localxpose_token:
         try:
@@ -44,11 +62,15 @@ async def lifespan(app: FastAPI):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
-        except Exception:
+            logger.info("localxpose tunnel started (PID %d)", tunnel.pid)
+        except Exception as e:
+            logger.warning("localxpose tunnel failed: %s", e)
             tunnel = None
     yield
     if tunnel is not None:
         tunnel.terminate()
+        logger.info("localxpose tunnel terminated")
+    logger.info("Backend shutting down")
 
 
 app = FastAPI(title="Dutin NewApp", lifespan=lifespan)
@@ -92,8 +114,9 @@ def photos(
     items = service.main_records() if dataset == "main" else service.calibration_records()
     
     # Apply filters
+    # [FIX-B2] Separate bucket (internal) from angle (UI) filtering
     if pose:
-        items = [r for r in items if r.get("bucket") == pose or r.get("angle") == pose]
+        items = [r for r in items if r.get("bucket") == pose]
     if source:
         items = [r for r in items if r.get("pose", {}).get("pose_source") == source]
     if search:
@@ -106,7 +129,8 @@ def photos(
     elif sortBy == "synthetic":
         items.sort(key=lambda r: float(r.get("syntheticProb", 0)), reverse=True)
     elif sortBy == "bayes":
-        items.sort(key=lambda r: float(r.get("bayesH0") or 0), reverse=True)
+        # [FIX-B3] Null-safe bayes sorting: records without bayesH0 go to the end
+        items.sort(key=lambda r: (r.get("bayesH0") is not None, float(r.get("bayesH0") or 0)), reverse=True)
     
     # Apply pagination
     total = len(items)
@@ -189,7 +213,7 @@ def start_recompute_metrics(request: RecomputeMetricsRequest) -> dict:
 
 @app.post("/api/calibration/override")
 def set_override(request: CalibrationOverrideRequest) -> dict:
-    return service.set_calibration_override(request.photo_id, request.calibration_photo_id)
+    return service.set_calibration_override(request.photo_id, request.calibration_photo_id, request.reason, request.author)
 
 
 @app.post("/api/evidence/compare")
@@ -238,10 +262,12 @@ async def comparison_matrix(photo_ids: list[str] = Body(...)):
                 matrix[i][j] = float("nan")
                 matrix[j][i] = float("nan")
             else:
-                ev = calculate_bayesian_evidence(summaries[i], summaries[j])
-                prob = float(ev["posteriors"]["H0"])
-                matrix[i][j] = prob
-                matrix[j][i] = prob  # [NOTE] Байес несимметричен, но здесь H0 симметричен по определению
+                # [FIX-B4] Compute both directions — Bayesian evidence is asymmetric
+                # (quality, reliability differ per photo)
+                ev_ij = calculate_bayesian_evidence(summaries[i], summaries[j])
+                ev_ji = calculate_bayesian_evidence(summaries[j], summaries[i])
+                matrix[i][j] = float(ev_ij["posteriors"]["H0"])
+                matrix[j][i] = float(ev_ji["posteriors"]["H0"])
                 
     return {"matrix": matrix, "photo_ids": photo_ids, "missing_ids": missing_ids}
 
@@ -259,8 +285,8 @@ async def similar_photos(photo_id: str, limit: int = 5):
     candidates = [r for r in all_main if r["photo_id"] != photo_id and r.get("status") == "ready"]
     
     if not candidates:
-        # Fallback to pending photos if nothing is processed yet, to satisfy audit
-        candidates = [r for r in all_main if r["photo_id"] != photo_id][:limit*2]
+        # [FIX-B1] No ready candidates — return empty list with reason, not pending photos
+        return []
     
     scored = []
     for cand in candidates:
@@ -273,9 +299,10 @@ async def similar_photos(photo_id: str, limit: int = 5):
 
 @app.get("/api/photos-in-bucket")
 def photos_in_bucket(pose: str, light: str | None = None, limit: int = 50) -> list[dict]:
-    """Returns photos matching a calibration bucket pose (and optionally light)."""
-    records = service.main_records()
-    filtered = [r for r in records if r.get("bucket") == pose or r.get("angle") == pose]
+    """Returns calibration photos matching a bucket pose (and optionally light).
+    Only returns photos from the calibration dataset, not main analysis photos."""
+    records = service.calibration_records()
+    filtered = [r for r in records if r.get("bucket") == pose]
     return filtered[:limit]
 
 
@@ -310,6 +337,87 @@ def cache_summary() -> dict:
 @app.get("/api/debug/ageing")
 def ageing_series() -> list[dict]:
     return service.get_ageing_series()
+
+
+@app.get("/api/mesh/{dataset}/{photo_id}")
+async def get_mesh_data(dataset: str, photo_id: str):
+    """
+    Returns mesh geometry data (vertices, UVs, triangles) for morphing.
+    Reads from cached reconstruction_v1.pkl if available.
+    """
+    if dataset not in {"main", "calibration"}:
+        raise HTTPException(status_code=404, detail="unknown dataset")
+
+    storage_dir = SETTINGS.storage_root / dataset / photo_id
+    if not storage_dir.exists():
+        raise HTTPException(status_code=404, detail="photo not extracted")
+
+    # Try to load cached reconstruction
+    source_file = None
+    for record in (service.main_records() if dataset == "main" else service.calibration_records()):
+        if record["photo_id"] == photo_id:
+            source_file = Path(record.get("source_path"))
+            break
+
+    if not source_file or not source_file.exists():
+        raise HTTPException(status_code=404, detail="source file not found")
+
+    cached = load_reconstruction_cache(storage_dir, source_file, neutral_expression=False)
+    if not cached:
+        raise HTTPException(status_code=404, detail="reconstruction cache not found")
+
+    # Extract geometry data for morphing
+    vertices = cached.vertices_world.tolist()  # N x 3
+    uv_coords = cached.uv_coords.tolist() if cached.uv_coords is not None else []  # N x 2
+    triangles = cached.triangles.tolist()  # M x 3
+    normals = cached.normals_world.tolist() if cached.normals_world is not None else []  # N x 3
+
+    return {
+        "photo_id": photo_id,
+        "vertices": vertices,
+        "uv_coords": uv_coords,
+        "triangles": triangles,
+        "normals": normals,
+        "vertex_count": len(vertices),
+        "triangle_count": len(triangles),
+        "texture_url": f"/storage/{dataset}/{photo_id}/uv_texture.png",
+    }
+
+
+@app.post("/api/extract/upload")
+def extract_uploaded_photo(file: UploadFile = File(...)):
+    """
+    Extracts a single uploaded photo on-the-fly for comparison.
+    Does NOT add to the main database - temporary extraction only.
+    Returns the photo_id for use in comparison.
+    """
+    import uuid
+    import traceback
+    import sys
+
+    # Create temporary storage for this extraction
+    temp_photo_id = f"temp_{uuid.uuid4().hex[:8]}"
+    temp_dir = SETTINGS.storage_root / "temp" / temp_photo_id
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save uploaded file
+    file_path = temp_dir / file.filename
+    with open(file_path, "wb") as f:
+        f.write(file.file.read())
+
+    try:
+        # For now, just return the photo_id without extraction
+        # Extraction will be done on-demand when comparison is requested
+        return {
+            "photo_id": temp_photo_id,
+            "filename": file.filename,
+            "status": "pending_extraction",
+            "message": "Photo saved, extraction will be performed on-demand"
+        }
+    except Exception as e:
+        error_detail = f"Upload failed: {str(e)}\nTraceback: {traceback.format_exc()}"
+        print(f"[UPLOAD ERROR] {error_detail}", file=sys.stderr)
+        raise HTTPException(status_code=500, detail=error_detail)
 
 
 @app.get("/api/debug/catalog")

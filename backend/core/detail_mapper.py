@@ -104,7 +104,7 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             "uvConfidence": artifacts.get("uv_confidence", ""),
             "uvMask": artifacts.get("uv_mask", ""),
             "overlay": artifacts.get("face_overlay", ""),
-            "meshObj": artifacts.get("mesh", ""),
+            "meshObj": artifacts.get("mesh_obj", ""),
             "meshTriangles": recon.get("face_indices_count", 70122),
             "vertices": recon.get("vertex_count", 35709),
         },

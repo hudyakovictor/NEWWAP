@@ -188,36 +188,33 @@ export async function checkTimelineVsPhotoDetail(ctx: InvariantContext): Promise
     out.push({
       id: "timeline.age_metric_missing",
       area: "consistency",
-      severity: "warn",
-      message: "Timeline missing 'age' metric row",
+      severity: "info",
+      message: "Timeline omits the age metric because subject age is not configured",
+      hint: "Keep this informational unless backend config sets subject_age_at_earliest_photo",
     });
   }
 
-  // Per-year detail.bayes verdict should agree with year-point identity:
-  // identity B at year y ⇒ detail.bayes.H1 should not be the smallest hypothesis.
-  for (const yp of t.yearPoints) {
-    if (yp.identity !== "B") continue;
-    const d = buildPhotoDetail(yp.year, yp.photo || "");
-    const probs = [d.bayes.H0, d.bayes.H1, d.bayes.H2];
-    const minIdx = probs.indexOf(Math.min(...probs));
-    if (minIdx === 1) {
-      out.push({
-        id: `consistency.cluster_b_h1_low.${yp.year}`,
-        area: "bayes",
-        severity: "warn",
-        message: `Year ${yp.year} is in cluster B but H1 is the lowest posterior`,
-        actual: probs,
-        hint: "Cluster B implies suspected substitution; H1 should not be the smallest hypothesis",
-      });
-    }
-  }
+  // Per-year detail.bayes verdict should agree with year-point identity.
+  // Since identity is now null for all photos (bayesian court not run),
+  // skip this check until real data exists.
   return out;
 }
 
 export async function checkAgeingVsTimeline(ctx: InvariantContext): Promise<Finding[]> {
   const out: Finding[] = [];
   const [series, t] = await Promise.all([ctx.api.getAgeingSeries(), ctx.api.getTimeline()]);
-  if (series.length !== t.years.length) {
+  // [FIX-C2] Empty ageing series is valid when subject age is not configured
+  if (series.length === 0 && t.years.length > 0) {
+    out.push({
+      id: "ageing.length_mismatch",
+      area: "ageing",
+      severity: "info",
+      message: "Ageing series is empty — subject age not configured (subject_age_at_earliest_photo is null)",
+      expected: String(t.years.length),
+      actual: series.length,
+      hint: "Set subject_age_at_earliest_photo in backend config to enable ageing model",
+    });
+  } else if (series.length !== t.years.length) {
     out.push({
       id: "ageing.length_mismatch",
       area: "ageing",

@@ -11,16 +11,16 @@ import { log, getAllLogs, subscribe, type LogEntry } from "../../debug/logger";
 import { validatePhotoDetail } from "../../debug/validators";
 
 const tabs = [
-  { id: "overview", label: "Overview" },
-  { id: "reconstruction", label: "3D Reconstruction" },
-  { id: "zones", label: "21 zones" },
-  { id: "texture", label: "Texture & synthetic" },
-  { id: "pose", label: "Pose & expression" },
-  { id: "chronology", label: "Chronology" },
-  { id: "calibration", label: "Calibration" },
-  { id: "similar", label: "Similar photos" },
-  { id: "audit_trail", label: "Audit trail" },
-  { id: "meta", label: "Metadata" },
+  { id: "overview", label: "Обзор" },
+  { id: "reconstruction", label: "3D-реконструкция" },
+  { id: "zones", label: "21 зона" },
+  { id: "texture", label: "Текстура и синтетика" },
+  { id: "pose", label: "Поза и выражение" },
+  { id: "chronology", label: "Хронология" },
+  { id: "calibration", label: "Калибровка" },
+  { id: "similar", label: "Похожие фото" },
+  { id: "audit_trail", label: "Аудит-след" },
+  { id: "meta", label: "Метаданные" },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -44,8 +44,8 @@ export default function PhotoDetailModal({
 }) {
   // Support both old interface (point) and new interface (photoUrl + year)
   const effectivePhotoUrl = photoUrl || point?.photo || "";
-  const effectiveYear = propYear || point?.year || 2000;
-  const effectiveIdentity = point?.identity || "A";
+  const effectiveYear = propYear || point?.year || null;
+  const effectiveIdentity = point?.identity ?? null;
   
   const [currentPhotoId, setCurrentPhotoId] = useState<string>(effectivePhotoUrl);
 
@@ -59,6 +59,7 @@ export default function PhotoDetailModal({
   const { openPairWith } = useApp();
 
   const yearPhotos = useMemo(() => {
+    if (effectiveYear == null) return [];
     return MAIN_PHOTOS.filter(p => p.year === effectiveYear).sort((a,b) => (a.date||"").localeCompare(b.date||""));
   }, [effectiveYear]);
 
@@ -108,9 +109,9 @@ export default function PhotoDetailModal({
                 {detail.meta.filename}
               </div>
               <div className="text-[10px] text-muted">
-                {detail.year} · {detail.meta.resolution} · {detail.meta.source} · cluster{" "}
-                <span className={effectiveIdentity === "A" ? "text-accent" : "text-danger"}>
-                  {effectiveIdentity}
+                {detail.year} · {detail.meta.resolution ?? "нет данных"} · {detail.meta.source ?? "нет данных"} · кластер{" "}
+                <span className={effectiveIdentity === "A" ? "text-accent" : effectiveIdentity === "B" ? "text-danger" : "text-muted"}>
+                  {effectiveIdentity ?? "нет данных"}
                 </span>
               </div>
             </div>
@@ -136,16 +137,16 @@ export default function PhotoDetailModal({
                 <button
                   onClick={() => compare("A")}
                   className="px-2 h-7 text-[11px] rounded bg-ok/70 hover:bg-ok text-white"
-                  title="Set as Photo A in Pair analysis"
+                  title="Установить как фото A в анализе пары"
                 >
-                  Compare as A
+                  Сравнить как A
                 </button>
                 <button
                   onClick={() => compare("B")}
                   className="px-2 h-7 text-[11px] rounded bg-accent/70 hover:bg-accent text-white mr-2"
-                  title="Set as Photo B in Pair analysis"
+                  title="Установить как фото B в анализе пары"
                 >
-                  Compare as B
+                  Сравнить как B
                 </button>
               </>
             )}
@@ -153,7 +154,7 @@ export default function PhotoDetailModal({
               <button
                 onClick={onPrev}
                 className="w-7 h-7 rounded bg-line/60 hover:bg-line text-white"
-                title="Previous year"
+                title="Предыдущий год"
               >
                 ‹
               </button>
@@ -162,7 +163,7 @@ export default function PhotoDetailModal({
               <button
                 onClick={onNext}
                 className="w-7 h-7 rounded bg-line/60 hover:bg-line text-white"
-                title="Next year"
+                title="Следующий год"
               >
                 ›
               </button>
@@ -170,7 +171,7 @@ export default function PhotoDetailModal({
             <button
               onClick={onClose}
               className="w-7 h-7 rounded bg-danger/30 hover:bg-danger/60 text-white ml-2"
-              title="Close"
+              title="Закрыть"
             >
               ×
             </button>
@@ -180,7 +181,7 @@ export default function PhotoDetailModal({
         {/* YEAR GALLERY */}
         {yearPhotos.length > 1 && (
           <div className="flex items-center gap-2 px-4 py-2 bg-bg-deep/50 overflow-x-auto scrollbar-thin border-b border-line/40 shrink-0">
-            <span className="text-[10px] uppercase text-muted tracking-widest shrink-0 mr-2">All {effectiveYear} photos ({yearPhotos.length}):</span>
+            <span className="text-[10px] uppercase text-muted tracking-widest shrink-0 mr-2">Все фото {effectiveYear ?? "????"} ({yearPhotos.length}):</span>
             <div className="flex gap-1">
               {yearPhotos.map(p => {
                 const isActive = currentPhotoId.includes(p.id) || currentPhotoId === p.url;
@@ -188,7 +189,7 @@ export default function PhotoDetailModal({
                   <button 
                     key={p.id}
                     onClick={() => setCurrentPhotoId(p.url)}
-                    title={`${p.date || 'Unknown date'} - ${p.pose.classification}`}
+                    title={`${p.date || 'Дата неизвестна'} — ${p.pose.classification}`}
                     className={`shrink-0 w-10 h-10 rounded overflow-hidden border-2 transition-all ${isActive ? 'border-accent shadow-[0_0_8px_rgba(56,189,248,0.5)]' : 'border-transparent opacity-50 hover:opacity-100 hover:border-line'}`}
                   >
                     <img src={p.url} className="w-full h-full object-cover" />
@@ -235,7 +236,18 @@ function Panel({ title, children, className = "" }: { title: string; children: R
   );
 }
 
-function Bar({ label, value, color = "#22c55e", max = 1 }: { label: string; value: number; color?: string; max?: number }) {
+function Bar({ label, value, color = "#22c55e", max = 1 }: { label: string; value: number | null; color?: string; max?: number }) {
+  if (value == null) {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="text-[11px] text-muted w-40 truncate">{label}</div>
+        <div className="flex-1 h-2 bg-bg rounded overflow-hidden">
+          <div className="h-full bg-line/20" style={{ width: "100%" }} />
+        </div>
+        <div className="text-[11px] font-mono w-14 text-right text-muted">—</div>
+      </div>
+    );
+  }
   const pct = Math.max(0, Math.min(1, value / max)) * 100;
   return (
     <div className="flex items-center gap-2">
@@ -268,7 +280,7 @@ function Overview({
   detail: D;
   hovered?: string;
   onHover: (id?: string) => void;
-  identity: "A" | "B";
+  identity: "A" | "B" | string | null;
 }) {
   return (
     <div className="grid grid-cols-12 gap-3 h-full">
@@ -277,62 +289,62 @@ function Overview({
       </div>
 
       <div className="col-span-4 flex flex-col gap-3">
-        <Panel title="Bayesian verdict">
-          <Bar label="H0 — same person" value={detail.bayes.H0} color="#22c55e" />
+        <Panel title="Байесовский вердикт">
+          <Bar label="H0 — тот же человек" value={detail.bayes.H0} color="#22c55e" />
           <div className="mt-1">
-            <Bar label="H1 — double / mask" value={detail.bayes.H1} color="#ef4444" />
+            <Bar label="H1 — двойник / маска" value={detail.bayes.H1} color="#ef4444" />
           </div>
           <div className="mt-1">
-            <Bar label="H2 — different person" value={detail.bayes.H2} color="#f59e0b" />
+            <Bar label="H2 — другой человек" value={detail.bayes.H2} color="#f59e0b" />
           </div>
           <div className="text-[10px] text-muted mt-2">
-            Identity cluster:{" "}
-            <span className={identity === "A" ? "text-accent" : "text-danger"}>{identity}</span>
+            Кластер идентичности:{" "}
+            <span className={identity === "A" ? "text-accent" : identity === "B" ? "text-danger" : "text-muted"}>{identity ?? "нет данных"}</span>
           </div>
         </Panel>
-        <Panel title="Synthetic material detector">
-          <Bar label="Synthetic probability" value={detail.texture.syntheticProb} color="#ef4444" />
+        <Panel title="Детектор синтетических материалов">
+          <Bar label="Синтетическая вероятность" value={detail.texture.syntheticProb} color="#ef4444" />
           <div className="mt-1">
-            <Bar label="FFT anomaly" value={detail.texture.fftAnomaly} color="#f59e0b" />
+            <Bar label="Аномалия FFT" value={detail.texture.fftAnomaly} color="#f59e0b" />
           </div>
           <div className="mt-1">
-            <Bar label="Specular (shine)" value={detail.texture.specularIndex} color="#38bdf8" />
+            <Bar label="Спекулярный (блик)" value={detail.texture.specularIndex} color="#38bdf8" />
           </div>
           <div className="mt-1">
-            <Bar label="Albedo health" value={detail.texture.albedoHealth} color="#22c55e" />
+            <Bar label="Здоровье альбедо" value={detail.texture.albedoHealth} color="#22c55e" />
           </div>
         </Panel>
       </div>
 
       <div className="col-span-5 flex flex-col gap-3">
-        <Panel title="Pose & expression">
+        <Panel title="Поза и выражение">
           <div className="grid grid-cols-4 gap-2">
-            <Stat label="yaw" value={`${detail.pose.yaw}°`} />
-            <Stat label="pitch" value={`${detail.pose.pitch}°`} />
-            <Stat label="roll" value={`${detail.pose.roll}°`} />
-            <Stat label="conf." value={detail.pose.confidence.toFixed(2)} />
-            <Stat label="class" value={detail.pose.classification} small />
-            <Stat label="smile" value={detail.expression.smile.toFixed(2)} />
-            <Stat label="jaw-open" value={detail.expression.jawOpen.toFixed(2)} />
-            <Stat label="neutral" value={detail.expression.neutral ? "yes" : "no"} />
+            <Stat label="рыскан." value={`${detail.pose.yaw}°`} />
+            <Stat label="тангаж" value={`${detail.pose.pitch}°`} />
+            <Stat label="крен" value={`${detail.pose.roll}°`} />
+            <Stat label="довер." value={detail.pose.confidence != null ? detail.pose.confidence.toFixed(2) : "—"} />
+            <Stat label="класс" value={detail.pose.classification} small />
+            <Stat label="улыбка" value={detail.expression.smile != null ? detail.expression.smile.toFixed(2) : "—"} />
+            <Stat label="челюсть" value={detail.expression.jawOpen != null ? detail.expression.jawOpen.toFixed(2) : "—"} />
+            <Stat label="нейтр." value={detail.expression.neutral ? "да" : "нет"} />
           </div>
           {detail.pose.fallback && (
             <div className="text-[10px] text-warn mt-2">
-              ⓘ Primary pose detector low confidence — fell back to 3DDFA-V3.
+              ⓘ Низкая уверенность основного детектора позы — переключение на 3DDFA-V3.
             </div>
           )}
         </Panel>
-        <Panel title="Chronology flags">
+        <Panel title="Хронологические флаги">
           <div className="text-[11px] space-y-1">
             <div className="text-muted">
-              Δt = {detail.chronology.prevDelta}y · bone asymmetry jump:{" "}
-              <span className="font-mono text-white">{detail.chronology.boneAsymmetryJump}</span> · ligament jump:{" "}
+              Δt = {detail.chronology.prevDelta}г · скачок костной асимметрии:{" "}
+              <span className="font-mono text-white">{detail.chronology.boneAsymmetryJump}</span> · скачок связок:{" "}
               <span className="font-mono text-white">{detail.chronology.ligamentJump}</span>
             </div>
-            {detail.chronology.flags.length === 0 && (
-              <div className="text-ok">No chronological inconsistencies detected.</div>
+            {(detail.chronology.flags ?? []).length === 0 && (
+              <div className="text-ok">Хронологических несоответствий не обнаружено.</div>
             )}
-            {detail.chronology.flags.map((f, i) => (
+            {(detail.chronology.flags ?? []).map((f, i) => (
               <div
                 key={i}
                 className={`${
@@ -344,7 +356,7 @@ function Overview({
             ))}
           </div>
         </Panel>
-        <Panel title="Notes">
+        <Panel title="Заметки">
           <ul className="text-[11px] text-muted space-y-1 list-disc list-inside">
             {detail.notes.map((n, i) => (
               <li key={i}>{n}</li>
@@ -367,27 +379,27 @@ function Stat({ label, value, small = false }: { label: string; value: React.Rea
 
 function Reconstruction({ detail }: { detail: D }) {
   const layers = [
-    { title: "Original", src: detail.photo },
-    { title: "Face overlay", src: detail.reconstruction.overlay },
-    { title: "Rendered face", src: detail.reconstruction.renderFace },
-    { title: "Geometry (shape)", src: detail.reconstruction.renderShape },
-    { title: "Mask", src: detail.reconstruction.renderMask },
-    { title: "UV texture", src: detail.reconstruction.uvTexture },
-    { title: "UV confidence", src: detail.reconstruction.uvConfidence },
-    { title: "UV mask", src: detail.reconstruction.uvMask },
+    { title: "Оригинал", src: detail.photo },
+    { title: "Наложение лица", src: detail.reconstruction.overlay ?? undefined },
+    { title: "Рендер лица", src: detail.reconstruction.renderFace ?? undefined },
+    { title: "Геометрия (форма)", src: detail.reconstruction.renderShape ?? undefined },
+    { title: "Маска", src: detail.reconstruction.renderMask ?? undefined },
+    { title: "UV-текстура", src: detail.reconstruction.uvTexture ?? undefined },
+    { title: "UV-уверенность", src: detail.reconstruction.uvConfidence ?? undefined },
+    { title: "UV-маска", src: detail.reconstruction.uvMask ?? undefined },
   ];
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-5 flex flex-col gap-3">
         <div className="bg-bg-deep rounded border border-line/60 overflow-hidden" style={{ height: 460 }}>
-          <MeshViewer objUrl={detail.reconstruction.meshObj} />
+          <MeshViewer objUrl={detail.reconstruction.meshObj ?? ""} textureUrl={detail.reconstruction.uvTexture ?? undefined} />
         </div>
-        <Panel title="Mesh statistics">
+        <Panel title="Статистика меша">
           <div className="grid grid-cols-2 gap-2">
-            <Stat label="vertices" value={detail.reconstruction.vertices.toLocaleString()} />
-            <Stat label="triangles" value={detail.reconstruction.meshTriangles.toLocaleString()} />
-            <Stat label="model" value="3DDFA_v3" />
-            <Stat label="neutral exp." value={detail.expression.neutral ? "yes" : "no"} />
+            <Stat label="вершины" value={(detail.reconstruction.vertices ?? 0).toLocaleString()} />
+            <Stat label="треугольники" value={(detail.reconstruction.meshTriangles ?? 0).toLocaleString()} />
+            <Stat label="модель" value="3DDFA_v3" />
+            <Stat label="нейтр. выр." value={detail.expression.neutral ? "да" : "нет"} />
           </div>
         </Panel>
       </div>
@@ -425,17 +437,17 @@ function SimilarTab({ photoId }: { photoId?: string }) {
   if (!photoId) {
     return (
       <div className="text-[11px] text-muted">
-        Nearest-neighbour search is available when opening photos from the Photos page.
+        Поиск ближайших соседей доступен при открытии фото со страницы «Фото».
       </div>
     );
   }
 
-  if (loading) return <div className="text-[11px] text-muted">Scoring {`>`} 1 700 photos…</div>;
+  if (loading) return <div className="text-[11px] text-muted">Ранжирование {`>`} 1 700 фото…</div>;
 
   return (
     <div>
       <div className="text-[11px] text-muted mb-2">
-        Top-{items.length} nearest photos by pose + cluster + synthetic profile.
+        Топ-{items.length} ближайших фото по позе + кластеру + синтетическому профилю.
       </div>
       <div className="grid grid-cols-8 gap-2">
         {items.map((p) => (
@@ -456,7 +468,7 @@ function SimilarTab({ photoId }: { photoId?: string }) {
                   }}
                   className="flex-1 px-1 py-0.5 rounded bg-accent/60 hover:bg-accent text-white text-[9px]"
                 >
-                  compare
+                  сравнить
                 </button>
               </div>
             </div>
@@ -486,23 +498,23 @@ function Zones({
   const visibleZones = detail.zones.filter((z) => !z.excluded);
   const total = visibleZones.reduce((acc, z) => acc + z.weight, 0);
   const weighted = total > 0
-    ? visibleZones.reduce((acc, z) => acc + z.weight * z.score, 0) / total
+    ? visibleZones.reduce((acc, z) => acc + z.weight * (z.score ?? 0), 0) / total
     : 0;
 
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-4">
         <FaceZoneMap photo={detail.photo} zones={detail.zones} hovered={hovered} onHover={onHover} />
-        <Panel title="Aggregate" className="mt-3">
-          <Bar label="Weighted similarity" value={weighted} color="#22c55e" />
+        <Panel title="Сводка" className="mt-3">
+          <Bar label="Взвешенное сходство" value={weighted} color="#22c55e" />
           <div className="text-[10px] text-muted mt-2">
-            Bone zones carry up to 1.00 weight; soft tissues are down-weighted or dynamically excluded (smile/jaw-open).
+            Костные зоны имеют вес до 1.00; мягкие ткани занижены или динамически исключены (улыбка/челюсть).
           </div>
         </Panel>
       </div>
       <div className="col-span-8 space-y-3">
         {(Object.entries(grouped) as [keyof typeof grouped, typeof detail.zones][]).map(([grp, zs]) => (
-          <Panel key={grp} title={`${grp} zones (${zs.length})`}>
+          <Panel key={grp} title={`Зоны ${grp} (${zs.length})`}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1">
               {zs.map((z) => (
                 <div
@@ -531,13 +543,13 @@ function Zones({
                     <div
                       className="h-full rounded"
                       style={{
-                        width: `${z.excluded ? 0 : z.score * 100}%`,
+                        width: `${z.excluded ? 0 : (z.score ?? 0) * 100}%`,
                         background: z.excluded ? "#6b7a90" : "#22c55e",
                       }}
                     />
                   </div>
-                  {z.excluded && <span className="text-[9px] text-muted">excluded</span>}
-                  {!z.visible && <span className="text-[9px] text-warn">hidden</span>}
+                  {z.excluded && <span className="text-[9px] text-muted">исключена</span>}
+                  {!z.visible && <span className="text-[9px] text-warn">скрыта</span>}
                 </div>
               ))}
             </div>
@@ -557,31 +569,31 @@ function Texture({ detail }: { detail: D }) {
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-5 space-y-3">
-        <Panel title="Synthetic probability breakdown">
-          <Bar label="Synthetic probability" value={detail.texture.syntheticProb} color="#ef4444" />
+        <Panel title="Разбор синтетической вероятности">
+          <Bar label="Синтетическая вероятность" value={detail.texture.syntheticProb} color="#ef4444" />
           <div className="mt-1">
-            <Bar label="FFT anomaly" value={detail.texture.fftAnomaly} color="#f59e0b" />
+            <Bar label="Аномалия FFT" value={detail.texture.fftAnomaly} color="#f59e0b" />
           </div>
           <div className="mt-1">
-            <Bar label="LBP complexity" value={detail.texture.lbpComplexity} color="#a855f7" />
+            <Bar label="Сложность LBP" value={detail.texture.lbpComplexity} color="#a855f7" />
           </div>
           <div className="mt-1">
-            <Bar label="Specular index" value={detail.texture.specularIndex} color="#38bdf8" />
+            <Bar label="Спекулярный индекс" value={detail.texture.specularIndex} color="#38bdf8" />
           </div>
           <div className="mt-1">
-            <Bar label="Albedo health" value={detail.texture.albedoHealth} color="#22c55e" />
+            <Bar label="Здоровье альбедо" value={detail.texture.albedoHealth} color="#22c55e" />
           </div>
         </Panel>
-        <Panel title="Diagnosis">
+        <Panel title="Диагноз">
           <div className="text-[11px] text-muted leading-snug">
-            {detail.texture.syntheticProb > 0.5
-              ? "Texture pattern inconsistent with natural skin. Elevated FFT periodicity and specular index suggest possible silicone or latex prosthetic."
-              : "Texture within natural-skin variability. No silicone/deepfake signatures detected."}
+            {(detail.texture.syntheticProb ?? 0) > 0.5
+              ? "Текстурный паттерн несовместим с естественной кожей. Повышенная FFT-периодичность и спекулярный индекс указывают на возможный силиконовый или латексный протез."
+              : "Текстура в пределах естественной вариабельности кожи. Признаков силикона/дипфейка не обнаружено."}
           </div>
         </Panel>
       </div>
       <div className="col-span-7 space-y-3">
-        <Panel title="FFT spectrum (radial)">
+        <Panel title="FFT-спектр (радиальный)">
           {hasRealFftData ? (
             <div className="flex items-end h-32 gap-0.5">
               {bars!.map((b, i) => (
@@ -599,14 +611,14 @@ function Texture({ detail }: { detail: D }) {
             </div>
           )}
           <div className="text-[10px] text-muted mt-2">
-            Radial energy distribution over FFT of skin patches. Spikes in high frequencies indicate periodic patterns.
-            {!hasRealFftData && " (stub mode — no real data)"}
+            Радиальное распределение энергии по FFT кожных участков. Всплески на высоких частотах указывают на периодические паттерны.
+            {!hasRealFftData && " (заглушка — нет реальных данных)"}
           </div>
         </Panel>
-        <Panel title="UV texture vs confidence">
+        <Panel title="UV-текстура и уверенность">
           <div className="grid grid-cols-2 gap-2">
-            <img src={detail.reconstruction.uvTexture} alt="uv" className="w-full rounded bg-black" />
-            <img src={detail.reconstruction.uvConfidence} alt="uv conf" className="w-full rounded bg-black" />
+            <img src={detail.reconstruction.uvTexture ?? undefined} alt="uv" className="w-full rounded bg-black" />
+            <img src={detail.reconstruction.uvConfidence ?? undefined} alt="uv conf" className="w-full rounded bg-black" />
           </div>
         </Panel>
       </div>
@@ -618,48 +630,48 @@ function PoseAndExpression({ detail }: { detail: D }) {
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-6 space-y-3">
-        <Panel title="Pose detector">
+        <Panel title="Детектор позы">
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="yaw" value={`${detail.pose.yaw}°`} />
-            <Stat label="pitch" value={`${detail.pose.pitch}°`} />
-            <Stat label="roll" value={`${detail.pose.roll}°`} />
+            <Stat label="рыскан." value={`${detail.pose.yaw}°`} />
+            <Stat label="тангаж" value={`${detail.pose.pitch}°`} />
+            <Stat label="крен" value={`${detail.pose.roll}°`} />
           </div>
           <div className="mt-2 grid grid-cols-3 gap-2">
-            <Stat label="class" value={detail.pose.classification} small />
-            <Stat label="confidence" value={detail.pose.confidence.toFixed(2)} />
-            <Stat label="fallback" value={detail.pose.fallback ? "3DDFA-V3" : "primary"} small />
+            <Stat label="класс" value={detail.pose.classification} small />
+            <Stat label="уверенность" value={detail.pose.confidence != null ? detail.pose.confidence.toFixed(2) : "—"} />
+            <Stat label="запасной" value={detail.pose.fallback ? "3DDFA-V3" : "основной"} small />
           </div>
         </Panel>
-        <Panel title="Zone visibility (pose-gated)">
+        <Panel title="Видимость зон (по позе)">
           <div className="grid grid-cols-2 gap-1 text-[11px]">
             {detail.zones.map((z) => (
               <div key={z.id} className="flex justify-between">
                 <span className="text-muted">{z.name}</span>
-                <span className={z.visible ? "text-ok" : "text-danger"}>{z.visible ? "visible" : "hidden"}</span>
+                <span className={z.visible ? "text-ok" : "text-danger"}>{z.visible ? "видима" : "скрыта"}</span>
               </div>
             ))}
           </div>
         </Panel>
       </div>
       <div className="col-span-6 space-y-3">
-        <Panel title="Expression">
-          <Bar label="Smile" value={detail.expression.smile} color="#f59e0b" />
+        <Panel title="Выражение">
+          <Bar label="Улыбка" value={detail.expression.smile} color="#f59e0b" />
           <div className="mt-1">
-            <Bar label="Jaw open" value={detail.expression.jawOpen} color="#f59e0b" />
+            <Bar label="Челюсть открыта" value={detail.expression.jawOpen} color="#f59e0b" />
           </div>
           <div className="text-[11px] text-muted mt-2">
-            Thresholds: smile ≥ 0.30, jaw-open ≥ 0.25. Subject is{" "}
+            Пороги: улыбка ≥ 0.30, челюсть ≥ 0.25. Субъект{" "}
             <span className={detail.expression.neutral ? "text-ok" : "text-warn"}>
-              {detail.expression.neutral ? "neutral" : "expressive"}
+              {detail.expression.neutral ? "нейтрален" : "выразителен"}
             </span>.
           </div>
         </Panel>
-        <Panel title="Dynamically excluded zones">
+        <Panel title="Динамически исключённые зоны">
           <div className="flex flex-wrap gap-1">
-            {detail.expression.excludedZones.length === 0 && (
-              <span className="text-[11px] text-ok">None — all zones participate.</span>
+            {(detail.expression.excludedZones ?? []).length === 0 && (
+              <span className="text-[11px] text-ok">Нет — все зоны участвуют.</span>
             )}
-            {detail.expression.excludedZones.map((id) => (
+            {(detail.expression.excludedZones ?? []).map((id) => (
               <span key={id} className="text-[10px] px-1.5 py-0.5 bg-muted/30 text-muted rounded">
                 {id}
               </span>
@@ -675,20 +687,20 @@ function Chronology({ detail }: { detail: D }) {
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-5 space-y-3">
-        <Panel title="Inter-frame deltas">
-          <KV k="previous frame" v={detail.chronology.prevYear ?? "—"} />
-          <KV k="Δt" v={`${detail.chronology.prevDelta} y`} />
-          <KV k="bone asymmetry jump" v={detail.chronology.boneAsymmetryJump} />
-          <KV k="ligament jump" v={detail.chronology.ligamentJump} />
+        <Panel title="Межкадровые дельты">
+          <KV k="предыдущий кадр" v={detail.chronology.prevYear ?? "—"} />
+          <KV k="Δt" v={`${detail.chronology.prevDelta} г`} />
+          <KV k="скачок костной асимметрии" v={detail.chronology.boneAsymmetryJump} />
+          <KV k="скачок связок" v={detail.chronology.ligamentJump} />
         </Panel>
       </div>
       <div className="col-span-7">
-        <Panel title="Raised flags">
-          {detail.chronology.flags.length === 0 ? (
-            <div className="text-[11px] text-ok">No chronological inconsistencies detected.</div>
+        <Panel title="Поднятые флаги">
+          {(detail.chronology.flags ?? []).length === 0 ? (
+            <div className="text-[11px] text-ok">Хронологических несоответствий не обнаружено.</div>
           ) : (
             <ul className="space-y-1 text-[11px]">
-              {detail.chronology.flags.map((f, i) => (
+              {(detail.chronology.flags ?? []).map((f, i) => (
                 <li
                   key={i}
                   className={
@@ -711,23 +723,23 @@ function CalibrationTab({ detail }: { detail: D }) {
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-6">
-        <Panel title="Calibration bucket for this photo">
-          <KV k="bucket" v={c.bucket} />
-          <KV k="confidence level" v={c.level} />
-          <KV k="sample count" v={c.sampleCount} />
-          <KV k="variance" v={c.variance} />
+        <Panel title="Калибровочный бакет для этого фото">
+          <KV k="бакет" v={c.bucket} />
+          <KV k="уровень доверия" v={c.level} />
+          <KV k="кол-во образцов" v={c.sampleCount} />
+          <KV k="дисперсия" v={c.variance} />
         </Panel>
       </div>
       <div className="col-span-6">
-        <Panel title="Runtime adaptation">
+        <Panel title="Рантайм-адаптация">
           <div className="text-[11px] text-muted leading-snug">
             {c.level === "high"
-              ? "Direct strategy: standard thresholds applied."
+              ? "Прямая стратегия: стандартные пороги."
               : c.level === "medium"
-              ? "Conservative strategy: widened confidence intervals."
+              ? "Консервативная стратегия: расширенные доверительные интервалы."
               : c.level === "low"
-              ? "Low-confidence bucket — fallback weighted heavier towards bone-only comparison."
-              : "Unreliable bucket — excluded from runtime comparisons until re-calibrated."}
+              ? "Бакет с низкой уверенностью — запасной вес смещён к сравнению только по костям."
+              : "Ненадёжный бакет — исключён из рантайм-сравнений до повторной калибровки."}
           </div>
         </Panel>
       </div>
@@ -735,13 +747,13 @@ function CalibrationTab({ detail }: { detail: D }) {
   );
 }
 
-function AuditTrailTab({ year, photoId }: { year: number; photoId?: string }) {
+function AuditTrailTab({ year, photoId }: { year: number | null; photoId?: string }) {
   const [items, setItems] = useState<LogEntry[]>([]);
   const [showAllLevels, setShowAllLevels] = useState(false);
 
   useEffect(() => {
     const filterAndSet = () => {
-      const yearStr = String(year);
+      const yearStr = year != null ? String(year) : "";
       const all = getAllLogs();
       setItems(
         all.filter((e) => {
@@ -779,8 +791,8 @@ function AuditTrailTab({ year, photoId }: { year: number; photoId?: string }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="text-[11px] text-muted">
-          {visible.length} log entr{visible.length === 1 ? "y" : "ies"} touching{" "}
-          <span className="text-white font-mono">year={year}</span>
+          {visible.length} запис{visible.length === 1 ? "ь" : visible.length < 5 ? "и" : "ей"}, затрагивающ{" "}
+          <span className="text-white font-mono">год={year}</span>
           {photoId && (
             <>
               {" · "}
@@ -794,14 +806,14 @@ function AuditTrailTab({ year, photoId }: { year: number; photoId?: string }) {
             checked={showAllLevels}
             onChange={(e) => setShowAllLevels(e.target.checked)}
           />
-          show trace/debug
+          показывать trace/debug
         </label>
       </div>
 
       {visible.length === 0 ? (
         <div className="text-[11px] text-muted bg-bg-deep/50 border border-line/60 rounded p-3">
-          No log entries reference this photo or year yet. Interact with it
-          (open detail, change pair, run audit) to populate the trail.
+          Нет записей лога, ссылающихся на это фото или год. Взаимодействуйте с ним
+          (откройте детали, смените пару, запустите аудит), чтобы заполнить след.
         </div>
       ) : (
         <div className="font-mono text-[11px] bg-black/60 border border-line rounded">
@@ -835,8 +847,8 @@ function AuditTrailTab({ year, photoId }: { year: number; photoId?: string }) {
                       className="px-2 py-1 rounded border border-danger/40 bg-danger/10"
                     >
                       <div className="text-danger">{v.field}</div>
-                      <div className="text-muted">expected {v.expected}</div>
-                      <div className="text-warn">actual {JSON.stringify(v.actual)}</div>
+                      <div className="text-muted">ожидается {v.expected}</div>
+                      <div className="text-warn">фактически {JSON.stringify(v.actual)}</div>
                       {v.note && <div className="italic text-muted">{v.note}</div>}
                     </div>
                   ))}
@@ -867,22 +879,22 @@ function Meta({ detail }: { detail: D }) {
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-6">
-        <Panel title="File">
-          <KV k="photo id" v={detail.meta.id} />
-          <KV k="filename" v={detail.meta.filename} />
-          <KV k="captured at" v={detail.meta.capturedAt} />
-          <KV k="source" v={detail.meta.source} />
-          <KV k="resolution" v={detail.meta.resolution} />
-          <KV k="size" v={`${detail.meta.sizeKB} KB`} />
+        <Panel title="Файл">
+          <KV k="id фото" v={detail.meta.id} />
+          <KV k="имя файла" v={detail.meta.filename} />
+          <KV k="снято" v={detail.meta.capturedAt} />
+          <KV k="источник" v={detail.meta.source} />
+          <KV k="разрешение" v={detail.meta.resolution} />
+          <KV k="размер" v={`${detail.meta.sizeKB} КБ`} />
           <KV k="md5" v={detail.meta.md5} />
         </Panel>
       </div>
       <div className="col-span-6">
-        <Panel title="Pipeline cache">
-          <KV k="reconstruction_v1.pkl" v="cached" />
-          <KV k="neutral variant" v={detail.expression.neutral ? "present" : "needed"} />
-          <KV k="VRAM footprint" v="~180 MB" />
-          <KV k="last refreshed" v={`${detail.year}-01-01 · smoke-test`} />
+        <Panel title="Кэш пайплайна">
+          <KV k="reconstruction_v1.pkl" v="в кэше" />
+          <KV k="нейтральный вариант" v={detail.expression.neutral ? "есть" : "нужен"} />
+          <KV k="занимает VRAM" v="~180 МБ" />
+          <KV k="последнее обновление" v={`${detail.year}-01-01 · smoke-test`} />
         </Panel>
       </div>
     </div>

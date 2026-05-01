@@ -7,6 +7,7 @@ import {
   sourceDistribution,
   type RealPhoto,
 } from "../data/photoRegistry";
+import { EvidenceBadge, EvidenceNote } from "../components/common/EvidenceStatus";
 
 /**
  * High-level progress dashboard: which analyses are real, which are still
@@ -151,35 +152,40 @@ export default function ProgressPage() {
 
   return (
     <Page
-      title="Progress"
-      subtitle={`${(overall * 100).toFixed(0)}% of analysis stages real (${realCount}/${STAGES.length}). The rest are stubs.`}
+      title="Прогресс"
+      subtitle={`${(overall * 100).toFixed(0)}% стадий анализа реальны (${realCount}/${STAGES.length}). Остальные — заглушки.`}
     >
+      <EvidenceNote level="partial" className="mb-3">
+        Эта панель оценивает готовность платформы, а не доказывает гипотезы. Финальные forensic-выводы допустимы только
+        для стадий со статусом «реальные данные» и после массового извлечения признаков.
+      </EvidenceNote>
+
       <div className="grid grid-cols-4 gap-3 mb-3">
-        <Stat label="real stages"    value={realCount}                                color="#22c55e" />
-        <Stat label="partial stages" value={partialCount}                              color="#f59e0b" />
-        <Stat label="stub stages"    value={stubCount}                                 color="#6b7a90" />
-        <Stat label="photos in UI"   value={`${ALL_PHOTOS.length} (main+myface)`}      color="#38bdf8" />
+        <Stat label="реальных стадий"    value={realCount}                                color="#22c55e" />
+        <Stat label="частичных стадий" value={partialCount}                              color="#f59e0b" />
+        <Stat label="стадий-заглушек"    value={stubCount}                                 color="#6b7a90" />
+        <Stat label="фото в UI"   value={`${ALL_PHOTOS.length} (main+myface)`}      color="#38bdf8" />
       </div>
 
-      <PanelCard title="Photo sets" className="mb-3">
+      <PanelCard title="Наборы фото" className="mb-3">
         <FolderProgress label="main (rebucketed_photos/all)" photos={MAIN_PHOTOS} expectedTotal={1638} />
         <FolderProgress label="myface (calibration)" photos={MYFACE_PHOTOS} expectedTotal={199} />
       </PanelCard>
 
-      <PanelCard title="Pose distribution (real)" className="mb-3">
+      <PanelCard title="Распределение ракурсов (реальные)" className="mb-3">
         <PoseTable label="main"   photos={MAIN_PHOTOS} />
         <div className="h-2" />
         <PoseTable label="myface" photos={MYFACE_PHOTOS} />
       </PanelCard>
 
-      <PanelCard title="Analysis stages">
+      <PanelCard title="Стадии анализа">
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
-              <th className="text-left p-2">stage</th>
-              <th className="text-left p-2">status</th>
-              <th className="text-left p-2">description</th>
-              <th className="text-left p-2">progress</th>
+              <th className="text-left p-2">стадия</th>
+              <th className="text-left p-2">статус</th>
+              <th className="text-left p-2">описание</th>
+              <th className="text-left p-2">прогресс</th>
             </tr>
           </thead>
           <tbody>
@@ -188,6 +194,9 @@ export default function ProgressPage() {
                 <td className="p-2 text-white font-semibold">{s.name}</td>
                 <td className="p-2">
                   <StatusBadge status={s.status} />
+                  <div className="mt-1">
+                    <EvidenceBadge level={s.status === "real" ? "real" : s.status === "partial" ? "partial" : "stub"} />
+                  </div>
                 </td>
                 <td className="p-2 text-muted">{s.description}</td>
                 <td className="p-2">

@@ -8,6 +8,8 @@ import {
 } from "../../mock/data";
 import PhotoStrip from "./PhotoStrip";
 import { SeverityIcon, EventIcon } from "./icons";
+import { evidenceOf } from "../../data/evidencePolicy";
+import { EvidenceNote } from "../../components/common/EvidenceStatus";
 
 const LABEL_W = 168;
 const THUMB_SIZE = 50;
@@ -89,27 +91,22 @@ export default function TimelineView() {
     <div className="flex flex-col flex-1 min-h-0 bg-[#0a1523]">
       {/* Header */}
       <div className="px-3 py-2 flex justify-between items-center border-b border-[#1a2b44]/60 shrink-0">
-        <div className="text-sm font-medium text-white/90">
-          Forensic Timeline — {photoPoints.length} evidence points
+        <div className="text-sm font-medium text-white/90 flex items-center gap-3">
+          Таймлайн расследования — {photoPoints.length} точек улик
+          <EvidenceNote level={evidenceOf("timeline_metrics")?.level ?? "stub"} />
         </div>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-accent"></div>
-            <span className="text-[10px] text-muted uppercase tracking-wider">Cluster A (Real)</span>
-            <div className="w-2 h-2 rounded-full bg-danger ml-2"></div>
-            <span className="text-[10px] text-muted uppercase tracking-wider">Cluster B (Double)</span>
-          </div>
           <select
             value={poseFilter}
             onChange={e => setPoseFilter(e.target.value)}
             className="bg-[#0d1b2d] border border-[#1a2b44] rounded px-2 py-1 text-xs text-[#6b7a90] focus:outline-none"
           >
-            <option value="">All poses</option>
-            <option value="frontal">Frontal</option>
-            <option value="three_quarter_left">3/4 Left</option>
-            <option value="three_quarter_right">3/4 Right</option>
-            <option value="profile_left">Profile Left</option>
-            <option value="profile_right">Profile Right</option>
+            <option value="">Все ракурсы</option>
+            <option value="frontal">Фронтальный</option>
+            <option value="three_quarter_left">3/4 слева</option>
+            <option value="three_quarter_right">3/4 справа</option>
+            <option value="profile_left">Профиль слева</option>
+            <option value="profile_right">Профиль справа</option>
           </select>
         </div>
       </div>
@@ -131,14 +128,14 @@ export default function TimelineView() {
                 {selectedPoint.anomaly && <SeverityIcon s={selectedPoint.anomaly} />}
               </div>
               <div className="text-[11px] font-mono text-[#6b7a90]">
-                YAW: {selectedPoint.pose.yaw?.toFixed(1) ?? '?'}° · 
-                PITCH: {selectedPoint.pose.pitch?.toFixed(1) ?? '?'}° · 
-                SOURCE: {selectedPoint.pose.source.toUpperCase()}
+                РЫСК.: {selectedPoint.pose.yaw?.toFixed(1) ?? '?'}° ·
+                ТАНГАЖ: {selectedPoint.pose.pitch?.toFixed(1) ?? '?'}° ·
+                ИСТОЧНИК: {selectedPoint.pose.source.toUpperCase()}
               </div>
             </div>
           </div>
           <div className="text-right">
-            <div className="text-[10px] text-muted uppercase tracking-tighter mb-0.5">Investigation progress</div>
+            <div className="text-[10px] text-muted uppercase tracking-tighter mb-0.5">Прогресс расследования</div>
             <div className="flex items-center gap-1">
               <div className="h-1 w-24 bg-line/20 rounded-full overflow-hidden">
                 <div className="h-full bg-accent" style={{ width: `${(selectedIndex / photoPoints.length) * 100}%` }} />
@@ -160,7 +157,7 @@ export default function TimelineView() {
           {/* Year Header Row */}
           <div className="flex shrink-0 sticky top-0 z-30 bg-[#0a1523]/95 backdrop-blur-md border-b border-line/60 h-[24px]">
             <div style={{ width: LABEL_W }} className="shrink-0 px-3 flex items-center border-r border-line/60">
-              <span className="text-[9px] text-muted uppercase font-bold tracking-widest">Chronology</span>
+              <span className="text-[9px] text-muted uppercase font-bold tracking-widest">Хронология</span>
             </div>
             <div className="flex relative">
               {photoPoints.map((p, idx) => {
@@ -190,19 +187,23 @@ export default function TimelineView() {
           <div className="shrink-0 border-b border-line/40">
             <div className="flex items-center h-8">
               <div style={{ width: LABEL_W }} className="px-3 border-r border-line/60 shrink-0 flex flex-col justify-center">
-                <span className="text-[10px] text-white/80">Identity Cluster</span>
+                <span className="text-[10px] text-white/80">Кластер идентичности</span>
               </div>
               <div className="flex h-full items-center">
                 {photoPoints.map((p, i) => (
                   <div key={i} style={{ width: colWidth }} className="h-full flex items-center justify-center">
-                    <div className={`w-3 h-3 rounded-full border-2 ${p.identity === 'A' ? 'bg-accent border-accent/40' : 'bg-danger border-danger/40'}`} />
+                    {p.identity ? (
+                      <div className={`w-3 h-3 rounded-full border-2 ${p.identity === 'A' ? 'bg-accent border-accent/40' : 'bg-danger border-danger/40'}`} />
+                    ) : (
+                      <div className="w-3 h-3 rounded-full border border-line/30 bg-transparent" title="Нет данных" />
+                    )}
                   </div>
                 ))}
               </div>
             </div>
             <div className="flex items-center h-8 border-t border-line/20">
               <div style={{ width: LABEL_W }} className="px-3 border-r border-line/60 shrink-0 flex flex-col justify-center">
-                <span className="text-[10px] text-white/80">Events</span>
+                <span className="text-[10px] text-white/80">События</span>
               </div>
               <div className="flex h-full items-center">
                 {photoPoints.map((p, i) => {
@@ -230,7 +231,7 @@ export default function TimelineView() {
                 <div key={m.id} className="flex border-b border-line/20 hover:bg-white/[0.02] transition-colors group">
                   <div style={{ width: LABEL_W }} className="shrink-0 px-3 py-2 border-r border-line/60 flex flex-col justify-center">
                     <div className="text-[11px] text-white/90 truncate font-medium">{m.title}</div>
-                    <div className="text-[9px] text-muted truncate uppercase tracking-tighter">{m.subtitle || 'Forensic Metric'}</div>
+                    <div className="text-[9px] text-muted truncate uppercase tracking-tighter">{m.subtitle || 'Метрика'}</div>
                   </div>
                   <div className="relative" style={{ height: METRIC_ROW_H, width: photoPoints.length * colWidth }}>
                     {/* SVG Layer */}
@@ -285,7 +286,7 @@ export default function TimelineView() {
       {/* Bottom Scrubber / Navigator */}
       <div className="h-12 bg-bg-deep border-t border-line/60 px-4 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
-          <div className="text-[10px] text-muted uppercase tracking-widest font-bold">Investigation navigator</div>
+          <div className="text-[10px] text-muted uppercase tracking-widest font-bold">Навигатор расследования</div>
           <div className="flex gap-1 h-4">
             {photoVolume.slice(0, 27).map((v, i) => (
               <div key={i} className="w-1 bg-accent/40 rounded-t-sm self-end" style={{ height: `${(v / 100) * 100}%` }} />
@@ -293,7 +294,7 @@ export default function TimelineView() {
           </div>
         </div>
         <div className="text-[10px] text-muted font-mono">
-          SCROLL: PAN · CTRL+SCROLL: ZOOM · CLICK: SELECT EVIDENCE
+          ПРОКРУТКА: ПЕРЕМЕЩЕНИЕ · CTRL+ПРОКРУТКА: МАСШТАБ · КЛИК: ВЫБОР УЛИКИ
         </div>
       </div>
     </div>

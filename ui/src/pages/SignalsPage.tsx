@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
 import { loadSignalReportForUi } from "../debug/invariants_signals";
+import { EvidenceBadge } from "../components/common/EvidenceStatus";
+import { evidenceOf } from "../data/evidencePolicy";
 
 interface SlimSignal {
   file: string;
@@ -57,18 +59,18 @@ export default function SignalsPage() {
 
   if (missing) {
     return (
-      <Page title="Real-photo signals">
-        <PanelCard title="No signal report on disk">
+      <Page title="Сигналы реальных фото">
+        <PanelCard title="Нет отчёта сигналов на диске">
           <div className="text-[11px] text-muted">
-            Run <code className="text-white">npm run signals</code> from <code className="text-white">ui/</code>.
-            That scans every JPEG/PNG under <code className="text-white">public/photos/</code> and writes
-            <code className="text-white"> signal-report.json</code> + a slim copy in <code className="text-white">public/</code>.
+            Запустите <code className="text-white">npm run signals</code> из <code className="text-white">ui/</code>.
+            Скрипт сканирует все JPEG/PNG в <code className="text-white">public/photos/</code> и записывает
+            <code className="text-white"> signal-report.json</code> + компактную копию в <code className="text-white">public/</code>.
           </div>
         </PanelCard>
       </Page>
     );
   }
-  if (!report) return <Page title="Real-photo signals"><div className="text-[11px] text-muted">Loading…</div></Page>;
+  if (!report) return <Page title="Сигналы реальных фото"><div className="text-[11px] text-muted">Загрузка…</div></Page>;
 
   const totalBytes = report.entries.reduce((a, e) => a + e.bytes, 0);
   const formats = report.entries.reduce<Record<string, number>>((a, e) => {
@@ -83,26 +85,30 @@ export default function SignalsPage() {
 
   return (
     <Page
-      title="Real-photo signals"
-      subtitle={`${report.count} files · ${(totalBytes / 1024).toFixed(0)} KB · generated ${report.generatedAt}`}
+      title="Сигналы реальных фото"
+      subtitle={`${report.count} файлов · ${(totalBytes / 1024).toFixed(0)} КБ · сгенерировано ${report.generatedAt}`}
     >
+      <div className="flex items-center gap-2 mb-3">
+        <EvidenceBadge level={evidenceOf("signals")!.level} />
+        <span className="text-[11px] text-muted">Все данные на этой странице — реальные результаты сканирования фото</span>
+      </div>
       <div className="grid grid-cols-4 gap-3 mb-3">
-        <Stat label="files"      value={report.count}                                        color="#cfd8e6" />
-        <Stat label="unique SHA" value={new Set(report.entries.map((e) => e.sha256)).size}   color={report.duplicates.length ? "#ef4444" : "#22c55e"} />
-        <Stat label="duplicates" value={report.duplicates.length}                            color={report.duplicates.length ? "#ef4444" : "#22c55e"} />
-        <Stat label="total KB"   value={(totalBytes / 1024).toFixed(0)}                       color="#a855f7" />
+        <Stat label="файлы"      value={report.count}                                        color="#cfd8e6" />
+        <Stat label="уникальных SHA" value={new Set(report.entries.map((e) => e.sha256)).size}   color={report.duplicates.length ? "#ef4444" : "#22c55e"} />
+        <Stat label="дубликаты" value={report.duplicates.length}                            color={report.duplicates.length ? "#ef4444" : "#22c55e"} />
+        <Stat label="всего КБ"   value={(totalBytes / 1024).toFixed(0)}                       color="#a855f7" />
       </div>
 
-      <PanelCard title="Format & dimensions" className="mb-3">
+      <PanelCard title="Формат и размеры" className="mb-3">
         <div className="grid grid-cols-2 gap-3 text-[11px]">
           <div>
-            <div className="text-muted uppercase tracking-widest text-[10px] mb-1">format</div>
+            <div className="text-muted uppercase tracking-widest text-[10px] mb-1">формат</div>
             {Object.entries(formats).map(([k, n]) => (
               <KV key={k} k={k} v={n} />
             ))}
           </div>
           <div>
-            <div className="text-muted uppercase tracking-widest text-[10px] mb-1">dimensions</div>
+            <div className="text-muted uppercase tracking-widest text-[10px] mb-1">размеры</div>
             {Object.entries(dimGroups).map(([k, n]) => (
               <KV key={k} k={k} v={n} />
             ))}
@@ -111,7 +117,7 @@ export default function SignalsPage() {
       </PanelCard>
 
       {report.duplicates.length > 0 && (
-        <PanelCard title="Hash duplicates" className="mb-3">
+        <PanelCard title="Дубликаты по хешу" className="mb-3">
           <ul className="text-[11px] space-y-1">
             {report.duplicates.map((d) => (
               <li key={d.sha256} className="text-warn">
@@ -124,17 +130,17 @@ export default function SignalsPage() {
       )}
 
       {report.closestDhashPairs && report.closestDhashPairs.length > 0 && (
-        <PanelCard title="Closest dHash pairs (perceptual similarity)" className="mb-3">
+        <PanelCard title="Ближайшие dHash-пары (перцептивное сходство)" className="mb-3">
           <div className="text-[11px] text-muted mb-2">
-            Lower Hamming distance = more visually similar. For portraits of the same person,
-            typical distance is 12–22; below 4 means near-duplicate (same content).
+            Меньшее расстояние Хэмминга = большее визуальное сходство. Для портретов одного человека
+            типичное расстояние 12–22; менее 4 означает почти дубликат (одинаковое содержание).
           </div>
           <table className="w-full text-[11px]">
             <thead className="text-muted border-b border-line">
               <tr>
-                <th className="text-left p-2 w-16">distance</th>
-                <th className="text-left p-2">photo A</th>
-                <th className="text-left p-2">photo B</th>
+                <th className="text-left p-2 w-16">расстояние</th>
+                <th className="text-left p-2">фото A</th>
+                <th className="text-left p-2">фото B</th>
               </tr>
             </thead>
             <tbody>
@@ -165,21 +171,21 @@ export default function SignalsPage() {
 
       {/* Heatmap N×N (only if we have dhash) */}
       {report.entries.some((e) => e.dhash) && (
-        <PanelCard title="Pairwise dHash heatmap" className="mb-3">
+        <PanelCard title="Тепловая карта попарных dHash-расстояний" className="mb-3">
           <DhashHeatmap entries={report.entries.filter((e) => e.dhash) as Array<SlimSignal & { dhash: string }>} />
         </PanelCard>
       )}
 
-      <PanelCard title="Per-file signals">
+      <PanelCard title="Сигналы по файлам">
         <table className="w-full text-[11px]">
           <thead className="text-muted border-b border-line">
             <tr>
-              <th className="text-left p-2">preview</th>
-              <th className="text-left p-2">file</th>
-              <th className="text-left p-2">format</th>
-              <th className="text-left p-2">dim</th>
-              <th className="text-left p-2">size</th>
-              <th className="text-left p-2">lum</th>
+              <th className="text-left p-2">превью</th>
+              <th className="text-left p-2">файл</th>
+              <th className="text-left p-2">формат</th>
+              <th className="text-left p-2">разм.</th>
+              <th className="text-left p-2">объём</th>
+              <th className="text-left p-2">ярк.</th>
               <th className="text-left p-2">dhash</th>
               <th className="text-left p-2">sha256</th>
             </tr>

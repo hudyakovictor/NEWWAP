@@ -49,6 +49,8 @@ from .utils import (
     ForensicManifest,
     ensure_directory,
     iso_now,
+    parse_date_from_name,
+    fallback_date_for_file,
     read_json,
     runtime_config_snapshot,
     write_json,
@@ -683,6 +685,10 @@ def calculate_bayesian_evidence(
     quality_a = summary_a.get("quality", {})
     quality_b = summary_b.get("quality", {})
     
+    # [FIX-34] Extract years early — needed by delta_years, epoch model, and texture H1
+    year_a = summary_a.get("year", summary_a.get("parsed_year", 2000))
+    year_b = summary_b.get("year", summary_b.get("parsed_year", 2000))
+    
     # [FIX-2] Определяем исключённые зоны по выражениям
     excluded_zones = _detect_excluded_zones(pose_a, pose_b)
     
@@ -748,7 +754,7 @@ def calculate_bayesian_evidence(
     # [FIX-54] Age-aware weighting: различаем допустимую динамику костных и мягких зон
     # Костные метрики стабильны на протяжении жизни (кроме челюсти до 25)
     # Мягкие ткани меняются с возрастом (морщины, плотность пор, объем)
-    delta_years = abs(year_a - year_b) if 'year_a' in locals() else 10  # Значение по умолчанию
+    delta_years = abs(year_a - year_b)
     
     # Коэффициенты взвешивания в зависимости от временного интервала
     if delta_years < 5:
@@ -800,9 +806,7 @@ def calculate_bayesian_evidence(
         tex_b,
     )
     
-    # [FIX-34] Получаем noise model для эпох обоих фото
-    year_a = summary_a.get("year", summary_a.get("parsed_year", 2000))
-    year_b = summary_b.get("year", summary_b.get("parsed_year", 2000))
+    # [FIX-34] Noise model для эпох обоих фото (year_a/year_b defined above)
     epoch_model_a = get_epoch_noise_model(year_a)
     epoch_model_b = get_epoch_noise_model(year_b)
     # Комбинируем модели (берем максимальный штраф)
@@ -915,9 +919,21 @@ def calculate_bayesian_evidence(
     
     yaw_a = abs(pose_a.get("yaw", 0.0))
     yaw_b = abs(pose_b.get("yaw", 0.0))
-    # [FIX-10] Точнее: в градусах, не нормированное на 180
-    pose_distance_deg = abs(yaw_a - yaw_b)
-    mutual_vis = max(0.0, 1.0 - pose_distance_deg / 90.0)  # >90° = низкая видимость
+    pitch_a = abs(pose_a.get("pitch", 0.0))
+    pitch_b = abs(pose_b.get("pitch", 0.0))
+    roll_a = abs(pose_a.get("roll", 0.0))
+    roll_b = abs(pose_b.get("roll", 0.0))
+    # [FIX-MV] Full 3-angle mutual visibility: yaw has primary weight,
+    # pitch/roll contribute to zone visibility too
+    yaw_dist = abs(yaw_a - yaw_b)
+    pitch_dist = abs(pitch_a - pitch_b)
+    roll_dist = abs(roll_a - roll_b)
+    pose_distance_deg = math.sqrt(yaw_dist**2 + pitch_dist**2 + roll_dist**2)
+    # Mutual visibility: yaw dominates (weight 0.6), pitch (0.25), roll (0.15)
+    yaw_vis = max(0.0, 1.0 - yaw_dist / 90.0)
+    pitch_vis = max(0.0, 1.0 - pitch_dist / 45.0)
+    roll_vis = max(0.0, 1.0 - roll_dist / 30.0)
+    mutual_vis = yaw_vis * 0.6 + pitch_vis * 0.25 + roll_vis * 0.15
     
     # Флаги исключённых зон
     excluded_count = len(excluded_zones)
@@ -1606,7 +1622,9 @@ def extract_photo_bundle(
     # Copy original photo to output directory for UI use
     import shutil
     original_copy_name = source_path.name
-    shutil.copy2(source_path, output_dir / original_copy_name)
+    # Only copy if source is not already in output_dir (e.g., for uploaded files)
+    if source_path.parent != output_dir:
+        shutil.copy2(source_path, output_dir / original_copy_name)
 
     # Texture analysis on face_crop.jpg (like v2 script — masked crop, no separate mask needed)
     face_crop_path = output_dir / face_crop_name if face_crop_name else None
@@ -1624,10 +1642,8 @@ def extract_photo_bundle(
         "texture_lbp_complexity": float(texture_forensics.get("lbp_complexity", 0.0)),
         "texture_lbp_uniformity": float(texture_forensics.get("lbp_uniformity", 0.0)),
         "texture_specular_gloss": float(texture_forensics.get("specular_gloss", 0.0)),
-        "texture_max_reflectance": float(texture_forensics.get("max_reflectance", 0.0)),
         "texture_silicone_prob": float(texture_forensics.get("silicone_probability", 0.0)),
         "texture_pore_density": float(texture_forensics.get("pore_density", 0.0)),
-        "texture_spot_density": float(texture_forensics.get("spot_density", 0.0)),
         "texture_wrinkle_forehead": float(texture_forensics.get("wrinkle_forehead", 0.0)),
         "texture_wrinkle_nasolabial": float(texture_forensics.get("wrinkle_nasolabial", 0.0)),
         "texture_global_smoothness": float(texture_forensics.get("global_smoothness", 0.0)),
@@ -1663,12 +1679,22 @@ def extract_photo_bundle(
         "usable_for_comparison": final_reliability > 0.5 and quality.get("overall_score", 0) > 0.5,
     }
     
+    # [FIX-YR1] Add date/year fields for calculate_bayesian_evidence compatibility
+    date_str, parsed_date = parse_date_from_name(source_path.name)
+    if not parsed_date:
+        date_str, parsed_date = fallback_date_for_file(source_path)
+    date_source = "filename" if parsed_date else "fallback"
+
     summary = {
         "photo_id": photo_id,
         "dataset": dataset,
         "filename": source_path.name,
         "source_path": str(source_path),
         "file_size_bytes": source_path.stat().st_size,
+        "date_str": date_str,
+        "date_source": date_source,
+        "year": parsed_date.year if parsed_date else None,
+        "parsed_year": parsed_date.year if parsed_date else None,
         "bucket": bucket,
         "angle": angle,
         "bucket_label": angle,
@@ -1692,6 +1718,7 @@ def extract_photo_bundle(
         "artifacts": {
             **uv_artifacts,
             **mesh_artifacts,
+            "face_crop": face_crop_name,
             "original_photo": original_copy_name,
         },
         "status": "ready" if status_detail["usable_for_comparison"] else "needs_review",
@@ -1746,10 +1773,8 @@ def recompute_metric_subset(
         "texture_lbp_complexity": float(texture_forensics.get("lbp_complexity", 0.0)),
         "texture_lbp_uniformity": float(texture_forensics.get("lbp_uniformity", 0.0)),
         "texture_specular_gloss": float(texture_forensics.get("specular_gloss", 0.0)),
-        "texture_max_reflectance": float(texture_forensics.get("max_reflectance", 0.0)),
         "texture_silicone_prob": float(texture_forensics.get("silicone_probability", 0.0)),
         "texture_pore_density": float(texture_forensics.get("pore_density", 0.0)),
-        "texture_spot_density": float(texture_forensics.get("spot_density", 0.0)),
         "texture_wrinkle_forehead": float(texture_forensics.get("wrinkle_forehead", 0.0)),
         "texture_wrinkle_nasolabial": float(texture_forensics.get("wrinkle_nasolabial", 0.0)),
         "texture_global_smoothness": float(texture_forensics.get("global_smoothness", 0.0)),

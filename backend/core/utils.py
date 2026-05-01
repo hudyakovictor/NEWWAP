@@ -43,20 +43,20 @@ BUCKET_LABELS = {
 BUCKET_METRIC_KEYS = {
     "frontal": [
         "cranial_face_index", "jaw_width_ratio", "canthal_tilt_L", "canthal_tilt_R",
-        "gonial_angle_L", "gonial_angle_R", "chin_offset_asymmetry", "nose_width_ratio",
-        "texture_silicone_prob", "texture_pore_density", "texture_spot_density", 
+        "chin_offset_asymmetry", "nose_width_ratio",
+        "texture_silicone_prob", "texture_pore_density",
         "texture_wrinkle_forehead", "texture_global_smoothness"
     ],
     "left_threequarter_light": [
-        "cranial_face_index", "orbit_depth_L_ratio", "canthal_tilt_L", "nose_projection_ratio", 
-        "jaw_width_ratio", "nasal_frontal_index", "gonial_angle_L",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
+        "cranial_face_index", "orbit_depth_L_ratio", "canthal_tilt_L", "nose_projection_ratio",
+        "jaw_width_ratio", "nasal_frontal_index",
+        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead",
         "texture_wrinkle_nasolabial", "texture_global_smoothness"
     ],
     "right_threequarter_light": [
-        "cranial_face_index", "orbit_depth_R_ratio", "canthal_tilt_R", "nose_projection_ratio", 
-        "jaw_width_ratio", "nasal_frontal_index", "gonial_angle_R",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
+        "cranial_face_index", "orbit_depth_R_ratio", "canthal_tilt_R", "nose_projection_ratio",
+        "jaw_width_ratio", "nasal_frontal_index",
+        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead",
         "texture_wrinkle_nasolabial", "texture_global_smoothness"
     ],
     "left_threequarter_mid": [

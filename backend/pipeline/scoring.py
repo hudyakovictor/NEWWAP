@@ -248,11 +248,28 @@ def extract_macro_bone_metrics(
     jaw_R_idx = _idx('jaw_angle_R')
     jaw_L_pts = vertices[jaw_L_idx] if jaw_L_idx.size > 0 else np.zeros((0, 3))
     jaw_R_pts = vertices[jaw_R_idx] if jaw_R_idx.size > 0 else np.zeros((0, 3))
-    gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])] if jaw_L_pts.size > 0 else np.zeros(3)
-    gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])] if jaw_R_pts.size > 0 else np.zeros(3)
     
-    metrics["gonial_angle_L"] = calc_tilt(chin_bottom, gonion_L)
-    metrics["gonial_angle_R"] = calc_tilt(chin_bottom, gonion_R)
+    if jaw_L_pts.size > 0 and jaw_R_pts.size > 0:
+        gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
+        gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
+        metrics["gonial_angle_L"] = calc_tilt(chin_bottom, gonion_L)
+        metrics["gonial_angle_R"] = calc_tilt(chin_bottom, gonion_R)
+    elif jaw_R_pts.size > 0:
+        # Fallback: if only right side available, use symmetric assumption
+        gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
+        angle_R = calc_tilt(chin_bottom, gonion_R)
+        metrics["gonial_angle_R"] = angle_R
+        metrics["gonial_angle_L"] = angle_R  # Symmetric fallback
+    elif jaw_L_pts.size > 0:
+        # Fallback: if only left side available, use symmetric assumption
+        gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
+        angle_L = calc_tilt(chin_bottom, gonion_L)
+        metrics["gonial_angle_L"] = angle_L
+        metrics["gonial_angle_R"] = angle_L  # Symmetric fallback
+    else:
+        # No jaw angle landmarks available
+        metrics["gonial_angle_L"] = 0.0
+        metrics["gonial_angle_R"] = 0.0
 
     # 6. Nose
     nose_bridge = get_zone_centroid('nose_bridge_tip')
