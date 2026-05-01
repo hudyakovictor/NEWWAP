@@ -178,7 +178,9 @@ class ReconstructionAdapter:
 
         exp_tensor = alpha_dict["exp"]
         if neutral_expression:
-            exp_tensor = torch.zeros_like(exp_tensor)
+            # [FIX-A1] Сглаживание без потери анатомической асимметрии
+            # zeros_like() стирает врождённую асимметрию; *0.1 сохраняет её
+            exp_tensor = exp_tensor * 0.1
 
         base_shape = self._model.compute_shape(alpha_dict["id"], exp_tensor)
         rotation = self._model.compute_rotation(alpha_dict["angle"])
@@ -226,6 +228,8 @@ class ReconstructionAdapter:
                 "detector_device": self.detector_device,
                 "backbone": self.backbone,
                 "seg_visible": result.get("seg_visible"),
+                # [FIX-A2] Trust issue с маской видимости для downstream обработки
+                "trust_issue": getattr(self, '_last_reconstruction_trust_issue', None),
             },
         )
         self._cache[cache_key] = reconstruction
@@ -269,6 +273,7 @@ class ReconstructionAdapter:
         visible = np.zeros(normals_camera.shape[0], dtype=bool)
         raw_visible = result.get("visible_idx")
         
+        trust_issue = None
         if raw_visible is not None:
             raw_visible = np.asarray(raw_visible)
             if raw_visible.ndim == 1 and raw_visible.size > 0 and raw_visible.dtype != np.bool_:
@@ -277,13 +282,22 @@ class ReconstructionAdapter:
                 visible[raw_visible] = True
             elif raw_visible.shape[0] == visible.shape[0]:
                 visible = raw_visible.astype(bool)
+            else:
+                # [FIX-A2] Shape mismatch — нельзя доверять маске, считаем всё скрытым
+                trust_issue = f"visible_mask_shape_mismatch: raw={raw_visible.shape[0]}, expected={visible.shape[0]}"
+                visible = np.zeros(normals_camera.shape[0], dtype=bool)  # Безопаснее скрыть всё
         else:
-            # Если нет маски от рендерера, считаем все вершины потенциально видимыми
-            visible = np.ones(normals_camera.shape[0], dtype=bool)
+            # [FIX-A2] Нет маски от рендерера — безопаснее считать всё скрытым
+            trust_issue = "visible_mask_missing_from_renderer"
+            visible = np.zeros(normals_camera.shape[0], dtype=bool)
             
         # Финальная маска: пересечение 82-градусного фильтра и окклюзий рендерера
         visible &= mask_82
         visible &= np.isfinite(normals_camera).all(axis=1)
+        
+        # [FIX-A2] Сохраняем trust issue для downstream обработки
+        if trust_issue:
+            self._last_reconstruction_trust_issue = trust_issue
         
         return visible
 
