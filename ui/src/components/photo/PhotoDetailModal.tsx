@@ -29,50 +29,59 @@ type TabId = (typeof tabs)[number]["id"];
 export default function PhotoDetailModal({
   point,
   photoId,
+  photoUrl,
+  year: propYear,
   onClose,
   onPrev,
   onNext,
 }: {
-  point: YearPoint;
+  point?: YearPoint;
   photoId?: string;
+  photoUrl?: string;
+  year?: number;
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
 }) {
-  const [currentPhotoId, setCurrentPhotoId] = useState<string>(point.photo);
+  // Support both old interface (point) and new interface (photoUrl + year)
+  const effectivePhotoUrl = photoUrl || point?.photo || "";
+  const effectiveYear = propYear || point?.year || 2000;
+  const effectiveIdentity = point?.identity || "A";
+  
+  const [currentPhotoId, setCurrentPhotoId] = useState<string>(effectivePhotoUrl);
 
   useEffect(() => {
-    setCurrentPhotoId(point.photo);
-  }, [point.photo]);
+    setCurrentPhotoId(effectivePhotoUrl);
+  }, [effectivePhotoUrl]);
 
-  const detail = useMemo(() => buildPhotoDetail(point.year, currentPhotoId), [point.year, currentPhotoId]);
+  const detail = useMemo(() => buildPhotoDetail(effectiveYear, currentPhotoId), [effectiveYear, currentPhotoId]);
   const [tab, setTab] = useState<TabId>("overview");
   const [hoveredZone, setHoveredZone] = useState<string | undefined>();
   const { openPairWith } = useApp();
 
   const yearPhotos = useMemo(() => {
-    return MAIN_PHOTOS.filter(p => p.year === point.year).sort((a,b) => (a.date||"").localeCompare(b.date||""));
-  }, [point.year]);
+    return MAIN_PHOTOS.filter(p => p.year === effectiveYear).sort((a,b) => (a.date||"").localeCompare(b.date||""));
+  }, [effectiveYear]);
 
   useEffect(() => {
-    log.info("photo", "photo:modal_open", `Open detail for ${point.year}`, { point, photoId });
+    log.info("photo", "photo:modal_open", `Open detail for ${effectiveYear}`, { year: effectiveYear, photoId });
     const violations = validatePhotoDetail(detail);
     if (violations.length) {
       log.validation(
         "photo:modal_open:validate",
-        `PhotoDetail for ${point.year} has ${violations.length} violations`,
-        { point, photoId, detail },
+        `PhotoDetail for ${effectiveYear} has ${violations.length} violations`,
+        { year: effectiveYear, photoId, detail },
         violations
       );
     }
     return () => {
-      log.debug("photo", "photo:modal_close", `Close detail for ${point.year}`, { point, photoId });
+      log.debug("photo", "photo:modal_close", `Close detail for ${effectiveYear}`, { year: effectiveYear, photoId });
     };
-  }, [point, photoId, detail]);
+  }, [effectiveYear, photoId, detail]);
 
   useEffect(() => {
-    log.trace("photo", "photo:tab", `tab → ${tab}`, { year: point.year, tab });
-  }, [tab, point.year]);
+    log.trace("photo", "photo:tab", `tab → ${tab}`, { year: effectiveYear, tab });
+  }, [tab, effectiveYear]);
 
   const compare = (slot: "A" | "B") => {
     if (photoId) {
@@ -101,8 +110,8 @@ export default function PhotoDetailModal({
               </div>
               <div className="text-[10px] text-muted">
                 {detail.year} · {detail.meta.resolution} · {detail.meta.source} · cluster{" "}
-                <span className={point.identity === "A" ? "text-accent" : "text-danger"}>
-                  {point.identity}
+                <span className={effectiveIdentity === "A" ? "text-accent" : "text-danger"}>
+                  {effectiveIdentity}
                 </span>
               </div>
             </div>
@@ -172,7 +181,7 @@ export default function PhotoDetailModal({
         {/* YEAR GALLERY */}
         {yearPhotos.length > 1 && (
           <div className="flex items-center gap-2 px-4 py-2 bg-bg-deep/50 overflow-x-auto scrollbar-thin border-b border-line/40 shrink-0">
-            <span className="text-[10px] uppercase text-muted tracking-widest shrink-0 mr-2">All {point.year} photos ({yearPhotos.length}):</span>
+            <span className="text-[10px] uppercase text-muted tracking-widest shrink-0 mr-2">All {effectiveYear} photos ({yearPhotos.length}):</span>
             <div className="flex gap-1">
               {yearPhotos.map(p => {
                 const isActive = currentPhotoId.includes(p.id) || currentPhotoId === p.url;
@@ -195,7 +204,7 @@ export default function PhotoDetailModal({
         {/* body */}
         <div className="flex-1 overflow-auto p-4">
           {tab === "overview" && (
-            <Overview detail={detail} hovered={hoveredZone} onHover={setHoveredZone} identity={point.identity} />
+            <Overview detail={detail} hovered={hoveredZone} onHover={setHoveredZone} identity={effectiveIdentity} />
           )}
           {tab === "reconstruction" && <Reconstruction detail={detail} />}
           {tab === "zones" && (
@@ -206,7 +215,7 @@ export default function PhotoDetailModal({
           {tab === "chronology" && <Chronology detail={detail} />}
           {tab === "calibration" && <CalibrationTab detail={detail} />}
           {tab === "similar" && <SimilarTab photoId={photoId} />}
-          {tab === "audit_trail" && <AuditTrailTab year={point.year} photoId={photoId} />}
+          {tab === "audit_trail" && <AuditTrailTab year={effectiveYear} photoId={photoId} />}
           {tab === "meta" && <Meta detail={detail} />}
         </div>
       </div>

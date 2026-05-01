@@ -1,4 +1,4 @@
-import { COL_W, LABEL_W, METRIC_H_MIN } from "./constants";
+import { LABEL_W, METRIC_H_MIN } from "./constants";
 import type { MetricConfig } from "../../mock/data";
 import { SeverityIcon } from "./icons";
 
@@ -10,13 +10,16 @@ export default function MetricRow({
   selectedYear,
   onSelect,
   grow = 1,
+  zoom = 1,
 }: {
   metric: MetricConfig;
   years: number[];
   selectedYear: number;
   onSelect: (y: number) => void;
   grow?: number;
+  zoom?: number;
 }) {
+  const COL_W = Math.max(80, 120 * zoom);
   const width = years.length * COL_W;
   const [dmin, dmax] = metric.domain ?? [
     Math.min(...metric.values),
@@ -34,6 +37,7 @@ export default function MetricRow({
     y: yFromValue(v),
     v,
   }));
+  const colWidth = COL_W;
 
   const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
 
@@ -115,7 +119,7 @@ export default function MetricRow({
               <button
                 key={y}
                 onClick={() => onSelect(y)}
-                style={{ width: COL_W }}
+                style={{ width: colWidth }}
                 className={`relative h-full flex flex-col items-center ${
                   selected ? "bg-danger/10" : ""
                 }`}

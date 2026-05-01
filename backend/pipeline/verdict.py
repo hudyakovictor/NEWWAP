@@ -82,10 +82,11 @@ class BayesianMultiHypothesisEngine:
     - H2: Different Person (Natural variation)
     """
     def __init__(self):
+        h2_prior = max(0.0, 1.0 - PRIOR_SAME_PERSON - 0.05)
         self.priors = {
             "H0": PRIOR_SAME_PERSON,      # Same
             "H1": 0.05,                  # Swap/Mask (Rare but critical)
-            "H2": 1.0 - PRIOR_SAME_PERSON - 0.05 # Different
+            "H2": h2_prior               # Different (guarded against negative)
         }
 
     def synthesize(
@@ -157,11 +158,11 @@ class BayesianMultiHypothesisEngine:
                 chrono_h0 *= 0.05
                 chrono_h1 *= 1.0 + max(0.5, prior_p)
                 chrono_h2 *= 0.60
-            elif flag_type == "return_to_reference":
+            elif flag_type == "return":  # chronology.py generates type="return"
                 chrono_h0 *= 0.15
                 chrono_h1 *= 1.75
                 chrono_h2 *= 0.75
-            elif flag_type == "transition_anomaly":
+            elif flag_type == "transition":  # chronology.py generates type="transition"
                 chrono_h0 *= 0.60
                 chrono_h1 *= 1.15
                 chrono_h2 *= 1.20
@@ -183,7 +184,7 @@ class BayesianMultiHypothesisEngine:
         flags = []
         reasoning = []
         is_impossible = any(f["type"] == "impossible_short" for f in chronology_flags)
-        is_rtr = any(f["type"] == "return_to_reference" for f in chronology_flags)
+        is_rtr = any(f["type"] == "return" for f in chronology_flags)  # chronology.py uses "return"
 
         if is_impossible:
             flags.append("TEMPORAL_IMPOSSIBILITY")
@@ -229,6 +230,9 @@ class BayesianMultiHypothesisEngine:
 
         if confidence_cap is not None:
             confidence = min(float(confidence), confidence_cap)
+
+        # [SYS-05] Always clamp confidence to [0, 1]
+        confidence = _clamp01(float(confidence))
 
         # Reasoning
         reasoning.append(f"Bayesian Posterior: Same={p_h0:.2f}, Swap/Mask={p_h1:.2f}, Diff={p_h2:.2f}")

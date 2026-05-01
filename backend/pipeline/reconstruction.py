@@ -251,15 +251,11 @@ class ReconstructionAdapter:
         # Мы используем нормали в пространстве камеры.
         # Вершины, смотрящие на нас, имеют положительную Z компоненту нормали (в системе 3DDFA).
         
-        # Точный расчет согласно ТЗ:
-        # normal_cam (N, 3)
-        # camera_vector = [0, 0, -1] (стандарт для 3DDFA_v3 в пространстве камеры)
-        camera_vec = np.array([0, 0, -1], dtype=np.float32)
-        
-        # dot_product = normals_camera @ camera_vec
-        # cos_theta = dot_product / (norm(normals) * norm(camera_vec))
-        # Т.к. нормали уже нормализованы и camera_vec тоже:
-        cos_theta = -normals_camera[:, 2] # т.к. camera_vec[2] = -1
+        # Вектор "на камеру" в пространстве камеры для 3DDFA:
+        # 3DDFA_v3 использует конвенцию где камера смотрит вдоль +Z,
+        # а нормали лица направлены в сторону камеры (normal_z > 0 = лицом к камере).
+        # Поэтому cos_theta = normals_camera[:, 2] (без отрицания).
+        cos_theta = normals_camera[:, 2]
         
         # Ограничиваем значения для arccos
         cos_theta = np.clip(cos_theta, -1.0, 1.0)

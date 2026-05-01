@@ -136,6 +136,7 @@ def runtime_config_snapshot(runtime: Any) -> dict[str, Any]:
     """
     Создает снимок текущей конфигурации системы для включения в ForensicManifest.
     Обеспечивает воспроизводимость результатов.
+    Не включает timestamp в хэш вход — это нарушило бы детерминизм.
     """
     from .constants import ARTIFACT_VERSION, MIN_ZONE_VERTICES, VISIBILITY_ANGLE_DEG, SILICONE_SIGMOID_BIAS
     
@@ -145,7 +146,8 @@ def runtime_config_snapshot(runtime: Any) -> dict[str, Any]:
         "visibility_angle_threshold_deg": VISIBILITY_ANGLE_DEG,
         "silicone_sigmoid_bias": SILICONE_SIGMOID_BIAS,
         "device": getattr(runtime, "device", "unknown"),
-        "timestamp": iso_now(),
+        # NOTE: timestamp intentionally excluded from snapshot to preserve hash reproducibility.
+        # It is safe to store timestamp separately outside the hash input if needed.
     }
 
 
@@ -204,12 +206,32 @@ def slugify(value: str) -> str:
 
 
 def stable_photo_id(dataset: str, path: Path, root: Path) -> str:
+    """Generate a clean photo ID.
+
+    - main dataset: just the filename stem (e.g. "1999_12_01" from "1999_12_01.jpg")
+    - calibration dataset: angle-based name (e.g. "photo_yaw-2_pitch0_roll-3")
+      Falls back to stem if pose data is unavailable.
+    """
+    if dataset == "main":
+        return path.stem
+    # calibration: try angle-based naming from pose JSON
     try:
-        rel = path.relative_to(root).as_posix()
-    except ValueError:
-        rel = path.name
-    digest = hashlib.sha1(rel.encode("utf-8")).hexdigest()[:10]
-    return f"{dataset}-{slugify(path.stem)}-{digest}"
+        import json as _json
+        poses_path = Path(__file__).resolve().parents[2] / "ui" / "src" / "data" / "poses_myface.json"
+        if not poses_path.exists():
+            poses_path = Path(__file__).resolve().parents[3] / "storage" / "poses" / "poses_myface_consolidated.json"
+        if poses_path.exists():
+            with open(poses_path, "r") as _f:
+                poses = _json.load(_f)
+            entry = poses.get(path.name)
+            if entry and entry.get("source") != "none":
+                y = int(round(entry.get("yaw", 0)))
+                p = int(round(entry.get("pitch", 0)))
+                r = int(round(entry.get("roll", 0)))
+                return f"photo_yaw{y}_pitch{p}_roll{r}"
+    except Exception:
+        pass
+    return path.stem
 
 
 def ensure_directory(path: Path) -> Path:
@@ -217,9 +239,31 @@ def ensure_directory(path: Path) -> Path:
     return path
 
 
+class _NumpyEncoder(json.JSONEncoder):
+    """JSON encoder that handles numpy types."""
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        if isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        return super().default(obj)
+
+
 def write_json(path: Path, payload: Any) -> None:
+    """Atomic write: write to tmp file then rename to prevent partial/corrupt JSON on crash."""
     ensure_directory(path.parent)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp = path.with_suffix(".tmp")
+    try:
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, cls=_NumpyEncoder), encoding="utf-8")
+        tmp.replace(path)
+    except Exception:
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+        raise
 
 
 def read_json(path: Path, default: Any = None) -> Any:

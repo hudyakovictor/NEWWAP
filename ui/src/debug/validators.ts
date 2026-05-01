@@ -46,14 +46,11 @@ export function validateTimeline(t: TimelineSummary): Violation[] {
         severity: "danger",
       });
     }
-    // domain sanity by id
+    // domain sanity by id — map timeline metric IDs to expectation keys
     const ranges: Record<string, keyof typeof EXPECT.metric> = {
-      skull: "skull_ratio",
-      neuro: "neurocranium_mm",
-      orbital: "orbital_angle",
-      bmi: "facial_bmi",
-      synth: "synthetic_prob",
-      lbp: "lbp_complexity",
+      photo_count: "photo_count",
+      mean_yaw: "mean_yaw",
+      frontal_ratio: "frontal_ratio",
       age: "estimated_age",
     };
     const key = ranges[m.id];
@@ -79,7 +76,7 @@ export function validatePhotoList(r: PhotoListResult): Violation[] {
     if (!inYearRange(p.year)) {
       v.push({ field: `items[${i}].year`, expected: "1999..2025", actual: p.year, severity: "warn" });
     }
-    const x = checkRange(`items[${i}].syntheticProb`, p.syntheticProb, EXPECT.metric.synthetic_prob);
+    const x = checkRange(`items[${i}].syntheticProb`, p.syntheticProb, EXPECT.metric.texture_silicone_prob);
     if (x) v.push(x);
     const y = checkRange(`items[${i}].bayesH0`, p.bayesH0, { min: 0, max: 1 });
     if (y) v.push(y);
@@ -100,8 +97,9 @@ export function validatePhoto(p: PhotoRecord): Violation[] {
 
 export function validatePhotoDetail(d: PhotoDetail): Violation[] {
   const v: Violation[] = [];
-  if (d.zones.length !== 21) {
-    v.push({ field: "zones.length", expected: "== 21 (per TZ)", actual: d.zones.length, severity: "danger" });
+  // Zone count can be less than 21 when expression exclusion removes jaw/cheek zones
+  if (d.zones.length < 18 || d.zones.length > 21) {
+    v.push({ field: "zones.length", expected: "18..21 (21 minus expression-excluded)", actual: d.zones.length, severity: "warn" });
   }
   d.zones.forEach((z, i) => {
     const w = checkRange(`zones[${i}=${z.id}].weight`, z.weight, EXPECT.zone.weight);
@@ -123,7 +121,7 @@ export function validatePhotoDetail(d: PhotoDetail): Violation[] {
   const j = checkRange("expression.jawOpen", d.expression.jawOpen, EXPECT.expression.jaw_open);
   if (j) v.push(j);
 
-  const syn = checkRange("texture.syntheticProb", d.texture.syntheticProb, EXPECT.metric.synthetic_prob);
+  const syn = checkRange("texture.syntheticProb", d.texture.syntheticProb, EXPECT.metric.texture_silicone_prob);
   if (syn) v.push(syn);
 
   const sum = checkSum(
@@ -170,7 +168,7 @@ export function validateEvidence(e: EvidenceBreakdown): Violation[] {
     v.push({ field: "chronology.deltaYears", expected: ">= 0", actual: e.chronology.deltaYears, severity: "danger" });
   }
 
-  const syn = checkRange("texture.syntheticProb", e.texture.syntheticProb, EXPECT.metric.synthetic_prob);
+  const syn = checkRange("texture.syntheticProb", e.texture.syntheticProb, EXPECT.metric.texture_silicone_prob);
   if (syn) v.push(syn);
 
   if (e.pose.mutualVisibility > 21) {

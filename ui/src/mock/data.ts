@@ -3,9 +3,18 @@
 
 export type Severity = "ok" | "info" | "warn" | "danger";
 
-export interface YearPoint {
+export interface PhotoPoint {
+  /** Unique index in the timeline */
+  index: number;
   year: number;
-  photo: string; // url
+  photo: string; // single photo url
+  photoId: string;
+  pose: {
+    yaw: number | null;
+    pitch: number | null;
+    classification: string;
+    source: string;
+  };
   /** main anomaly severity for the marker under the photo */
   anomaly?: Severity;
   /** human label for tooltip */
@@ -22,9 +31,9 @@ export interface MetricConfig {
   color: string; // hex
   kind: "line" | "bar";
   domain?: [number, number];
-  /** value per year */
+  /** value per photo point */
   values: number[];
-  /** optional flags per year (warn/danger emitted as icons under the value) */
+  /** optional flags per point (warn/danger emitted as icons under the value) */
   flags?: (Severity | undefined)[];
 }
 
@@ -54,53 +63,55 @@ function realByYear<T>(years: number[], get: (s: { year: number; count: number; 
   });
 }
 
-/** For each year in YEARS, return the URL of the most "neutral" real photo
- *  (frontal pose, smallest |yaw|). Falls back to any photo of that year. */
-function pickAnchor(year: number, preferredPose?: string): string {
-  const candidates = MAIN_PHOTOS.filter((p) => p.year === year && p.pose.source !== "none");
-  if (candidates.length === 0) {
-    // last resort: any photo of that year, even without pose
-    const any = MAIN_PHOTOS.find((p) => p.year === year);
-    return any?.url ?? "";
-  }
-  let pool = candidates;
+/** Get all photos as individual points, filtered by preferred pose. Each photo = one point. */
+function getPhotoPoints(preferredPose?: string): PhotoPoint[] {
+  let pool = MAIN_PHOTOS.filter((p) => p.pose.source !== "none");
+  
   if (preferredPose) {
-    const matching = candidates.filter((p) => p.pose.classification === preferredPose);
+    const matching = MAIN_PHOTOS.filter((p) => p.pose.classification === preferredPose);
     if (matching.length > 0) pool = matching;
-  } else {
-    // prefer frontal, then smallest |yaw|
-    const frontal = candidates.filter((p) => p.pose.classification === "frontal");
-    if (frontal.length > 0) pool = frontal;
   }
-  pool.sort((a, b) => Math.abs(a.pose.yaw ?? 0) - Math.abs(b.pose.yaw ?? 0));
-  return pool[0].url;
+  
+  // Sort by year, then by smallest |yaw| within each year
+  pool.sort((a, b) => {
+    if (a.year !== b.year) return (a.year ?? 0) - (b.year ?? 0);
+    return Math.abs(a.pose.yaw ?? 0) - Math.abs(b.pose.yaw ?? 0);
+  });
+  
+  return pool.map((p, idx) => ({
+    index: idx,
+    year: p.year ?? 0,
+    photo: p.url,
+    photoId: p.id,
+    pose: {
+      yaw: p.pose.yaw,
+      pitch: p.pose.pitch,
+      classification: p.pose.classification,
+      source: p.pose.source,
+    },
+    // Deterministic anomaly assignment based on year patterns
+    anomaly: getAnomalyForYear(p.year ?? 0),
+    identity: (p.year ?? 0) >= 2015 && (p.year ?? 0) <= 2020 ? "B" : "A",
+    note: getNoteForYear(p.year ?? 0),
+  }));
 }
 
-const PHOTO_POOL = [
-  "/photos/2010_12_16.jpg",
-  "/photos/2011_04_14.jpg",
-  "/photos/2011_04_21.jpg",
-  "/photos/2012_07_30.jpg",
-  "/photos/2014_05_20.jpg",
-  "/photos/2014_06_09.jpg",
-  "/photos/2015_07_14.jpg",
-  "/photos/2015_09_03.jpg",
-  "/photos/2018_08_03.jpg",
-  "/photos/2018_09_08.jpg",
-  "/photos/2018_09_18.jpg",
-  "/photos/2020_02_13.jpg",
-  "/photos/2020_03_08.jpg",
-  "/photos/2020_04_07.jpg",
-  "/photos/2020_04_24.jpg",
-  "/photos/2022_01_25.jpg",
-  "/photos/2022_06_30-2.jpg",
-  "/photos/2022_09_05.jpg",
-  "/photos/2022_09_20.jpg",
-  "/photos/2022_09_21.jpg",
-];
+function getAnomalyForYear(year: number): Severity | undefined {
+  if (year === 2012) return "warn";
+  if (year === 2014) return "danger";
+  if (year === 2015) return "ok";
+  if (year === 2017) return "ok";
+  if (year === 2022) return "warn";
+  if (year === 2023) return "danger";
+  if (year === 2025) return "warn";
+  return undefined;
+}
 
-export const YEARS: number[] = [];
-for (let y = 1999; y <= 2025; y++) YEARS.push(y);
+function getNoteForYear(year: number): string | undefined {
+  if (year === 2012) return "Chronological inconsistency: sudden bone asymmetry shift";
+  if (year === 2014) return "High synthetic-material probability (silicone mask signature)";
+  return undefined;
+}
 
 // Deterministic pseudo-random helper
 function prand(seed: number): () => number {
@@ -111,77 +122,70 @@ function prand(seed: number): () => number {
   };
 }
 
-function seriesWithJump(seed: number, base: number, drift: number, jumpYear: number, jumpSize: number): number[] {
+function seriesWithJump(seed: number, base: number, drift: number, jumpYear: number, jumpSize: number, count: number): number[] {
   const r = prand(seed);
-  return YEARS.map((y, i) => {
+  return Array.from({ length: count }, (_, i) => {
+    const y = 1999 + i;
     const noise = (r() - 0.5) * 0.02 * base;
     const jump = y >= jumpYear ? jumpSize : 0;
     return +(base + drift * i + noise + jump).toFixed(2);
   });
 }
 
-export function buildYearPoints(preferredPose?: string): YearPoint[] {
-  return YEARS.map((year, i) => {
-    // photo URL is REAL — picked deterministically from main folder.
-    // anomaly / identity / note remain synthetic placeholders for now.
-    const real = pickAnchor(year, preferredPose);
-    const photo = real || PHOTO_POOL[i % PHOTO_POOL.length];
-    // anomalies cluster around 2012 (suspected double swap) and later years
-    let anomaly: Severity | undefined;
-    if (year === 2012) anomaly = "warn";
-    else if (year === 2014) anomaly = "danger";
-    else if (year === 2015) anomaly = "ok";
-    else if (year === 2017) anomaly = "ok";
-    else if (year === 2022) anomaly = "warn";
-    else if (year === 2023) anomaly = "danger";
-    else if (year === 2025) anomaly = "warn";
+// Keep YEARS for year-axis labels
+export const YEARS: number[] = [];
+for (let y = 1999; y <= 2025; y++) YEARS.push(y);
 
-    const identity: "A" | "B" = year >= 2015 && year <= 2020 ? "B" : "A";
-
-    return {
-      year,
-      photo,
-      anomaly,
-      identity,
-      note:
-        year === 2012
-          ? "Chronological inconsistency: sudden bone asymmetry shift"
-          : year === 2014
-          ? "High synthetic-material probability (silicone mask signature)"
-          : undefined,
-    };
-  });
+export function buildPhotoPoints(preferredPose?: string): PhotoPoint[] {
+  return getPhotoPoints(preferredPose);
 }
 
-export const yearPoints: YearPoint[] = buildYearPoints();
+export const photoPoints: PhotoPoint[] = buildPhotoPoints();
 
-// Metric 1 — bone asymmetry ratio (H0 support)
-const skullRatio = seriesWithJump(11, 1.62, 0.006, 2012, 0.08).map((v) => +Math.min(1.8, v).toFixed(2));
-// Metric 2 — neurocranium width (mm)
-const neuroWidth = seriesWithJump(22, 131.2, 0.08, 2012, 1.4).map((v) => +v.toFixed(1));
-// Metric 3 — orbital asymmetry angle (°)
-const orbitalAngle = seriesWithJump(33, 2.1, 0.06, 2012, 0.9).map((v) => +v.toFixed(1));
-// Metric 4 — facial BMI (tissue deficit index) — trends down with age
-const facialBMI = YEARS.map((_, i) => {
-  const r = prand(44 + i);
-  return +(0.78 - i * 0.009 + (r() - 0.5) * 0.01).toFixed(2);
-});
-// Metric 5 — synthetic material probability (0..1) — bars
-const synth = YEARS.map((y, i) => {
-  const r = prand(55 + i);
-  const base = 0.15 + r() * 0.2;
-  const spike = y === 2012 || y === 2014 || y === 2023 ? 0.45 + r() * 0.2 : 0;
-  return +Math.min(0.95, base + spike).toFixed(2);
-});
-// Metric 6 — texture complexity (LBP) — bars
-const lbp = YEARS.map((y, i) => {
-  const r = prand(66 + i);
-  const base = 0.55 + r() * 0.25;
-  const drop = y === 2012 || y === 2014 ? -0.25 : 0;
-  return +Math.max(0.05, base + drop).toFixed(2);
-});
-// Metric 7 — estimated age (still synthetic; anchored to year offset)
-const age = YEARS.map((_, i) => 46 + i);
+// Backwards compatibility - export YearPoint as alias to PhotoPoint
+export type YearPoint = PhotoPoint;
+export const buildYearPoints = buildPhotoPoints;
+export const yearPoints = photoPoints;
+
+// Generate per-photo metric values (one value per photo point)
+// For now using synthetic data matched to photo count
+function generatePhotoMetrics(photoCount: number) {
+  // Metric 1 — bone asymmetry ratio (H0 support)
+  const skullRatio = seriesWithJump(11, 1.62, 0.006, 2012, 0.08, photoCount).map((v) => +Math.min(1.8, v).toFixed(2));
+  // Metric 2 — neurocranium width (mm)
+  const neuroWidth = seriesWithJump(22, 131.2, 0.08, 2012, 1.4, photoCount).map((v) => +v.toFixed(1));
+  // Metric 3 — orbital asymmetry angle (°)
+  const orbitalAngle = seriesWithJump(33, 2.1, 0.06, 2012, 0.9, photoCount).map((v) => +v.toFixed(1));
+  // Metric 4 — facial BMI (tissue deficit index)
+  const facialBMI = Array.from({ length: photoCount }, (_, i) => {
+    const r = prand(44 + i);
+    return +(0.78 - i * 0.009 + (r() - 0.5) * 0.01).toFixed(2);
+  });
+  // Metric 5 — synthetic material probability
+  const synth = Array.from({ length: photoCount }, (_, i) => {
+    const y = 1999 + Math.floor(i / (photoCount / 27));
+    const r = prand(55 + i);
+    const base = 0.15 + r() * 0.2;
+    const spike = y === 2012 || y === 2014 || y === 2023 ? 0.45 + r() * 0.2 : 0;
+    return +Math.min(0.95, base + spike).toFixed(2);
+  });
+  // Metric 6 — texture complexity (LBP)
+  const lbp = Array.from({ length: photoCount }, (_, i) => {
+    const y = 1999 + Math.floor(i / (photoCount / 27));
+    const r = prand(66 + i);
+    const base = 0.55 + r() * 0.25;
+    const drop = y === 2012 || y === 2014 ? -0.25 : 0;
+    return +Math.max(0.05, base + drop).toFixed(2);
+  });
+  // Metric 7 — estimated age
+  const age = Array.from({ length: photoCount }, (_, i) => 46 + Math.floor(i / (photoCount / 27)));
+  
+  return { skullRatio, neuroWidth, orbitalAngle, facialBMI, synth, lbp, age };
+}
+
+// Get metrics based on actual photo count
+const photoCountForMetrics = MAIN_PHOTOS.filter(p => p.pose.source !== "none").length;
+const { skullRatio, neuroWidth, orbitalAngle, facialBMI, synth, lbp, age } = generatePhotoMetrics(photoCountForMetrics || 100);
 
 // REAL metrics from the head-pose pipeline aggregates.
 const realPhotoCount = realByYear(YEARS, (s) => s.count, 0);

@@ -1,9 +1,12 @@
 import asyncio
+import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from core.diary import get_diary_entries
 
-TELEGRAM_TOKEN = "8686482593:AAEeSFo-21w6jpCRs7zj3NZf2FnSsaV0ENw"
+# SECURITY: Token must be set via environment variable.
+# The old token was exposed in the repository and MUST be rotated via BotFather.
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("DEEPUTIN Tracker подключен. Введите /diary для получения статуса расследования.")

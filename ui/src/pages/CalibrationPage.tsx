@@ -81,7 +81,14 @@ export default function CalibrationPage() {
                 <tr key={p} className="border-b border-line/40">
                   <td className="p-1 text-white">{p}</td>
                   {lights.map((l) => {
-                    const b = buckets.find((x) => x.pose === p && x.light === l)!;
+                    const b = buckets.find((x) => x.pose === p && x.light === l);
+                    if (!b) {
+                      return (
+                        <td key={l} className="p-1 text-center">
+                          <span className="text-[9px] text-muted">—</span>
+                        </td>
+                      );
+                    }
                     return (
                       <td key={l} className="p-1 text-center">
                         <button
@@ -177,6 +184,9 @@ function BucketDetailModal({
           point={{
             year: opened.year,
             photo: opened.photo,
+            photoId: opened.id,
+            pose: { yaw: null, pitch: null, classification: "unknown", source: "none" },
+            index: 0,
             identity: opened.cluster,
             anomaly: opened.flags.includes("silicone")
               ? "danger"

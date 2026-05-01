@@ -20,7 +20,13 @@ from pipeline.reconstruction import ReconstructionAdapter, ReconstructionResult,
 from pipeline.scoring import extract_macro_bone_metrics
 from pipeline.texture import SkinTextureAnalyzer
 from pipeline.zones import MACRO_BONE_INDICES
-from uv_module.hd_uv_generator import HDUVConfig, HDUVTextureGenerator
+try:
+    from uv_module.hd_uv_generator import HDUVConfig, HDUVTextureGenerator
+    _UV_AVAILABLE = True
+except ImportError:
+    _UV_AVAILABLE = False
+    HDUVConfig = None  # type: ignore
+    HDUVTextureGenerator = None  # type: ignore
 
 from .config import SETTINGS
 from .constants import (
@@ -51,14 +57,17 @@ class BayesianEvidence(BaseModel):
     anomalies_flagged: int
 
 
-# Веса зон согласно ТЗ: приоритет на неизменные костные структуры
+# Веса зон по реальным ключам из BUCKET_METRIC_KEYS.
+# Приоритет на неизменные костные структуры согласно ТЗ.
 ZONE_WEIGHTS = {
-    "nasal_bridge": 1.0,     # Переносица (максимальный вес)
-    "orbital_rims": 1.0,     # Глазницы
-    "zygomatic_bones": 0.9,  # Скуловые кости
-    "mandible": 0.8,         # Челюсть (поддерживающая структура)
-    "lips": 0.2,             # Губы (мягкие ткани, минимальный вес)
-    "cheeks": 0.3            # Щеки (мягкие ткани)
+    "nose_projection_ratio": 1.0,   # Проекция носа (переносица) — максимальный вес
+    "orbit_depth_L_ratio": 1.0,     # Глубина глазниц L
+    "orbit_depth_R_ratio": 1.0,     # Глубина глазниц R
+    "jaw_width_ratio": 0.9,         # Ширина челюсти
+    "cranial_face_index": 0.9,      # Краниальный индекс
+    "canthal_tilt_L": 0.8,          # Кантальный угол L
+    "canthal_tilt_R": 0.8,          # Кантальный угол R
+    "texture_silicone_prob": 0.2,   # Текстурный признак силикона (мягкие ткани)
 }
 
 
@@ -82,9 +91,10 @@ def calculate_bayesian_evidence(
     total_weight = 0.0
     weighted_delta = 0.0
     
-    # We use a subset of zones for the UI quick breakdown
-    bone_zones = ["nasal_bridge", "orbital_rims", "zygomatic_bones", "mandible"]
-    soft_zones = ["lips", "cheeks"]
+    # We use bone-priority zones from real BUCKET_METRIC_KEYS
+    bone_zones = ["nose_projection_ratio", "orbit_depth_L_ratio", "orbit_depth_R_ratio", "jaw_width_ratio", "cranial_face_index"]
+    soft_zones = ["texture_silicone_prob"]
+    canthal_zones = ["canthal_tilt_L", "canthal_tilt_R"]
     
     is_smiling = pose_a.get("expression") == "smile" or pose_b.get("expression") == "smile"
     
@@ -105,7 +115,7 @@ def calculate_bayesian_evidence(
         
         if zone in bone_zones:
             bone_delta_sum += delta
-        elif "ligament" in zone:
+        elif zone in canthal_zones:
             ligament_delta_sum += delta
         elif zone in soft_zones:
             soft_delta_sum += delta
@@ -145,7 +155,8 @@ def calculate_bayesian_evidence(
     # H0 needs both geometry stability AND low synthetic probability
     ev_h0 = priors["H0"] * l_h0_geom * (1.0 - l_h1_tex)
     # H1 is driven mostly by texture but usually has good geometry (mask on face)
-    ev_h1 = priors["H1"] * l_h1_tex * 20.0 # Prior boost for forensic notice
+    # NOTE: removed arbitrary *20.0 multiplier that was breaking Bayesian normalization
+    ev_h1 = priors["H1"] * l_h1_tex
     # H2 is driven by geometric divergence
     ev_h2 = priors["H2"] * l_h2_geom * (1.0 - l_h1_tex)
     
@@ -157,8 +168,8 @@ def calculate_bayesian_evidence(
     }
 
     # 4. Chronology Flags
-    year_a = summary_a.get("parsed_year", 2000)
-    year_b = summary_b.get("parsed_year", 2000)
+    year_a = summary_a.get("year", summary_a.get("parsed_year", 2000))
+    year_b = summary_b.get("year", summary_b.get("parsed_year", 2000))
     delta_years = abs(year_a - year_b)
     
     # 5. Pose Mutual Visibility
@@ -212,14 +223,17 @@ class LegacyRuntime:
             blur_threshold=SETTINGS.blur_threshold,
             noise_threshold=SETTINGS.noise_threshold,
         )
-        self.uv = HDUVTextureGenerator(
-            HDUVConfig(
-                uv_size=768,
-                super_sample=1,
-                verbose=False,
-                enable_delighting=False,
+        if _UV_AVAILABLE and HDUVConfig is not None and HDUVTextureGenerator is not None:
+            self.uv = HDUVTextureGenerator(
+                HDUVConfig(
+                    uv_size=768,
+                    super_sample=1,
+                    verbose=False,
+                    enable_delighting=False,
+                )
             )
-        )
+        else:
+            self.uv = None  # UV module not available in this environment
 
 
 def get_runtime() -> LegacyRuntime:
@@ -352,11 +366,56 @@ def compute_volume_indices(vertices: np.ndarray, bucket: str) -> dict[str, float
 
 
 
+def _transform_vertices_2d_to_original(vertices_2d_224: np.ndarray, trans_params: np.ndarray) -> np.ndarray:
+    """
+    [PIPE-FIX] Transform vertices_2d from 3DDFA's 224x224 crop space
+    to original image coordinates, matching the 3DDFA model's own
+    extractTexNew logic (recon.py lines 636-638).
+
+    Steps (same as 3DDFA's back_resize_ldms):
+      1. Flip Y: image Y is top-down, 3DDFA crop Y is bottom-up
+      2. Add crop offset (left, up)
+      3. Scale back to original image dimensions
+    """
+    v2d = vertices_2d_224.copy()
+    target_size = 224
+
+    # Step 1: Flip Y (3DDFA crop convention: Y=0 at bottom)
+    v2d[:, 1] = target_size - 1 - v2d[:, 1]
+
+    # Step 2-3: back_resize_ldms logic
+    w0, h0, s = float(trans_params[0]), float(trans_params[1]), float(trans_params[2])
+    cx, cy = float(trans_params[3]), float(trans_params[4])
+
+    w = int(w0 * s)
+    h = int(h0 * s)
+    left = int(w / 2 - target_size / 2 + (cx - w0 / 2) * s)
+    up = int(h / 2 - target_size / 2 + (h0 / 2 - cy) * s)
+
+    v2d[:, 0] = (v2d[:, 0] + left) / w * w0
+    v2d[:, 1] = (v2d[:, 1] + up) / h * h0
+
+    return v2d
+
+
 def _recon_dict(reconstruction: Any) -> dict[str, Any]:
+    # [PIPE-FIX] Transform vertices_2d from 224x224 crop space to original image coords.
+    # Without this, the UV baker samples from the wrong part of the image (black background).
+    # This matches 3DDFA's own extractTexNew logic (recon.py lines 636-638):
+    #   1. Flip Y: v2d[:, 1] = 224 - 1 - v2d[:, 1]
+    #   2. back_resize_ldms to original image coordinates
+    v2d_224 = reconstruction.vertices_image[:, :2]
+    tp = reconstruction.trans_params
+    if tp is not None:
+        v2d_orig = _transform_vertices_2d_to_original(v2d_224, tp)
+    else:
+        v2d_orig = v2d_224
+
     return {
         "triangles": reconstruction.triangles,
         "uv_coords": reconstruction.uv_coords,
-        "vertices_2d": reconstruction.vertices_image[:, :2],
+        "vertices": reconstruction.vertices_world,  # [SYS-08] Required by UV generator
+        "vertices_2d": v2d_orig,
         "vertices_3d": reconstruction.vertices_camera,
         "visible_idx_renderer": reconstruction.visible_idx_renderer,
         "angles_deg": reconstruction.angles_deg,
@@ -393,35 +452,68 @@ def _save_small_render_images(raw_result: dict[str, Any], output_dir: Path) -> d
     return artifacts
 
 
-def _save_face_overlay(image_bgr: np.ndarray, mask_path: Path, output_dir: Path) -> str:
-    mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
-    if mask is None:
+def _save_face_crop(image_bgr: np.ndarray, reconstruction: Any, output_dir: Path) -> str:
+    """
+    [PIPE-FIX] Skin-only face crop using seg_visible from 3DDFA (like v2 script).
+    Projects the 224x224 skin mask back to original image coordinates.
+    """
+    seg_visible = reconstruction.payload.get("seg_visible")
+    trans_params = reconstruction.trans_params
+    if seg_visible is None or trans_params is None:
         return ""
-    resized_mask = cv2.resize(mask, (image_bgr.shape[1], image_bgr.shape[0]), interpolation=cv2.INTER_LINEAR)
-    colored = image_bgr.copy()
-    tint = np.zeros_like(colored)
-    tint[:, :, 1] = 180
-    alpha = (resized_mask.astype(np.float32) / 255.0)[:, :, None] * 0.45
-    overlay = cv2.addWeighted(colored, 1.0, tint, 0.35, 0.0)
-    blended = (colored * (1.0 - alpha) + overlay * alpha).astype(np.uint8)
-    target = output_dir / "face_overlay.png"
-    cv2.imwrite(str(target), blended)
+
+    h, w = image_bgr.shape[:2]
+
+    # 3DDFA seg channels: [right_eye, left_eye, right_eyebrow, left_eyebrow, nose, up_lip, down_lip, skin]
+    skin_224 = seg_visible[:, :, 7].copy()
+    # Exclude eyes (0,1), eyebrows (2,3), lips (5,6)
+    for i in [0, 1, 2, 3, 5, 6]:
+        part_mask = seg_visible[:, :, i]
+        skin_224[part_mask > 0.5] = 0
+
+    # Project from 224x224 to original image using back_resize_crop_img
+    try:
+        sys.path.insert(0, str(REPO_ROOT / "core" / "3ddfa_v3"))
+        from util.io import back_resize_crop_img
+        from PIL import Image as PILImage
+
+        mask_rgb = np.stack((skin_224, skin_224, skin_224), axis=-1).astype(np.uint8) * 255
+        blank = np.zeros((h, w, 3), dtype=np.uint8)
+        full_mask_rgb = back_resize_crop_img(mask_rgb, trans_params, blank, resample_method=PILImage.NEAREST)
+        mask = full_mask_rgb[:, :, 0]
+    except Exception:
+        mask = cv2.resize(skin_224, (w, h), interpolation=cv2.INTER_NEAREST)
+
+    # Find bounding box of mask
+    coords = cv2.findNonZero(mask)
+    if coords is None:
+        return ""
+
+    x, y, bw, bh = cv2.boundingRect(coords)
+    pad_x = int(bw * 0.15)
+    pad_y = int(bh * 0.15)
+    x1 = max(0, x - pad_x)
+    y1 = max(0, y - pad_y)
+    x2 = min(w, x + bw + pad_x)
+    y2 = min(h, y + bh + pad_y)
+
+    face_crop = cv2.bitwise_and(image_bgr, image_bgr, mask=mask)
+    face_crop = face_crop[y1:y2, x1:x2]
+    target = output_dir / "face_crop.jpg"
+    cv2.imwrite(str(target), face_crop, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
     return target.name
 
 
 def _save_uv_assets(image_bgr: np.ndarray, reconstruction: Any, output_dir: Path) -> dict[str, str]:
     runtime = get_runtime()
-    uv_texture, uv_mask, uv_conf, _aux = runtime.uv.generate(image_bgr, _recon_dict(reconstruction))
+    _uv_tex_analysis, uv_tex_beauty, _uv_mask, uv_conf, _aux = runtime.uv.generate(image_bgr, _recon_dict(reconstruction))
     texture_path = output_dir / "uv_texture.png"
-    mask_path = output_dir / "uv_mask.png"
     conf_path = output_dir / "uv_confidence.png"
-    cv2.imwrite(str(texture_path), uv_texture)
-    cv2.imwrite(str(mask_path), (uv_mask.astype(np.uint8) * 255))
+    cv2.imwrite(str(texture_path), uv_tex_beauty)
     conf_uint8 = np.clip(uv_conf * 255.0, 0, 255).astype(np.uint8)
     cv2.imwrite(str(conf_path), conf_uint8)
     return {
         "uv_texture": texture_path.name,
-        "uv_mask": mask_path.name,
         "uv_confidence": conf_path.name,
     }
 
@@ -490,14 +582,23 @@ def extract_photo_bundle(
     )
 
     raw_result = reconstruction.payload.get("raw_result", {})
-    render_artifacts = _save_small_render_images(raw_result, output_dir)
-    overlay_name = _save_face_overlay(image_bgr, output_dir / render_artifacts["render_mask"], output_dir)
-    uv_artifacts = _save_uv_assets(image_bgr, reconstruction, output_dir)
-    mesh_artifacts = _save_mesh_assets(reconstruction, uv_artifacts["uv_texture"], output_dir)
+    # [PIPE-FIX] Skip render_face/render_shape/render_mask — not needed for pipeline.
+    # Only extract UV texture, mask, confidence, mesh, and face crop (like v2 script).
+    uv_artifacts = _save_uv_assets(image_bgr, reconstruction, output_dir) if runtime.uv else {}
+    mesh_artifacts = _save_mesh_assets(reconstruction, uv_artifacts.get("uv_texture", "uv_texture.png"), output_dir) if uv_artifacts else {}
 
-    mask_path = output_dir / render_artifacts["render_mask"]
-    texture_forensics = runtime.texture.analyze_image(source_path, mask_path)
-    quality = runtime.quality.evaluate_image(source_path)
+    # Build face crop from seg_visible (like v2 script's apply_segmentation_mask)
+    face_crop_name = _save_face_crop(image_bgr, reconstruction, output_dir)
+
+    # Copy original photo to output directory for UI use
+    import shutil
+    original_copy_name = source_path.name
+    shutil.copy2(source_path, output_dir / original_copy_name)
+
+    # Texture analysis on face_crop.jpg (like v2 script — masked crop, no separate mask needed)
+    face_crop_path = output_dir / face_crop_name if face_crop_name else None
+    texture_forensics = runtime.texture.analyze_image(face_crop_path or source_path, None)
+    quality = runtime.quality.evaluate(source_path)
     geometry_metrics, pose_reliability = _compute_geometry_metrics(reconstruction, bucket)
 
 
@@ -546,10 +647,9 @@ def extract_photo_bundle(
         "metrics": metrics,
         "selected_metric_keys": BUCKET_METRIC_KEYS.get(bucket, BUCKET_METRIC_KEYS["unclassified"]),
         "artifacts": {
-            **render_artifacts,
             **uv_artifacts,
             **mesh_artifacts,
-            "face_overlay": overlay_name,
+            "original_photo": original_copy_name,
         },
         "status": "ready",
         "extracted_at": iso_now(),
@@ -593,7 +693,7 @@ def recompute_metric_subset(
     final_reliability = float(texture_forensics.get("reliability_weight", 1.0)) * pose_reliability
 
     if any(key in {"blur_variance", "noise_level"} for key in metric_keys):
-        quality = runtime.quality.evaluate_image(source_path)
+        quality = runtime.quality.evaluate(source_path)
 
     texture_metrics = {
         "reliability_weight": final_reliability,

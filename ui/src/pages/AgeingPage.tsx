@@ -22,11 +22,19 @@ export default function AgeingPage() {
   }
 
   const years = data.map((p) => p.year);
+  if (years.length === 0) {
+    return (
+      <Page title="Ageing curve" subtitle="No data">
+        <div className="text-[11px] text-muted">No ageing data available.</div>
+      </Page>
+    );
+  }
   const minY = Math.min(...data.map((p) => Math.min(p.observedAge, p.fittedAge))) - 1;
   const maxY = Math.max(...data.map((p) => Math.max(p.observedAge, p.fittedAge))) + 1;
   const W = 1200;
   const H = 360;
-  const px = (i: number) => (i / (years.length - 1)) * (W - 60) + 40;
+  const xDenom = Math.max(years.length - 1, 1);
+  const px = (i: number) => (i / xDenom) * (W - 60) + 40;
   const py = (v: number) => H - 20 - ((v - minY) / (maxY - minY || 1)) * (H - 40);
 
   const fittedPath = data.map((p, i) => `${i === 0 ? "M" : "L"}${px(i)},${py(p.fittedAge)}`).join(" ");

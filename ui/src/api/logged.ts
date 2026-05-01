@@ -1,13 +1,9 @@
 /**
- * Logging + validation middleware wrapped around the raw mock backend.
+ * Logging + validation middleware wrapped around the HTTP backend.
  * Every method call is timed, every response is run through its validator
  * and any resulting violations are attached to the log entry.
- *
- * Keeping this as a thin wrapper means the actual backend (mock or future
- * HTTP) stays clean and deterministic.
  */
 
-import { mockBackend } from "./mock";
 import type { Backend, EvidenceBreakdown } from "./types";
 import { log } from "../debug/logger";
 import {
@@ -23,7 +19,7 @@ import {
   validateAgeing,
 } from "../debug/validators";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://localhost:8011";
 
 async function fetchJson(path: string, options: RequestInit = {}) {
   const resp = await fetch(`${API_BASE}${path}`, {
@@ -35,27 +31,19 @@ async function fetchJson(path: string, options: RequestInit = {}) {
 }
 
 async function fetchEvidence(aId: string, bId: string): Promise<EvidenceBreakdown> {
-  try {
-    return await fetchJson(`/api/evidence/compare?photo_id_a=${encodeURIComponent(aId)}&photo_id_b=${encodeURIComponent(bId)}`, {
-      method: "POST",
-    });
-  } catch (err) {
-    console.warn(`[getEvidence] Falling back to mock: ${err instanceof Error ? err.message : String(err)}`);
-    return mockBackend.getEvidence(aId, bId);
-  }
+  return await fetchJson(`/api/evidence/compare`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ photo_id_a: aId, photo_id_b: bId }),
+  });
 }
 
 async function fetchComparisonMatrix(ids: string[]): Promise<number[][]> {
-  try {
-    return await fetchJson(`/api/evidence/matrix`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(ids),
-    });
-  } catch (err) {
-    console.warn(`[comparisonMatrix] Falling back to mock: ${err}`);
-    return mockBackend.comparisonMatrix(ids);
-  }
+  return await fetchJson(`/api/evidence/matrix`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(ids),
+  });
 }
 
 function wrap<T extends (...args: any[]) => Promise<any>>(
@@ -86,20 +74,45 @@ function wrap<T extends (...args: any[]) => Promise<any>>(
 
 export const loggedBackend: Backend = {
   getTimeline: wrap("getTimeline", () => fetchJson("/api/timeline-summary"), (r) => validateTimeline(r)),
-  listPhotos:  wrap("listPhotos", (_q) => fetchJson(`/api/photos/main`), (r) => validatePhotoList(r)),
+  listPhotos:  wrap("listPhotos", (q) => {
+    const params = new URLSearchParams();
+    if (q) {
+      if (q.pose) params.set("pose", q.pose);
+      if (q.expression) params.set("expression", q.expression);
+      if (q.source) params.set("source", q.source);
+      if (q.flag) params.set("flag", q.flag);
+      if (q.minSyntheticProb != null) params.set("minSyntheticProb", String(q.minSyntheticProb));
+      if (q.search) params.set("search", q.search);
+      if (q.sortBy) params.set("sortBy", q.sortBy);
+      if (q.limit) params.set("limit", String(q.limit));
+      if (q.offset) params.set("offset", String(q.offset));
+    }
+    const qs = params.toString();
+    return fetchJson(`/api/photos/main${qs ? `?${qs}` : ""}`);
+  }, (r) => validatePhotoList(r)),
   getPhotoDetail: wrap("getPhotoDetail", (id) => fetchJson(`/api/photo/main/${id}`), (r) => validatePhotoDetail(r)),
   similarPhotos: wrap("similarPhotos", (id) => fetchJson(`/api/similar-photos/${id}`)),
   getCalibration: wrap("getCalibration", () => fetchJson("/api/calibration/summary"), (r) => validateCalibration(r)),
-  photosInBucket: wrap("photosInBucket", (p, l) => mockBackend.photosInBucket(p, l)), // Keep mock for now or implement in main.py
+  photosInBucket: wrap("photosInBucket", (p, l) => fetchJson(`/api/photos-in-bucket?pose=${encodeURIComponent(p)}&light=${encodeURIComponent(l)}`)),
   listJobs:       wrap("listJobs", () => fetchJson("/api/jobs"), (r) => validateJobs(r)),
-  startJob:       wrap("startJob", (kind) => fetchJson(`/api/jobs/${kind === "extract" ? "extract" : "recompute-metrics"}`, {
+  startJob:       wrap("startJob", (kind) => {
+    const endpoint = kind === "extract" ? "extract"
+      : kind === "recompute-metrics" ? "recompute-metrics"
+      : kind === "calibrate" ? "recompute-metrics"  // calibrate maps to recompute with metric_keys
+      : "recompute-metrics";  // reindex also maps to recompute for now
+    return fetchJson(`/api/jobs/${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataset: "main", limit: 100, metric_keys: kind === "calibrate" ? ["calibration"] : undefined }),
+    });
+  }),
+  listInvestigations: wrap("listInvestigations", () => fetchJson("/api/investigations")),
+  upsertInvestigation: wrap("upsertInvestigation", (inv) => fetchJson("/api/investigations", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dataset: "main", limit: 100 }),
+    body: JSON.stringify(inv),
   })),
-  listInvestigations: wrap("listInvestigations", mockBackend.listInvestigations),
-  upsertInvestigation: wrap("upsertInvestigation", mockBackend.upsertInvestigation),
-  deleteInvestigation: wrap("deleteInvestigation", mockBackend.deleteInvestigation),
+  deleteInvestigation: wrap("deleteInvestigation", (id) => fetchJson(`/api/investigations/${id}`, { method: "DELETE" })),
   listAnomalies:  wrap("listAnomalies", () => fetchJson("/api/anomalies"), (r) => validateAnomalies(r)),
   uploadPhotos:   wrap("uploadPhotos", async (files) => {
     const formData = new FormData();
@@ -115,6 +128,14 @@ export const loggedBackend: Backend = {
   comparisonMatrix:  wrap("comparisonMatrix", fetchComparisonMatrix),
   
   getDiaryEntries: wrap("getDiaryEntries", () => fetchJson("/api/diary")),
-  addDiaryEntry: wrap("addDiaryEntry", (e) => fetchJson("/api/diary", { method: "POST", body: JSON.stringify(e) })),
-  updateDiaryEntry: wrap("updateDiaryEntry", (id, u) => fetchJson(`/api/diary/${id}`, { method: "PUT", body: JSON.stringify(u) })),
+  addDiaryEntry: wrap("addDiaryEntry", (e) => fetchJson("/api/diary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(e),
+  })),
+  updateDiaryEntry: wrap("updateDiaryEntry", (id, u) => fetchJson(`/api/diary/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(u),
+  })),
 };

@@ -139,8 +139,18 @@ export async function runAudit(api: Backend): Promise<AuditReport> {
 }
 
 async function runEndpointSelfTest(api: Backend): Promise<EndpointResult[]> {
-  const a = PHOTOS[30]?.id;
-  const b = PHOTOS[PHOTOS.length - 40]?.id;
+  // Get real photo IDs from backend instead of using mock IDs
+  let testIds: string[] = [];
+  try {
+    const list = await api.listPhotos({ limit: 50 });
+    testIds = list.items.map((p: any) => p.photo_id || p.id).filter(Boolean);
+  } catch {
+    // Fallback to mock if backend is unavailable
+    testIds = [PHOTOS[30]?.id, PHOTOS[PHOTOS.length - 40]?.id, PHOTOS[100]?.id].filter(Boolean) as string[];
+  }
+  const a = testIds[0] || PHOTOS[0]?.id || "";
+  const b = testIds[Math.min(10, testIds.length - 1)] || a;
+  const c = testIds[Math.min(20, testIds.length - 1)] || a;
   const cases: Array<{ name: string; run: () => Promise<unknown> }> = [
     { name: "getTimeline",         run: () => api.getTimeline() },
     { name: "listPhotos",          run: () => api.listPhotos({ limit: 20 }) },
@@ -156,7 +166,7 @@ async function runEndpointSelfTest(api: Backend): Promise<EndpointResult[]> {
     { name: "getAgeingSeries",     run: () => api.getAgeingSeries() },
     { name: "getEvidence",         run: () => api.getEvidence(a, b) },
     { name: "getApiCatalog",       run: () => api.getApiCatalog() },
-    { name: "comparisonMatrix",    run: () => api.comparisonMatrix([a, b, PHOTOS[100]?.id]) },
+    { name: "comparisonMatrix",    run: () => api.comparisonMatrix([a, b, c]) },
   ];
   const out: EndpointResult[] = [];
   for (const c of cases) {

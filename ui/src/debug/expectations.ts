@@ -23,13 +23,21 @@ export interface Range {
 export const EXPECT = {
   /* --------- Timeline metrics ------------------------------------------ */
   metric: {
-    skull_ratio:      { min: 1.55, max: 1.90, note: "bone asymmetry ratio (H0 geometric)" } as Range,
-    neurocranium_mm:  { min: 129.5, max: 136.5, note: "neurocranium width, frontal-only" } as Range,
-    orbital_angle:    { min: 1.5, max: 4.5, note: "orbital asymmetry angle in degrees" } as Range,
-    facial_bmi:       { min: 0.35, max: 0.90, note: "tissue deficit index" } as Range,
-    synthetic_prob:   { min: 0.0, max: 1.0, note: "synthetic material probability (0..1)" } as Range,
-    lbp_complexity:   { min: 0.05, max: 1.0, note: "LBP texture complexity" } as Range,
-    estimated_age:    { min: 44, max: 75, note: "estimated age in years across 1999..2025" } as Range,
+    cranial_face_index: { min: 0.5, max: 2.0, note: "cranial-face index ratio" } as Range,
+    jaw_width_ratio:    { min: 0.1, max: 1.0, note: "jaw width normalized ratio" } as Range,
+    canthal_tilt_L:     { min: -15, max: 25, note: "left canthal angle in degrees" } as Range,
+    canthal_tilt_R:     { min: -15, max: 25, note: "right canthal angle in degrees" } as Range,
+    nose_projection_ratio: { min: 0.1, max: 0.8, note: "nose projection ratio" } as Range,
+    orbit_depth_L_ratio:   { min: 0.05, max: 0.6, note: "left orbit depth ratio" } as Range,
+    orbit_depth_R_ratio:   { min: 0.05, max: 0.6, note: "right orbit depth ratio" } as Range,
+    texture_silicone_prob:  { min: 0.0, max: 1.0, note: "synthetic material probability (0..1)" } as Range,
+    texture_pore_density:   { min: 0.0, max: 1.0, note: "pore density index" } as Range,
+    texture_global_smoothness: { min: 0.0, max: 1.0, note: "global smoothness index" } as Range,
+    // Timeline aggregate metrics
+    photo_count:    { min: 0, max: 200, note: "photos per year" } as Range,
+    mean_yaw:       { min: 0, max: 90, note: "mean |yaw| in degrees" } as Range,
+    frontal_ratio:  { min: 0, max: 100, note: "frontal ratio in percent" } as Range,
+    estimated_age:  { min: 0, max: 120, note: "biological age model" } as Range,
   },
 
   /* --------- Pose / expression ----------------------------------------- */
@@ -48,7 +56,7 @@ export const EXPECT = {
   zone: {
     weight: { min: 0.0, max: 1.0, note: "per-zone weight" } as Range,
     score:  { min: 0.0, max: 1.0, note: "per-zone similarity score" } as Range,
-    count:  { min: 21, max: 21, note: "must always be 21 zones" } as Range,
+    count:  { min: 18, max: 21, note: "21 minus expression-excluded zones" } as Range,
   },
 
   /* --------- Bayesian --------------------------------------------------- */
@@ -92,13 +100,14 @@ export const EXPECT = {
 
   /* --------- Misc ------------------------------------------------------- */
   misc: {
-    year_coverage: { min: 1999, max: 2026, note: "TZ investigation window (extended to current year)" } as Range,
+    year_coverage: { min: 1999, max: 2025, note: "TZ investigation window" } as Range,
   },
 };
 
 /* -------------------- Validator helpers ------------------------------- */
 
 export function inRange(v: number, r: Range): boolean {
+  if (!r) return false;
   return v >= r.min && v <= r.max;
 }
 
@@ -108,6 +117,9 @@ export function checkRange(
   r: Range,
   severity: Violation["severity"] = "warn"
 ): Violation | null {
+  if (!r) {
+    return { field, expected: "defined range", actual: "undefined range", severity: "warn", note: "No expectation defined for this field" };
+  }
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return { field, expected: `number in [${r.min}, ${r.max}]`, actual: value, severity: "danger", note: r.note };
   }

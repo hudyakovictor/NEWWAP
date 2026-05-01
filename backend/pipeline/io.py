@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .constants import ARTIFACT_VERSION
-from .contract import export_contract_for_artifact
+from .contract import attach_ui_confidence_level
 from .types import ComparisonResult
 from core.utils import iso_now, json_ready
+
+
+def _export_contract_for_artifact(artifact_type: str) -> Dict[str, str]:
+    """Stub export-contract descriptor (export_contract_for_artifact was never implemented)."""
+    return {"version": ARTIFACT_VERSION, "type": artifact_type}
+
 
 def build_forensic_payload(
     result: ComparisonResult,
@@ -21,7 +26,7 @@ def build_forensic_payload(
     [ITER-0] Standardized Forensic Payload.
     Generates high-integrity JSON for UI consumption.
     """
-    payload = {
+    payload: Dict[str, Any] = {
         "version": ARTIFACT_VERSION,
         "metadata": {
             "artifact_version": ARTIFACT_VERSION,
@@ -30,7 +35,7 @@ def build_forensic_payload(
             "image_b": str(image_b),
             "status": result.status,
             "runtime_config": runtime_config or {},
-            "export_contract": export_contract_for_artifact("pairwise"),
+            "export_contract": _export_contract_for_artifact("pairwise"),
         },
         "summary": {
             "status": result.status,
@@ -54,10 +59,13 @@ def build_forensic_payload(
             }
             for zone in result.zones
         ],
-        "diagnostics": json_ready(result.diagnostics)
+        "diagnostics": json_ready(result.diagnostics),
     }
+    attach_ui_confidence_level(payload)
     return payload
 
-def save_forensic_result(payload: Dict[str, Any], output_path: Path):
+
+def save_forensic_result(payload: Dict[str, Any], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+

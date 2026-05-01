@@ -7,7 +7,7 @@
  * Exported: getCalibrationBuckets() for use in mock.ts
  */
 
-import pairsRaw from "../../storage/myface_pairs.json";
+import pairsRaw from "./myface_pairs.json";
 
 interface Pair {
   a: string;
@@ -104,7 +104,7 @@ export function buildCalibrationBuckets(): CalibrationBucket[] {
       light,
       level: getLevelFromCount(data.count),
       count: data.count,
-      variance: 0.15 + Math.random() * 0.1, // Placeholder until real zone scores
+      variance: 0.15, // Deterministic placeholder until real zone scores are computed
       personDistribution,
     });
   }

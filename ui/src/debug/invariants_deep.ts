@@ -197,7 +197,7 @@ export async function checkTimelineVsPhotoDetail(ctx: InvariantContext): Promise
   // identity B at year y ⇒ detail.bayes.H1 should not be the smallest hypothesis.
   for (const yp of t.yearPoints) {
     if (yp.identity !== "B") continue;
-    const d = buildPhotoDetail(yp.year, yp.photo);
+    const d = buildPhotoDetail(yp.year, yp.photo || "");
     const probs = [d.bayes.H0, d.bayes.H1, d.bayes.H2];
     const minIdx = probs.indexOf(Math.min(...probs));
     if (minIdx === 1) {

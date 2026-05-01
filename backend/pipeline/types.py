@@ -37,6 +37,19 @@ class VisibilityResult:
     facing_cosines: np.ndarray
     visible_count: int
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, VisibilityResult):
+            return NotImplemented
+        return (
+            self.visible_count == other.visible_count
+            and np.array_equal(self.binary_mask, other.binary_mask)
+            and np.array_equal(self.cosine_weights, other.cosine_weights)
+            and np.array_equal(self.facing_cosines, other.facing_cosines)
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.visible_count, self.binary_mask.tobytes(), self.cosine_weights.tobytes(), self.facing_cosines.tobytes()))
+
 @dataclass(frozen=True)
 class AlignmentResult:
     rotation: np.ndarray
@@ -45,6 +58,21 @@ class AlignmentResult:
     source_aligned: np.ndarray
     residual_before: float
     residual_after: float
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, AlignmentResult):
+            return NotImplemented
+        return (
+            self.scale == other.scale
+            and self.residual_before == other.residual_before
+            and self.residual_after == other.residual_after
+            and np.array_equal(self.rotation, other.rotation)
+            and np.array_equal(self.translation, other.translation)
+            and np.array_equal(self.source_aligned, other.source_aligned)
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.scale, self.residual_before, self.residual_after, self.rotation.tobytes(), self.translation.tobytes()))
 
 @dataclass(frozen=True)
 class ZoneMetric:
@@ -80,3 +108,22 @@ class ComparisonResult:
     alignment: Optional[AlignmentResult]
     zones: List[ZoneMetric]
     diagnostics: Dict[str, Any] = field(default_factory=dict)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ComparisonResult):
+            return NotImplemented
+        return (
+            self.status == other.status
+            and self.score_raw == other.score_raw
+            and self.score_bounded == other.score_bounded
+            and self.provisional_band == other.provisional_band
+            and self.robust_provisional_band == other.robust_provisional_band
+            and self.visibility_a == other.visibility_a
+            and self.visibility_b == other.visibility_b
+            and self.alignment == other.alignment
+            and self.zones == other.zones
+            and np.array_equal(self.shared_vertex_indices, other.shared_vertex_indices)
+        )
+
+    def __hash__(self) -> int:
+        return hash((self.status, self.shared_vertex_indices.tobytes(), self.provisional_band))

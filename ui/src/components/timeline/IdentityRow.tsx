@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { COL_W, LABEL_W } from "./constants";
+import { LABEL_W } from "./constants";
 import type { IdentitySegment } from "../../mock/data";
 
 const H = 32;
@@ -7,10 +7,13 @@ const H = 32;
 export default function IdentityRow({
   years,
   segments,
+  zoom = 1,
 }: {
   years: number[];
   segments: IdentitySegment[];
+  zoom?: number;
 }) {
+  const COL_W = Math.max(80, 120 * zoom);
   const yearIndex = (y: number) => years.indexOf(y);
   return (
     <div className="flex border-b border-line/40">
@@ -22,6 +25,10 @@ export default function IdentityRow({
         <div className="text-[10px] text-muted">bayesian H0 / H1</div>
       </div>
       <div className="relative" style={{ width: years.length * COL_W, height: H }}>
+        {/* vertical grid lines */}
+        {years.map((_, i) => (
+          <div key={i} className="absolute top-0 bottom-0 w-px bg-line/20" style={{ left: i * COL_W }} />
+        ))}
         {/* baseline */}
         <div className="absolute left-0 right-0 top-1/2 h-px bg-accent/40" />
         {segments.map((s, i) => {

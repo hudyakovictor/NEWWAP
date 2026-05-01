@@ -1,13 +1,16 @@
 
-import { COL_W, LABEL_W } from "./constants";
+import { LABEL_W } from "./constants";
 
 export default function SelectionOverlay({
   years,
   selectedYear,
+  zoom = 1,
 }: {
   years: number[];
   selectedYear: number;
+  zoom?: number;
 }) {
+  const COL_W = Math.max(80, 120 * zoom);
   const idx = years.indexOf(selectedYear);
   if (idx < 0) return null;
   return (

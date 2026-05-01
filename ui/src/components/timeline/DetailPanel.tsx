@@ -15,7 +15,7 @@ export default function DetailPanel({
       <div className="text-[10px] uppercase tracking-widest text-muted">Selected year</div>
       <div className="flex items-start gap-3">
         <img
-          src={point.photo}
+          src={point.photo || ""}
           alt={String(point.year)}
           className="w-20 h-20 rounded-sm object-cover border border-line"
         />

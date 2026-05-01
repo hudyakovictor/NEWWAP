@@ -14,7 +14,9 @@ def _reference_medians(records: list[dict[str, Any]], metric_keys: list[str]) ->
     ref_records = [
         record
         for record in records
-        if record.get("parsed_year", 0) and int(record["parsed_year"]) <= SETTINGS.reference_year_end
+        # Support both "year" (from _build_stub) and legacy "parsed_year"
+        if int(record.get("year") or record.get("parsed_year") or 0) and
+           int(record.get("year") or record.get("parsed_year") or 0) <= SETTINGS.reference_year_end
     ]
     if not ref_records:
         ref_records = records[: min(5, len(records))]
@@ -31,7 +33,15 @@ def _reference_medians(records: list[dict[str, Any]], metric_keys: list[str]) ->
 
 
 def _days_between(prev_date: str, current_date: str) -> int:
-    return abs((date.fromisoformat(current_date) - date.fromisoformat(prev_date)).days)
+    """Returns absolute days between two ISO date strings.
+    Returns 0 safely if either string is empty (no date extracted from filename).
+    """
+    if not prev_date or not current_date:
+        return 0
+    try:
+        return abs((date.fromisoformat(current_date) - date.fromisoformat(prev_date)).days)
+    except (ValueError, TypeError):
+        return 0
 
 
 def _texture_spike(current: dict[str, Any], previous: dict[str, Any]) -> float:
@@ -321,6 +331,8 @@ def analyze_chronology(timeline_data: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Анализирует последовательность фото (отсортированных по году).
     Выявляет аномалии: резкие скачки метрик (инверсия асимметрии) между соседними годами.
+    [SYS-07] Fixed: uses 'parsed_year'/'photo_id'/'jaw_width_ratio' instead of
+    deprecated 'year'/'id'/'bizygomatic_width'.
     """
     anomalies = []
     
@@ -329,24 +341,23 @@ def analyze_chronology(timeline_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         photo_early = timeline_data[i]
         photo_late = timeline_data[i+1]
         
-        year_diff = photo_late['year'] - photo_early['year']
+        year_diff = photo_late.get('parsed_year', 0) - photo_early.get('parsed_year', 0)
         if year_diff <= 0:
-            continue # Пропускаем фото одного года или неверную сортировку
+            continue
             
-        # Сравниваем базовую метрику: например, костную ширину (bizygomatic_width)
-        w_early = photo_early.get('metrics', {}).get('bizygomatic_width', 0)
-        w_late = photo_late.get('metrics', {}).get('bizygomatic_width', 0)
+        # Сравниваем метрику: jaw_width_ratio (костная ширина)
+        w_early = photo_early.get('metrics', {}).get('jaw_width_ratio', 0)
+        w_late = photo_late.get('metrics', {}).get('jaw_width_ratio', 0)
         
         if w_early > 0 and w_late > 0:
             delta = abs(w_late - w_early)
-            # Если костная структура изменилась слишком сильно за короткий срок
-            if delta > 15.0: # Пороговое значение (требует калибровки)
+            if delta > 0.15:
                 anomalies.append({
                     "type": "chronological_jump",
-                    "severity": "danger" if delta > 25.0 else "warn",
-                    "years": [photo_early['year'], photo_late['year']],
-                    "photos": [photo_early['id'], photo_late['id']],
-                    "message": f"Аномальный скачок костной ширины (delta={delta:.1f}) между {photo_early['year']} и {photo_late['year']}"
+                    "severity": "danger" if delta > 0.25 else "warn",
+                    "years": [photo_early.get('parsed_year'), photo_late.get('parsed_year')],
+                    "photos": [photo_early.get('photo_id'), photo_late.get('photo_id')],
+                    "message": f"Аномальный скачок костной ширины (delta={delta:.3f}) между {photo_early.get('parsed_year')} и {photo_late.get('parsed_year')}"
                 })
                 
     return {

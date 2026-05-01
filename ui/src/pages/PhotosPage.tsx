@@ -233,6 +233,9 @@ export default function PhotosPage() {
           point={{
             year: opened.year,
             photo: opened.photo,
+            photoId: opened.id,
+            pose: { yaw: null, pitch: null, classification: "unknown", source: "none" },
+            index: 0,
             identity: opened.cluster,
             anomaly: opened.flags.includes("silicone")
               ? "danger"

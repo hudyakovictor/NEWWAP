@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-04-30T21:32:41.672Z",
-  "durationMs": 7747,
+  "generatedAt": "2026-05-01T04:03:10.235Z",
+  "durationMs": 91,
   "environment": {
     "runtime": "node",
     "nodeVersion": "v22.14.0"
@@ -8,348 +8,222 @@
   "endpoints": [
     {
       "name": "getTimeline",
-      "status": "ok",
-      "ms": 158
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "listPhotos",
-      "status": "ok",
-      "ms": 167
+      "status": "fail",
+      "ms": 0,
+      "note": "fetch failed"
     },
     {
       "name": "getPhotoDetail",
       "status": "fail",
-      "ms": 156,
-      "note": "Backend error: Not Found"
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "similarPhotos",
       "status": "fail",
-      "ms": 156,
-      "note": "Backend error: Not Found"
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "getCalibration",
-      "status": "ok",
-      "ms": 20
+      "status": "fail",
+      "ms": 0,
+      "note": "fetch failed"
     },
     {
       "name": "photosInBucket",
-      "status": "ok",
-      "ms": 30
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "listJobs",
-      "status": "ok",
-      "ms": 2
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "listInvestigations",
-      "status": "ok",
-      "ms": 31
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "listAnomalies",
-      "status": "ok",
-      "ms": 180
+      "status": "fail",
+      "ms": 0,
+      "note": "fetch failed"
     },
     {
       "name": "getPipelineStages",
-      "status": "ok",
-      "ms": 157
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "getCacheSummary",
-      "status": "ok",
-      "ms": 1
+      "status": "fail",
+      "ms": 0,
+      "note": "fetch failed"
     },
     {
       "name": "getAgeingSeries",
-      "status": "ok",
-      "ms": 156
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "getEvidence",
-      "status": "ok",
-      "ms": 400
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     },
     {
       "name": "getApiCatalog",
-      "status": "ok",
-      "ms": 2
+      "status": "fail",
+      "ms": 0,
+      "note": "fetch failed"
     },
     {
       "name": "comparisonMatrix",
-      "status": "ok",
-      "ms": 468
+      "status": "fail",
+      "ms": 1,
+      "note": "fetch failed"
     }
   ],
   "findings": [
     {
-      "id": "timeline.year_coverage",
-      "area": "timeline",
-      "severity": "warn",
-      "message": "Year coverage must be 1999..2025 per TZ",
-      "expected": "1999..2025",
-      "actual": "1999..2026"
+      "id": "audit.invariant_threw.timeline",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'timeline' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "timeline.expected_anomaly.2012",
-      "area": "timeline",
-      "severity": "warn",
-      "message": "Year 2012 is a known suspicion window; expected a non-ok anomaly marker",
-      "expected": "warn | danger",
-      "actual": "none",
-      "hint": "If this was intentionally relaxed, update expectations.ts accordingly"
+      "id": "audit.invariant_threw.evidence_symmetry",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'evidence_symmetry' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "timeline.expected_anomaly.2014",
-      "area": "timeline",
-      "severity": "warn",
-      "message": "Year 2014 is a known suspicion window; expected a non-ok anomaly marker",
-      "expected": "warn | danger",
-      "actual": "none",
-      "hint": "If this was intentionally relaxed, update expectations.ts accordingly"
-    },
-    {
-      "id": "timeline.cluster_b_empty",
-      "area": "timeline",
-      "severity": "warn",
-      "message": "No photos in cluster B — the B/A alternation declared in TZ is not represented",
-      "expected": "at least 1 year in cluster B",
-      "actual": 0
+      "id": "audit.invariant_threw.bucket_membership",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'bucket_membership' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
       "id": "audit.invariant_threw.similar_exclusion",
       "area": "api",
       "severity": "danger",
       "message": "Invariant 'similar_exclusion' threw",
-      "actual": "Backend error: Not Found",
+      "actual": "fetch failed",
       "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "pipeline.failure_rate",
-      "area": "pipeline",
-      "severity": "warn",
-      "message": "Total pipeline failure rate exceeds 2%",
-      "expected": "<= 2%",
-      "actual": "100.00%"
+      "id": "audit.invariant_threw.pipeline",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'pipeline' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "ageing.missing_outlier.2012",
-      "area": "ageing",
-      "severity": "warn",
-      "message": "Year 2012 is a predicted outlier but the ageing model didn't flag it",
-      "actual": {
-        "residual": 0
-      }
+      "id": "audit.invariant_threw.cache",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'cache' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "ageing.missing_outlier.2014",
-      "area": "ageing",
-      "severity": "warn",
-      "message": "Year 2014 is a predicted outlier but the ageing model didn't flag it",
-      "actual": {
-        "residual": 0
-      }
+      "id": "audit.invariant_threw.ageing",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'ageing' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "ageing.missing_outlier.2023",
-      "area": "ageing",
-      "severity": "warn",
-      "message": "Year 2023 is a predicted outlier but the ageing model didn't flag it",
-      "actual": {
-        "residual": 0
-      }
+      "id": "audit.invariant_threw.api_timings",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'api_timings' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
       "id": "calibration.summary",
       "area": "calibration",
       "severity": "info",
-      "message": "Calibration: 25 buckets (5 usable, 5 trusted, 19 unreliable)",
+      "message": "Calibration: 25 buckets (0 usable, 0 trusted, 25 unreliable)",
       "actual": {
         "bucketCount": 25,
-        "usable": 5,
-        "trusted": 5,
-        "unreliable": 19,
-        "low": 1,
+        "usable": 0,
+        "trusted": 0,
+        "unreliable": 25,
+        "low": 0,
         "medium": 0,
-        "high": 5
+        "high": 0
       }
     },
     {
-      "id": "calibration.missing_bucket.frontal.studio",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=frontal light=studio",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
+      "id": "audit.invariant_threw.anomaly_integrity",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'anomaly_integrity' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "calibration.missing_bucket.frontal.low_light",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=frontal light=low_light",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
+      "id": "audit.invariant_threw.calibration_coverage",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'calibration_coverage' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "calibration.missing_bucket.frontal.mixed",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=frontal light=mixed",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
+      "id": "audit.invariant_threw.investigations_integrity",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'investigations_integrity' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "calibration.missing_bucket.frontal.flash",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=frontal light=flash",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
+      "id": "audit.invariant_threw.api_catalog",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'api_catalog' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "calibration.missing_bucket.three_quarter_left.daylight",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_left light=daylight",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
+      "id": "audit.invariant_threw.timeline_vs_photo_detail",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'timeline_vs_photo_detail' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
-      "id": "calibration.missing_bucket.three_quarter_left.studio",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_left light=studio",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_left.low_light",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_left light=low_light",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_left.mixed",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_left light=mixed",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_left.flash",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_left light=flash",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_right.daylight",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_right light=daylight",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_right.studio",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_right light=studio",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_right.low_light",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_right light=low_light",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_right.mixed",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_right light=mixed",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.three_quarter_right.flash",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=three_quarter_right light=flash",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_left.daylight",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_left light=daylight",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_left.studio",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_left light=studio",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_left.low_light",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_left light=low_light",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_left.mixed",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_left light=mixed",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_left.flash",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_left light=flash",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_right.daylight",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_right light=daylight",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_right.studio",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_right light=studio",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_right.low_light",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_right light=low_light",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_right.mixed",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_right light=mixed",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "calibration.missing_bucket.profile_right.flash",
-      "area": "calibration",
-      "severity": "warn",
-      "message": "Missing calibration bucket for pose=profile_right light=flash",
-      "hint": "Calibration matrix should be a full pose × light cross-product"
-    },
-    {
-      "id": "timeline.age_metric_missing",
-      "area": "consistency",
-      "severity": "warn",
-      "message": "Timeline missing 'age' metric row"
+      "id": "audit.invariant_threw.ageing_vs_timeline",
+      "area": "api",
+      "severity": "danger",
+      "message": "Invariant 'ageing_vs_timeline' threw",
+      "actual": "fetch failed",
+      "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
       "id": "signals.similar_composition.2016_12_23.jpg.2024_12_19-6.jpg",
@@ -392,7 +266,7 @@
       "area": "api",
       "severity": "danger",
       "message": "Invariant 'similar_photos' threw",
-      "actual": "Backend error: Not Found",
+      "actual": "fetch failed",
       "hint": "Check the invariant implementation in src/debug/invariants*.ts"
     },
     {
@@ -407,46 +281,43 @@
     }
   ],
   "timings": {
-    "timeline": 184,
-    "bayes_sum": 1,
-    "evidence_symmetry": 3380,
-    "photo_records": 1,
-    "bucket_membership": 33,
-    "similar_exclusion": 157,
-    "pipeline": 155,
-    "cache": 2,
-    "ageing": 155,
+    "timeline": 29,
+    "bayes_sum": 3,
+    "evidence_symmetry": 6,
+    "photo_records": 0,
+    "bucket_membership": 2,
+    "similar_exclusion": 2,
+    "pipeline": 1,
+    "cache": 1,
+    "ageing": 1,
     "ground_truth": 0,
-    "api_timings": 654,
-    "determinism": 0,
-    "calibration_cross": 1,
+    "api_timings": 2,
+    "determinism": 1,
+    "calibration_cross": 3,
     "photo_year_coverage": 0,
-    "anomaly_integrity": 155,
-    "calibration_coverage": 20,
-    "investigations_integrity": 32,
-    "api_catalog": 2,
-    "timeline_vs_photo_detail": 215,
-    "ageing_vs_timeline": 343,
-    "expanded_determinism": 1,
+    "anomaly_integrity": 2,
+    "calibration_coverage": 1,
+    "investigations_integrity": 1,
+    "api_catalog": 0,
+    "timeline_vs_photo_detail": 1,
+    "ageing_vs_timeline": 1,
+    "expanded_determinism": 0,
     "logs_for_errors": 0,
     "ground_truth_files": 0,
-    "signals": 4,
-    "similar_photos": 157,
-    "tz_auto_coverage": 2,
-    "assets_node": 9
+    "signals": 5,
+    "similar_photos": 1,
+    "tz_auto_coverage": 3,
+    "assets_node": 13
   },
   "counts": {
     "info": 5,
-    "warn": 33,
-    "danger": 2,
-    "total": 40,
+    "warn": 0,
+    "danger": 15,
+    "total": 20,
     "byArea": {
-      "timeline": 4,
-      "api": 2,
-      "pipeline": 1,
-      "ageing": 3,
-      "calibration": 25,
-      "consistency": 4,
+      "api": 15,
+      "calibration": 1,
+      "consistency": 3,
       "tz": 1
     }
   },
@@ -566,5 +437,5 @@
       "impl": "src/debug/invariants.ts + src/debug/audit.ts + scripts/audit.ts"
     }
   ],
-  "summary": "✗ AUDIT RED — 2 danger-level finding(s). Fix before publishing.\nEndpoints: 13/15 ok · failures: getPhotoDetail, similarPhotos\nFindings total: 40 (danger=2, warn=33, info=5).\nBy area: calibration=25 · timeline=4 · consistency=4 · ageing=3 · api=2 · pipeline=1 · tz=1."
+  "summary": "✗ AUDIT RED — 15 danger-level finding(s). Fix before publishing.\nEndpoints: 0/15 ok · failures: getTimeline, listPhotos, getPhotoDetail, similarPhotos, getCalibration, photosInBucket, listJobs, listInvestigations, listAnomalies, getPipelineStages, getCacheSummary, getAgeingSeries, getEvidence, getApiCatalog, comparisonMatrix\nFindings total: 20 (danger=15, warn=0, info=5).\nBy area: api=15 · consistency=3 · calibration=1 · tz=1."
 }

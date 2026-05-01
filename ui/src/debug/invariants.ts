@@ -238,7 +238,10 @@ export async function checkBucketMembership(ctx: InvariantContext): Promise<Find
   const out: Finding[] = [];
   // Photos returned for (frontal, daylight) should all be pose=frontal
   const list = await ctx.api.photosInBucket("frontal", "daylight");
-  const violators = list.filter((p) => p.pose !== "frontal");
+  const violators = list.filter((p) => {
+    const poseVal = typeof p.pose === "string" ? p.pose : p.pose?.bucket;
+    return poseVal !== "frontal";
+  });
   if (violators.length > 0) {
     out.push({
       id: "consistency.bucket_membership.frontal_daylight",

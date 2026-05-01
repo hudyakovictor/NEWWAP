@@ -134,7 +134,13 @@ class SkinTextureAnalyzer:
             quality = self.quality_analyzer.analyze(rgb)
             
             raw_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path and Path(mask_path).exists() else None
-            mask = _ensure_mask(raw_mask, (h, w))
+            if raw_mask is not None:
+                mask = _ensure_mask(raw_mask, (h, w))
+            else:
+                # Auto-detect face pixels from non-black regions (for masked crops like face_crop.jpg)
+                mask = np.any(rgb > 0, axis=2).astype(np.uint8) * 255
+                if mask.sum() == 0:
+                    mask = _ensure_mask(None, (h, w))
             valid = mask > 0
             
             # Laplacian variance for sharpness/noise estimation
@@ -177,7 +183,9 @@ class SkinTextureAnalyzer:
             reliability_weight = float(np.clip(res_score * quality["quality_index"], 0.1, 1.0))
 
             # Silicone Probability
-            score = (specular_gloss * 2.1 + (1.0 - lbp_uniformity) * 0.8) 
+            # High lbp_uniformity = uniform texture = likely synthetic/mask
+            # (1.0 - lbp_uniformity) was inverted — it flagged diverse real skin as synthetic
+            score = (specular_gloss * 2.1 + lbp_uniformity * 0.8) 
             silicone_probability = _sigmoid(score, bias=SILICONE_SIGMOID_BIAS)
 
             return {
