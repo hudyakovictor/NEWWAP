@@ -9,7 +9,6 @@ import type { PhotoRecord } from "../../mock/photos";
 import { useApp } from "../../store/appStore";
 import { log, getAllLogs, subscribe, type LogEntry } from "../../debug/logger";
 import { validatePhotoDetail } from "../../debug/validators";
-import { rngFor } from "../../debug/prng";
 
 const tabs = [
   { id: "overview", label: "Overview" },
@@ -483,8 +482,12 @@ function Zones({
     mixed: detail.zones.filter((z) => z.group === "mixed"),
     soft: detail.zones.filter((z) => z.group === "soft"),
   };
-  const total = detail.zones.reduce((acc, z) => acc + z.weight, 0);
-  const weighted = detail.zones.reduce((acc, z) => acc + z.weight * z.score, 0) / total;
+  // [FIX-C3] Calculate weighted similarity only over visible (non-excluded) zones
+  const visibleZones = detail.zones.filter((z) => !z.excluded);
+  const total = visibleZones.reduce((acc, z) => acc + z.weight, 0);
+  const weighted = total > 0
+    ? visibleZones.reduce((acc, z) => acc + z.weight * z.score, 0) / total
+    : 0;
 
   return (
     <div className="grid grid-cols-12 gap-3">
@@ -546,14 +549,11 @@ function Zones({
 }
 
 function Texture({ detail }: { detail: D }) {
-  // Seeded FFT radial histogram so the bars are stable across re-renders
-  // and across audit runs.
-  const r = rngFor("fft", detail.year, detail.photo);
-  const bars = Array.from({ length: 24 }, (_, i) => {
-    const anomaly = detail.texture.fftAnomaly;
-    const base = Math.sin(i / 2) * 0.2 + 0.5;
-    return Math.max(0.05, base + (r() - 0.5) * 0.2 + (i > 14 ? anomaly * 0.4 : 0));
-  });
+  // [FIX-C1] Use real FFT spectrum data from backend if available
+  const hasRealFftData = detail.texture.fftSpectrumData && detail.texture.fftSpectrumData.length === 24;
+  const bars = hasRealFftData
+    ? detail.texture.fftSpectrumData!
+    : null; // No fake data - show stub message instead
   return (
     <div className="grid grid-cols-12 gap-3">
       <div className="col-span-5 space-y-3">
@@ -582,18 +582,25 @@ function Texture({ detail }: { detail: D }) {
       </div>
       <div className="col-span-7 space-y-3">
         <Panel title="FFT spectrum (radial)">
-          <div className="flex items-end h-32 gap-0.5">
-            {bars.map((b, i) => (
-              <div
-                key={i}
-                className="flex-1 bg-info/70"
-                style={{ height: `${b * 100}%` }}
-                title={`freq ${i}: ${b.toFixed(2)}`}
-              />
-            ))}
-          </div>
+          {hasRealFftData ? (
+            <div className="flex items-end h-32 gap-0.5">
+              {bars!.map((b, i) => (
+                <div
+                  key={i}
+                  className="flex-1 bg-info/70"
+                  style={{ height: `${Math.max(0.05, b) * 100}%` }}
+                  title={`freq ${i}: ${b.toFixed(2)}`}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="h-32 flex items-center justify-center bg-muted/20 rounded">
+              <span className="text-[11px] text-muted">FFT данные недоступны — требуется запуск texture pipeline</span>
+            </div>
+          )}
           <div className="text-[10px] text-muted mt-2">
             Radial energy distribution over FFT of skin patches. Spikes in high frequencies indicate periodic patterns.
+            {!hasRealFftData && " (stub mode — no real data)"}
           </div>
         </Panel>
         <Panel title="UV texture vs confidence">

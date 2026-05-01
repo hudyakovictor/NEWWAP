@@ -58,6 +58,7 @@ export interface ExpressionInfo {
 export interface TextureInfo {
   lbpComplexity: number;
   fftAnomaly: number;
+  fftSpectrumData?: number[]; // [FIX-C1] Real FFT spectrum data from backend, 24 bins
   albedoHealth: number;     // skin viability 0..1
   specularIndex: number;    // higher = more synthetic-like
   syntheticProb: number;    // 0..1

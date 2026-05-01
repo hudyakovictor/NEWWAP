@@ -317,27 +317,30 @@ def _classify_h1_subtype(
     # - Высокий specular gloss (пластик/силикон отражает иначе)
     # - Низкая/средняя геометрическая аномальность (маска повторяет форму лица)
     # - Высокая uniformity текстуры
-    specular = texture_features.get("specular_gloss", 0.5)
-    lbp_uniformity = texture_features.get("lbp_uniformity", 0.5)
+    # [FIX-C4] Нет дефолта 0.5 — None для отсутствующих метрик
+    specular = texture_features.get("specular_gloss")
+    lbp_uniformity = texture_features.get("lbp_uniformity")
     
-    if specular > 0.6 and lbp_uniformity > 0.5 and geometric_divergence < 0.3:
-        scores["mask"] = 0.7 + (specular - 0.6) * 0.5
-        indicators.append("high_specular_uniformity")
-    elif specular > 0.5:
-        scores["mask"] = 0.4
+    if specular is not None and lbp_uniformity is not None:
+        if specular > 0.6 and lbp_uniformity > 0.5 and geometric_divergence < 0.3:
+            scores["mask"] = 0.7 + (specular - 0.6) * 0.5
+            indicators.append("high_specular_uniformity")
+        elif specular > 0.5:
+            scores["mask"] = 0.4
     
     # 2. Признаки дипфейка
     # - Высокий FFT anomaly (артефакты генерации)
     # - Низкий pore density (сглаживание)
     # - Средняя геометрическая аномальность
-    fft_anomaly = texture_features.get("fft_anomaly", 0.5)
+    fft_anomaly = texture_features.get("fft_anomaly")  # [FIX-C4] No default 0.5
     pore_density = (float(tex_a.get("pore_density", 25)) + float(tex_b.get("pore_density", 25))) / 2
     
-    if fft_anomaly > 0.55 and pore_density < 30 and 0.15 < geometric_divergence < 0.5:
-        scores["deepfake"] = 0.6 + (fft_anomaly - 0.55) * 0.8
-        indicators.append("fft_artifacts_low_pores")
-    elif fft_anomaly > 0.5:
-        scores["deepfake"] = 0.35
+    if fft_anomaly is not None:
+        if fft_anomaly > 0.55 and pore_density < 30 and 0.15 < geometric_divergence < 0.5:
+            scores["deepfake"] = 0.6 + (fft_anomaly - 0.55) * 0.8
+            indicators.append("fft_artifacts_low_pores")
+        elif fft_anomaly > 0.5:
+            scores["deepfake"] = 0.35
     
     # 3. Признаки протеза/импланта
     # - Высокий silicone_probability (локальная область)
@@ -397,24 +400,42 @@ def _compute_texture_h1_evidence(
     }
     
     # [FIX-16] Вместо max() используем взвешенное среднее признаков
-    # Это снижает влияние одного шумного/артефактного фото
-    raw_silicone_a = float(tex_a.get("silicone_probability", 0.0))
-    raw_silicone_b = float(tex_b.get("silicone_probability", 0.0))
-    raw_fft_a = float(tex_a.get("fft_high_freq_ratio", 0.5))
-    raw_fft_b = float(tex_b.get("fft_high_freq_ratio", 0.5))
-    raw_albedo_a = float(tex_a.get("albedo_uniformity", 0.5))
-    raw_albedo_b = float(tex_b.get("albedo_uniformity", 0.5))
-    raw_spec_a = float(tex_a.get("specular_gloss", 0.5))
-    raw_spec_b = float(tex_b.get("specular_gloss", 0.5))
-    raw_lbp_a = float(tex_a.get("lbp_uniformity", 0.5))
-    raw_lbp_b = float(tex_b.get("lbp_uniformity", 0.5))
+    # [FIX-C4] Нет дефолта 0.5 — None для отсутствующих метрик
+    raw_silicone_a = tex_a.get("silicone_probability")
+    raw_silicone_b = tex_b.get("silicone_probability")
+    raw_fft_a = tex_a.get("fft_high_freq_ratio")
+    raw_fft_b = tex_b.get("fft_high_freq_ratio")
+    raw_albedo_a = tex_a.get("albedo_uniformity")
+    raw_albedo_b = tex_b.get("albedo_uniformity")
+    raw_spec_a = tex_a.get("specular_gloss")
+    raw_spec_b = tex_b.get("specular_gloss")
+    raw_lbp_a = tex_a.get("lbp_uniformity")
+    raw_lbp_b = tex_b.get("lbp_uniformity")
     
     # Взвешенное среднее (не максимум)
-    silicone_combined = (raw_silicone_a + raw_silicone_b) / 2
-    fft_combined = (raw_fft_a + raw_fft_b) / 2 + epoch_adj.get("fft_boost", 0)
-    albedo_combined = 1.0 - (raw_albedo_a + raw_albedo_b) / 2 + epoch_adj.get("albedo_tolerance", 0)
-    specular_combined = (raw_spec_a + raw_spec_b) / 2 - epoch_adj.get("specular_discount", 0)
-    lbp_combined = (raw_lbp_a + raw_lbp_b) / 2 + epoch_adj.get("lbp_bias", 0)
+    # [FIX-C4] Пропускаем None значения в среднем — не используем 0.5 как дефолт
+    def safe_avg(a, b):
+        if a is None and b is None:
+            return None
+        if a is None:
+            return float(b)
+        if b is None:
+            return float(a)
+        return (float(a) + float(b)) / 2
+    
+    silicone_combined = safe_avg(raw_silicone_a, raw_silicone_b)
+    fft_combined = safe_avg(raw_fft_a, raw_fft_b)
+    if fft_combined is not None:
+        fft_combined += epoch_adj.get("fft_boost", 0)
+    albedo_combined = safe_avg(raw_albedo_a, raw_albedo_b)
+    if albedo_combined is not None:
+        albedo_combined = 1.0 - albedo_combined + epoch_adj.get("albedo_tolerance", 0)
+    specular_combined = safe_avg(raw_spec_a, raw_spec_b)
+    if specular_combined is not None:
+        specular_combined -= epoch_adj.get("specular_discount", 0)
+    lbp_combined = safe_avg(raw_lbp_a, raw_lbp_b)
+    if lbp_combined is not None:
+        lbp_combined += epoch_adj.get("lbp_bias", 0)
     
     # [FIX-17] Отрицательное доказательство для H0 (естественность текстуры)
     # Чем больше признаков естественной кожи - тем ниже вероятность синтетики
@@ -435,6 +456,7 @@ def _compute_texture_h1_evidence(
         min(1.0, natural_markers["wrinkle_detail"] / 20.0) * 0.25
     )
     
+    # [FIX-C4] Фильтруем None значения — не используем 0.5 как дефолт
     features = {
         "silicone": silicone_combined,
         "fft_anomaly": fft_combined,
@@ -442,18 +464,30 @@ def _compute_texture_h1_evidence(
         "specular_gloss": specular_combined,
         "lbp_uniformity": lbp_combined,
     }
+    # Убираем None значения из расчёта
+    valid_features = {k: v for k, v in features.items() if v is not None}
     
-    # Ансамбль: взвешенное среднее с приоритетом silicone
+    # Ансамбль: взвешенное среднее с приоритет silicone
     weights = {"silicone": 0.35, "fft_anomaly": 0.20, "albedo_uniformity": 0.15,
                "specular_gloss": 0.15, "lbp_uniformity": 0.15}
     
     # [FIX-17] Adjust composite score by natural evidence
-    # natural_score снижает composite_score (сигнал синтетики)
-    raw_composite = sum(features[k] * weights[k] for k in features)
+    # [FIX-C4] Нормализуем веса для доступных признаков
+    if not valid_features:
+        # Нет данных — нейтральный likelihood
+        return {"likelihood": 0.5, "composite_score": 0.5, "raw_composite": 0.5,
+                "features": features, "natural_score": natural_score,
+                "note": "insufficient_texture_data"}
+    
+    available_weight = sum(weights[k] for k in valid_features)
+    normalized_weights = {k: weights[k] / available_weight for k in valid_features}
+    
+    raw_composite = sum(valid_features[k] * normalized_weights[k] for k in valid_features)
     composite_score = raw_composite * (1.0 - natural_score * 0.5)  # Естественность снижает синтетику
     
     # Sigmoid с адаптивным порогом
-    base_threshold = 0.35 + 0.05 * (sum(1 for v in features.values() if v > 0.5) - 1)
+    # [FIX-C4] Пропускаем None значения при подсчёте
+    base_threshold = 0.35 + 0.05 * (sum(1 for v in valid_features.values() if v > 0.5) - 1)
     threshold = base_threshold + epoch_adj.get("silicone_threshold_boost", 0)
     l_h1_tex = 1.0 / (1.0 + math.exp(-10.0 * (composite_score - threshold)))
     
@@ -523,8 +557,45 @@ def calculate_bayesian_evidence(
             "bId": summary_b.get("photo_id"),
             "verdict": "INSUFFICIENT_DATA",
             "error": f"One or both photos not ready: A={status_a}, B={status_b}",
-            "geometric": {"snr": 0, "zoneCount": 0},
-            "texture": {"syntheticProb": 0},
+            "geometric": {
+                "snr": 0,
+                "boneScore": 0,
+                "ligamentScore": 0,
+                "softTissueScore": 0,
+                "zoneCount": 0,
+                "excludedZones": [],
+                "categoryDivergence": {}
+            },
+            "texture": {
+                "syntheticProb": 0,
+                "fft": 0.5,
+                "lbp": 0.5,
+                "albedo": 0.5,
+                "specular": 0.5,
+                "textureFeatures": {}
+            },
+            "chronology": {
+                "deltaYears": 0,
+                "boneJump": 0,
+                "ligamentJump": 0,
+                "flags": []
+            },
+            "pose": {
+                "mutualVisibility": 0,
+                "expressionExcluded": 0,
+                "poseDistanceDeg": 0
+            },
+            "dataQuality": {
+                "coverageRatio": 0,
+                "missingZonesA": [],
+                "missingZonesB": []
+            },
+            "likelihoods": {
+                "H0": 0.33,
+                "H1": 0.33,
+                "H2": 0.34
+            },
+            "priors": {"H0": 0.78, "H1": 0.02, "H2": 0.20},
             "posteriors": {"H0": 0.33, "H1": 0.33, "H2": 0.34},
             "methodologyVersion": METHODOLOGY_VERSION,
             "computationLog": [
@@ -543,8 +614,45 @@ def calculate_bayesian_evidence(
             "bId": summary_b.get("photo_id"),
             "verdict": "INSUFFICIENT_DATA",
             "error": f"Photo quality insufficient for comparison: A={usable_a}, B={usable_b}",
-            "geometric": {"snr": 0, "zoneCount": 0},
-            "texture": {"syntheticProb": 0},
+            "geometric": {
+                "snr": 0,
+                "boneScore": 0,
+                "ligamentScore": 0,
+                "softTissueScore": 0,
+                "zoneCount": 0,
+                "excludedZones": [],
+                "categoryDivergence": {}
+            },
+            "texture": {
+                "syntheticProb": 0,
+                "fft": 0.5,
+                "lbp": 0.5,
+                "albedo": 0.5,
+                "specular": 0.5,
+                "textureFeatures": {}
+            },
+            "chronology": {
+                "deltaYears": 0,
+                "boneJump": 0,
+                "ligamentJump": 0,
+                "flags": []
+            },
+            "pose": {
+                "mutualVisibility": 0,
+                "expressionExcluded": 0,
+                "poseDistanceDeg": 0
+            },
+            "dataQuality": {
+                "coverageRatio": 0,
+                "missingZonesA": [],
+                "missingZonesB": []
+            },
+            "likelihoods": {
+                "H0": 0.33,
+                "H1": 0.33,
+                "H2": 0.34
+            },
+            "priors": {"H0": 0.78, "H1": 0.02, "H2": 0.20},
             "posteriors": {"H0": 0.33, "H1": 0.33, "H2": 0.34},
             "methodologyVersion": METHODOLOGY_VERSION,
             "computationLog": [

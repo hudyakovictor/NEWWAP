@@ -142,6 +142,7 @@ export interface EvidenceBreakdown {
     rawSyntheticProb?: number;
     naturalScore?: number;
     fft: number;
+    fftSpectrumData?: number[]; // [FIX-C1] Real FFT spectrum from backend, 24 bins
     lbp: number;
     albedo: number;
     specular: number;

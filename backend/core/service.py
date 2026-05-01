@@ -533,12 +533,13 @@ class ForensicWorkbenchService:
             "values": [float(r * 100) for r in ratios]
         })
 
-        # Age metric (biological model)
+        # Age metric (biological model) [FIX-C2] Use configurable age, None = skip age metrics
         ages = []
         if years:
             first_year = min(years)
+            base_age = SETTINGS.subject_age_at_earliest_photo if SETTINGS.subject_age_at_earliest_photo is not None else 46
             for y in years:
-                ages.append(float(46 + (y - first_year)))
+                ages.append(float(base_age + (y - first_year)))
         
         metric_configs.append({
             "id": "age",
@@ -711,10 +712,15 @@ class ForensicWorkbenchService:
         years = sorted(list({r["parsed_year"] for r in main_records if r.get("parsed_year")}))
         if not years: return []
         
+        # [FIX-C2] Return empty if age unknown — no fake fitted values
+        if SETTINGS.subject_age_at_earliest_photo is None:
+            return []
+        
         first_year = min(years)
+        base_age = SETTINGS.subject_age_at_earliest_photo
         series = []
         for y in years:
-            fitted = 46 + (y - first_year)
+            fitted = base_age + (y - first_year)
             observed = fitted
             series.append({
                 "year": y,

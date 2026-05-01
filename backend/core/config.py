@@ -34,6 +34,7 @@ class Settings:
     default_extract_limit: int = 24
     max_recommendations: int = 60
     localxpose_token: str | None = None
+    subject_age_at_earliest_photo: int | None = None  # [FIX-C2] Configurable subject age, None = unknown
 
 
 def build_settings() -> Settings:

@@ -216,12 +216,15 @@ async def comparison_matrix(photo_ids: list[str] = Body(...)):
     """
     Строит матрицу похожести N×N для выбранных фотографий.
     Принимает JSON body: ["id1", "id2", "id3"]
+    [FIX-C5] Сохраняем индексы для всех photo_ids, даже если фото не найдено
     """
     summaries = []
+    missing_ids = []
     for pid in photo_ids:
         s = service.photo_detail("main", pid)
-        if s:
-            summaries.append(s)
+        summaries.append(s)  # None если фото не найдено — индекс сохраняется
+        if s is None:
+            missing_ids.append(pid)
     
     n = len(summaries)
     matrix = [[0.0] * n for _ in range(n)]
@@ -230,13 +233,17 @@ async def comparison_matrix(photo_ids: list[str] = Body(...)):
         for j in range(i, n):
             if i == j:
                 matrix[i][j] = 1.0
+            elif summaries[i] is None or summaries[j] is None:
+                # Одно из фото не найдено — NaN вместо ложного сравнения
+                matrix[i][j] = float("nan")
+                matrix[j][i] = float("nan")
             else:
                 ev = calculate_bayesian_evidence(summaries[i], summaries[j])
                 prob = float(ev["posteriors"]["H0"])
                 matrix[i][j] = prob
-                matrix[j][i] = prob
+                matrix[j][i] = prob  # [NOTE] Байес несимметричен, но здесь H0 симметричен по определению
                 
-    return matrix
+    return {"matrix": matrix, "photo_ids": photo_ids, "missing_ids": missing_ids}
 
 
 @app.get("/api/similar-photos/{photo_id}")
