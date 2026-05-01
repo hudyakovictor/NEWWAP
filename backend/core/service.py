@@ -133,17 +133,68 @@ class ForensicWorkbenchService:
         return stub
 
     def _build_forensic_profile(self, stub: dict[str, Any]) -> dict[str, float]:
+        """
+        [FIX-9] Улучшенная нормализация forensic-осей.
+        Вместо упрощённого среднего — z-score нормализация с ожидаемыми диапазонами.
+        Унифицирует шкалы для визуального сравнения на радаре.
+        """
         metrics = stub.get("metrics", {})
         profile = {}
+        
+        # Ожидаемые диапазоны (min, max, typical_sigma) для нормализации
+        # Источник: физиологические константы + эмпирические данные
+        AXIS_RANGES = {
+            "Cranial": (0.3, 1.5, 0.15),
+            "Orbital": (0.2, 1.2, 0.12),
+            "Mandibular": (0.3, 1.3, 0.14),
+            "Nasal": (0.2, 1.0, 0.10),
+            "Symmetry": (0.0, 0.5, 0.08),  # Асимметрия — отклонение от 0
+            "Texture": (0.0, 1.0, 0.20),
+            "Material": (0.0, 1.0, 0.15),  # Синтетичность
+            "Stability": (0.0, 1.0, 0.10),  # Надёжность
+        }
+        
         for axis, keys in FORENSIC_RADAR_AXES.items():
-            vals = [metrics.get(k, 0.0) for k in keys if k in metrics]
+            vals = [metrics.get(k) for k in keys if k in metrics and metrics[k] is not None]
             if not vals:
                 profile[axis] = 0.0
                 continue
-            # Нормализация (упрощенно): берем среднее
-            # В реальном судебно-медицинском ПО здесь были бы сигма-отклонения от калибровки
-            profile[axis] = float(np.mean(vals)) * 100.0 if axis != "Material" else float(metrics.get("texture_silicone_prob", 0.0)) * 100.0
             
+            min_r, max_r, sigma = AXIS_RANGES.get(axis, (0.0, 1.0, 0.15))
+            
+            # Для оси Symmetry: инвертируем (0 = идеальная симметрия)
+            if axis == "Symmetry":
+                mean_val = float(np.mean(vals))
+                # Нормализуем: высокая асимметрия → высокий score
+                normalized = min(100.0, (mean_val / max_r) * 100.0) if max_r > 0 else 0.0
+            # Для Material: специальная обработка синтетичности
+            elif axis == "Material":
+                # texture_silicone_prob уже в [0, 1]
+                silicone = float(metrics.get("texture_silicone_prob", 0.0))
+                specular = float(metrics.get("texture_specular_gloss", 0.0))
+                # Композитный material score
+                composite = (silicone * 0.7 + specular * 0.3)
+                normalized = composite * 100.0
+            # Для Stability: reliability_weight
+            elif axis == "Stability":
+                reliability = float(metrics.get("reliability_weight", 0.5))
+                normalized = reliability * 100.0
+            else:
+                # Стандартная z-score нормализация для геометрических осей
+                mean_val = float(np.mean(vals))
+                # Приводим к шкале [0, 100] с учётом expected range
+                # Центр диапазона → 50, края → 0 или 100
+                center = (min_r + max_r) / 2
+                if sigma > 0:
+                    z_score = (mean_val - center) / sigma
+                    # sigmoid-like mapping: z в [-3, 3] → [0, 100]
+                    normalized = 50.0 + z_score * 16.67  # 1 sigma = ~16.7 points
+                    normalized = max(0.0, min(100.0, normalized))
+                else:
+                    normalized = 50.0
+            
+            profile[axis] = round(normalized, 2)
+        
         return profile
 
     def list_dataset(self, dataset: str) -> list[dict[str, Any]]:

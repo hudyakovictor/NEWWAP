@@ -506,33 +506,109 @@ export const mockBackend: Backend = {
         boneScore: +boneScore.toFixed(3),
         ligamentScore: +ligScore.toFixed(3),
         softTissueScore: +softScore.toFixed(3),
+        zoneCount: 18,
+        excludedZones: a.expression === "smile" || b.expression === "smile"
+          ? ["texture_wrinkle_nasolabial", "nose_width_ratio"]
+          : [],
+        categoryDivergence: {
+          bone: 0.05,
+          ligament: 0.08,
+          symmetry: 0.03,
+          soft_tissue: 0.12,
+        },
       },
       texture: {
         syntheticProb: +syn.toFixed(3),
+        rawSyntheticProb: +Math.min(1, syn * 1.3).toFixed(3), // До корректировки естественностью
+        naturalScore: 0.35, // Признаки естественной кожи
         fft: +(Math.max(a.syntheticProb, b.syntheticProb) * 0.8).toFixed(3),
         lbp: +(1 - Math.min(a.syntheticProb, b.syntheticProb) * 0.6).toFixed(3),
         albedo: +(0.75 - syn * 0.4).toFixed(3),
         specular: +(syn * 0.9).toFixed(3),
+        textureFeatures: {
+          silicone: +syn.toFixed(3),
+          fft_anomaly: 0.45,
+          albedo_uniformity: 0.62,
+          specular_gloss: 0.38,
+          lbp_uniformity: 0.55,
+        },
+        naturalMarkers: {
+          pore_density: 42,
+          lbp_complexity: 2.8,
+          wrinkle_detail: 18,
+        },
+        epochAdjustments: {
+          fft_boost: 0.05,
+          silicone_threshold_boost: 0.02,
+        },
+        h1Subtype: {
+          primary: syn > 0.4 ? "mask" : "uncertain",
+          confidence: syn > 0.4 ? 0.72 : 0.35,
+          scores: {
+            mask: syn > 0.4 ? 0.65 : 0.25,
+            deepfake: 0.20,
+            prosthetic: syn > 0.3 ? 0.40 : 0.15,
+            uncertain: syn > 0.4 ? 0.15 : 0.60,
+          },
+          indicators: syn > 0.4 ? ["high_specular_uniformity"] : ["insufficient_indicators"],
+        },
       },
       chronology: {
         deltaYears,
         boneJump: +boneJump.toFixed(3),
         ligamentJump: +ligJump.toFixed(3),
         flags,
+        longitudinal: {
+          modelUsed: true,
+          consistent: true,
+          chronologicalLikelihood: 0.92,
+          inconsistenciesCount: 0,
+          note: "Temporal progression consistent with aging model",
+        },
       },
       pose: {
-        mutualVisibility: a.pose === b.pose ? 21 : 16,
+        mutualVisibility: a.pose === b.pose ? 0.95 : 0.72,
         expressionExcluded:
-          a.expression === "smile" || b.expression === "smile" ? 6 : 2,
+          a.expression === "smile" || b.expression === "smile" ? 2 : 0,
+        poseDistanceDeg: a.pose === b.pose ? 5 : 25,
+      },
+      dataQuality: {
+        coverageRatio: 0.86,
+        missingZonesA: [],
+        missingZonesB: ["texture_spot_density"],
       },
       priors,
       likelihoods: {
         H0: +likelihoods.H0.toFixed(3),
         H1: +likelihoods.H1.toFixed(3),
         H2: +likelihoods.H2.toFixed(3),
+        chronological: 0.92,
+        components: {
+          geometricH0: 0.85,
+          geometricH2: 0.15,
+          textureH1: 0.42,
+        },
       },
       posteriors: post,
-      verdict,
+      verdict: verdict as "H0" | "H1" | "H2" | "INSUFFICIENT_DATA",
+      methodologyVersion: "ITER-6.5-MOCK",
+      computationLog: [
+        "Methodology: ITER-6.5-MOCK",
+        "Zones analyzed: 18/21 (coverage: 86%)",
+        "Zones excluded due to expression: 2 (texture_wrinkle_nasolabial, nose_width_ratio)",
+        "Missing metrics A: 0 zones, B: 1 zones",
+        `Adaptive priors: H0=${priors.H0.toFixed(3)}, H1=${priors.H1.toFixed(3)}, H2=${priors.H2.toFixed(3)}`,
+        `Structural SNR: ${(snr * 10).toFixed(1)} dB`,
+        "Bone divergence: 0.050, Ligament: 0.080",
+        "Texture H1 raw composite: 0.420",
+        "Texture H1 natural score: 0.350",
+        `Texture H1 adjusted: ${(syn * 0.7).toFixed(3)}, likelihood: ${likelihoods.H1.toFixed(3)}`,
+        "Pose distance: 5.0°, mutual visibility: 0.95",
+        `Time delta: ${deltaYears} years`,
+        "Coverage penalty applied: 0.86",
+        `Final posteriors: H0=${post.H0.toFixed(3)}, H1=${post.H1.toFixed(3)}, H2=${post.H2.toFixed(3)}`,
+        `Verdict: ${verdict}`,
+      ],
     };
     return delay(br);
   },

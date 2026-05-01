@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from math import sqrt
+from math import sqrt, exp
 from typing import Any
+import math
 
 from .config import SETTINGS
 from .utils import ALL_BUCKETS, BUCKET_METRIC_KEYS, clamp, mad, median
@@ -158,3 +159,183 @@ def stability_score(calibration_summary: dict[str, Any]) -> float:
             score *= 0.55
         scores.append(score)
     return clamp(sum(scores) / len(scores), 0.0, 1.0)
+
+
+def find_calibration_match(
+    target_pose: dict[str, float],
+    target_year: int,
+    calibration_records: list[dict[str, Any]],
+    max_pose_distance: float = 10.0,
+    max_year_gap: int = 3,
+) -> dict[str, Any] | None:
+    """
+    [FIX-15] Поиск калибровочной пары по углам и эпохе.
+    
+    Находит запись в калибровочной базе с близкими:
+    - yaw/pitch/roll (в пределах max_pose_distance градусов)
+    - годом съемки (в пределах max_year_gap лет)
+    
+    Returns:
+        Лучшая калибровочная запись или None
+    """
+    best_match = None
+    best_score = float("inf")
+    
+    for record in calibration_records:
+        if record.get("status") != "ready":
+            continue
+        
+        record_pose = record.get("pose", {})
+        record_year = record.get("year", record.get("parsed_year", 2000))
+        
+        # Проверяем pose distance
+        pose_dist = pose_distance(target_pose, record_pose)
+        if pose_dist > max_pose_distance:
+            continue
+        
+        # Проверяем год
+        year_gap = abs(target_year - record_year)
+        if year_gap > max_year_gap:
+            continue
+        
+        # Считаем комбинированный score (меньше = лучше)
+        # pose_distance весит больше, чем год
+        score = pose_dist * 0.7 + year_gap * 2.0
+        
+        # Учитываем качество записи
+        quality = record.get("quality", {})
+        if quality.get("overall_score", 1.0) < 0.5:
+            score += 10.0  # Штраф за низкое качество
+        
+        if score < best_score:
+            best_score = score
+            best_match = record
+    
+    return best_match
+
+
+def get_epoch_noise_model(year: int) -> dict[str, float]:
+    """
+    [FIX-34] Noise model для разных эпох фото.
+    
+    Старые аналоговые снимки (1999-2005) имеют больше шума,
+    чем современные цифровые (2015+).
+    
+    Returns:
+        {
+            "geometric_sigma_multiplier": float,  # Множитель для геометрического sigma
+            "texture_threshold_boost": float,      # Корректировка порога текстуры
+            "confidence_penalty": float,           # Штраф к уверенности
+        }
+    """
+    if year < 2005:
+        # Аналоговая эпоха: высокий шум, зернистость, цветовые сдвиги
+        return {
+            "geometric_sigma_multiplier": 1.4,   # Больше допустимая вариативность
+            "texture_threshold_boost": 0.08,     # Низкий порог для синтетики
+            "confidence_penalty": 0.15,           # Снижаем уверенность
+        }
+    elif year < 2010:
+        # Переходный период
+        return {
+            "geometric_sigma_multiplier": 1.2,
+            "texture_threshold_boost": 0.04,
+            "confidence_penalty": 0.08,
+        }
+    elif year < 2015:
+        # Ранняя цифра
+        return {
+            "geometric_sigma_multiplier": 1.1,
+            "texture_threshold_boost": 0.02,
+            "confidence_penalty": 0.04,
+        }
+    else:
+        # Современная эпоха
+        return {
+            "geometric_sigma_multiplier": 1.0,
+            "texture_threshold_boost": 0.0,
+            "confidence_penalty": 0.0,
+        }
+
+
+def compute_calibration_informed_likelihood(
+    delta: float,
+    metric_key: str,
+    calibration_summary: dict[str, Any],
+    bucket: str,
+    days_delta: int,
+    epoch_model: dict[str, float] | None = None,
+) -> tuple[float, dict[str, Any]]:
+    """
+    [FIX-11, FIX-38] Вычисление правдоподобия с учетом калибровки.
+    
+    [FIX-38] Если недостаточно статистики (< 3 наблюдения) — возвращаем нейтральный
+    likelihood и помечаем как недостоверную калибровку.
+    
+    Returns:
+        (likelihood, metadata)
+    """
+    metadata = {
+        "metric": metric_key,
+        "delta": delta,
+        "calibration_used": False,
+        "notes": [],
+    }
+    
+    # [FIX-38] Проверяем количество наблюдений
+    bucket_info = calibration_summary.get("buckets", {}).get(bucket, {})
+    metric_info = bucket_info.get("metrics", {}).get(metric_key, {})
+    observation_count = metric_info.get("observation_count", 0)
+    
+    # Минимальное количество наблюдений для надежной калибровки
+    MIN_OBSERVATIONS = 3
+    
+    if observation_count < MIN_OBSERVATIONS:
+        # Недостаточно статистики — нейтральный likelihood
+        metadata["insufficient_statistics"] = True
+        metadata["observation_count"] = observation_count
+        metadata["notes"].append(
+            f"Insufficient statistics: {observation_count} < {MIN_OBSERVATIONS} observations"
+        )
+        # Возвращаем нейтральный likelihood (0.5 = неопределенность)
+        metadata["likelihood"] = 0.5
+        return 0.5, metadata
+    
+    # Получаем допустимый delta из калибровки
+    allowed_delta = allowed_metric_delta(calibration_summary, bucket, metric_key, days_delta)
+    
+    # Применяем epoch model если есть
+    if epoch_model:
+        allowed_delta *= epoch_model.get("geometric_sigma_multiplier", 1.0)
+        metadata["epoch_multiplier"] = epoch_model.get("geometric_sigma_multiplier", 1.0)
+    
+    metadata["allowed_delta"] = allowed_delta
+    metadata["calibration_used"] = True
+    metadata["observation_count"] = observation_count
+    
+    # Получаем статус метрики
+    status = metric_info.get("status", "marginal")
+    metadata["metric_status"] = status
+    
+    # Если метрика нестабильна - снижаем уверенность
+    status_penalty = {"stable": 1.0, "marginal": 0.7, "replace": 0.4}.get(status, 0.5)
+    
+    # Вычисляем likelihood: чем меньше delta относительно allowed, тем выше likelihood
+    # Используем экспоненциальное затухание
+    if allowed_delta > 0:
+        ratio = delta / allowed_delta
+        likelihood = exp(-ratio * ratio * 0.5) * status_penalty
+        metadata["ratio_to_allowed"] = ratio
+    else:
+        likelihood = 0.5  # Неопределенность при отсутствии калибровки
+        metadata["notes"].append("No calibration data for metric")
+    
+    # Применяем penalty эпохи к confidence
+    if epoch_model:
+        confidence_penalty = epoch_model.get("confidence_penalty", 0.0)
+        likelihood *= (1.0 - confidence_penalty)
+        metadata["confidence_penalty"] = confidence_penalty
+    
+    metadata["likelihood"] = round(likelihood, 4)
+    
+    return likelihood, metadata

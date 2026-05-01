@@ -124,8 +124,21 @@ class SkinTextureAnalyzer:
 
     def analyze_image(self, image_path: Path, mask_path: Path | None = None) -> dict[str, Any]:
         try:
-            bgr = cv2.imread(str(image_path))
-            if bgr is None: return {"error": "image_read_failed"}
+            # [FIX-14] Читаем RGBA если доступно (для face_crop.png с альфа-каналом)
+            bgra = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
+            if bgra is None:
+                return {"error": "image_read_failed"}
+            
+            # Если RGBA (4 канала) - используем альфа как веса маски
+            if bgra.ndim == 3 and bgra.shape[2] == 4:
+                alpha = bgra[:, :, 3].astype(np.float32) / 255.0
+                bgr = bgra[:, :, :3]
+                has_alpha_mask = True
+            else:
+                bgr = bgra
+                alpha = None
+                has_alpha_mask = False
+            
             rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
             gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
             h, w = gray.shape
@@ -136,12 +149,23 @@ class SkinTextureAnalyzer:
             raw_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path and Path(mask_path).exists() else None
             if raw_mask is not None:
                 mask = _ensure_mask(raw_mask, (h, w))
+                mask_float = mask.astype(np.float32) / 255.0
+            elif has_alpha_mask:
+                # [FIX-14] Используем альфа-канал как взвешенную маску
+                mask = (alpha > 0.1).astype(np.uint8) * 255  # Бинарная для совместимости
+                mask_float = alpha
             else:
                 # Auto-detect face pixels from non-black regions (for masked crops like face_crop.jpg)
                 mask = np.any(rgb > 0, axis=2).astype(np.uint8) * 255
                 if mask.sum() == 0:
                     mask = _ensure_mask(None, (h, w))
+                mask_float = mask.astype(np.float32) / 255.0
+            
             valid = mask > 0
+            
+            # [FIX-15] Детекция признаков студийного света и ретуши
+            studio_lighting_score = self._detect_studio_lighting(rgb, mask_float)
+            retouch_score = self._detect_retouching(rgb, mask_float)
             
             # Laplacian variance for sharpness/noise estimation
             laplacian_var = quality["laplacian_var"]
@@ -188,20 +212,125 @@ class SkinTextureAnalyzer:
             score = (specular_gloss * 2.1 + lbp_uniformity * 0.8) 
             silicone_probability = _sigmoid(score, bias=SILICONE_SIGMOID_BIAS)
 
+            # [FIX-15] Корректировка silicone_probability на основе студийного света/ретуши
+            # Если высокие показатели студийного света или ретуши - понижаем synthetic_prob
+            # (это артефакты обработки, а не синтетика)
+            synthetic_adj = (1.0 - studio_lighting_score * 0.3) * (1.0 - retouch_score * 0.4)
+            adjusted_silicone_prob = silicone_probability * synthetic_adj
+            
             return {
                 "lbp_complexity": lbp_complexity,
                 "lbp_uniformity": lbp_uniformity,
                 "specular_gloss": specular_gloss,
-                "silicone_probability": silicone_probability,
+                "silicone_probability": adjusted_silicone_prob,
+                "raw_silicone_probability": silicone_probability,  # До корректировки
                 "reliability_weight": reliability_weight,
                 "pore_density": pore_density,
                 "wrinkle_forehead": wrinkle_forehead,
                 "wrinkle_nasolabial": wrinkle_nasolabial,
                 "global_smoothness": float(min(50.0, 1.0 / (lbp_complexity + 1e-6))),
+                "studio_lighting_score": studio_lighting_score,  # [FIX-15]
+                "retouch_score": retouch_score,  # [FIX-15]
                 "quality": quality
             }
         except Exception as exc:
             return {"error": str(exc)}
+
+    def _detect_studio_lighting(self, rgb: np.ndarray, mask_float: np.ndarray) -> float:
+        """
+        [FIX-15] Детекция признаков студийного освещения.
+        Возвращает score [0, 1], где 1 = высокая вероятность студийного света.
+        
+        Признаки:
+        - Резкие тени (высокий contrast ratio)
+        - Specular highlights на лбу/носу
+        - Равномерная освещённость фона
+        """
+        try:
+            gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+            
+            # 1. Анализ теней - измеряем динамический диапазон
+            shadow_mask = (mask_float > 0.5).astype(np.uint8)
+            if shadow_mask.sum() < 100:
+                return 0.0
+            
+            face_pixels = gray[shadow_mask > 0]
+            if len(face_pixels) < 100:
+                return 0.0
+            
+            # Студийный свет часто даёт низкий dynamic range (всё освещено равномерно)
+            # ИЛИ резкий контраст (harsh shadows)
+            p10, p90 = np.percentile(face_pixels, [10, 90])
+            dynamic_range = (p90 - p10) / 255.0
+            
+            # 2. Анализ бликов (specular highlights)
+            hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
+            v_channel = hsv[:, :, 2].astype(np.float32) / 255.0
+            
+            # Взвешенный percentile для насыщенных областей
+            highlight_threshold = 0.85
+            highlight_mask = (v_channel > highlight_threshold) & (mask_float > 0.3)
+            highlight_ratio = highlight_mask.sum() / (mask_float > 0.3).sum() if (mask_float > 0.3).sum() > 0 else 0
+            
+            # 3. Комбинированный score
+            # Низкий dynamic range (< 0.4) + высокие блики (> 0.05) = студийный свет
+            if dynamic_range < 0.35 and highlight_ratio > 0.03:
+                return 0.7  # Вероятно студийный свет
+            elif dynamic_range > 0.6:
+                return 0.3  # Естественный свет (высокий контраст)
+            else:
+                return 0.5  # Неопределённо
+                
+        except Exception:
+            return 0.0
+
+    def _detect_retouching(self, rgb: np.ndarray, mask_float: np.ndarray) -> float:
+        """
+        [FIX-15] Детекция признаков ретуши/сглаживания.
+        Возвращает score [0, 1], где 1 = высокая вероятность ретуши.
+        
+        Признаки:
+        - Слишком равномерная текстура (низкая локальная вариация)
+        - Отсутствие мелких деталей в определённых диапазонах
+        - Паттерны сглаживания (smoothing artifacts)
+        """
+        try:
+            gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+            
+            # 1. Анализ локальной вариации текстуры
+            # Разбиваем на патчи и измеряем стандартное отклонение
+            patch_size = 16
+            h, w = gray.shape
+            local_vars = []
+            
+            for y in range(0, h - patch_size, patch_size):
+                for x in range(0, w - patch_size, patch_size):
+                    patch_mask = mask_float[y:y+patch_size, x:x+patch_size]
+                    if patch_mask.mean() > 0.5:  # Достаточно кожи в патче
+                        patch = gray[y:y+patch_size, x:x+patch_size]
+                        local_vars.append(np.std(patch))
+            
+            if len(local_vars) < 5:
+                return 0.0
+            
+            # Ретушированные изображения имеют низкую вариацию между патчами
+            var_of_vars = np.std(local_vars)
+            
+            # 2. Анализ границ - ретушь часто размывает края
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = (edges > 0).sum() / edges.size
+            
+            # 3. Комбинированный score
+            # Низкая var_of_vars (< 3.0) + низкая edge_density (< 0.02) = ретушь
+            if var_of_vars < 3.0 and edge_density < 0.02:
+                return 0.75
+            elif var_of_vars < 5.0 and edge_density < 0.03:
+                return 0.55
+            else:
+                return 0.25
+                
+        except Exception:
+            return 0.0
 
 
 def analyze_texture_synthetic_prob(face_crop_path: str) -> float:

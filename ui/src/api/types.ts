@@ -133,28 +133,67 @@ export interface EvidenceBreakdown {
     boneScore: number;
     ligamentScore: number;
     softTissueScore: number;
+    zoneCount: number;
+    excludedZones: string[];
+    categoryDivergence: Record<string, number>;
   };
   texture: {
     syntheticProb: number;
+    rawSyntheticProb?: number;
+    naturalScore?: number;
     fft: number;
     lbp: number;
     albedo: number;
     specular: number;
+    textureFeatures: Record<string, number>;
+    naturalMarkers?: Record<string, number>;
+    epochAdjustments?: Record<string, number>;
+    h1Subtype?: {
+      primary: "mask" | "deepfake" | "prosthetic" | "uncertain";
+      confidence: number;
+      scores: Record<string, number>;
+      indicators: string[];
+    };
   };
   chronology: {
     deltaYears: number;
     boneJump: number;
     ligamentJump: number;
     flags: string[];
+    longitudinal?: {
+      modelUsed: boolean;
+      consistent?: boolean;
+      chronologicalLikelihood?: number | null;
+      inconsistenciesCount?: number;
+      note?: string;
+    };
   };
   pose: {
     mutualVisibility: number;
     expressionExcluded: number;
+    poseDistanceDeg: number;
   };
-  likelihoods: { H0: number; H1: number; H2: number };
+  dataQuality: {
+    coverageRatio: number;
+    missingZonesA: string[];
+    missingZonesB: string[];
+  };
+  likelihoods: {
+    H0: number;
+    H1: number;
+    H2: number;
+    chronological?: number | null;
+    components?: {
+      geometricH0: number;
+      geometricH2: number;
+      textureH1: number;
+    };
+  };
   priors: { H0: number; H1: number; H2: number };
   posteriors: { H0: number; H1: number; H2: number };
-  verdict: "H0" | "H1" | "H2";
+  verdict: "H0" | "H1" | "H2" | "INSUFFICIENT_DATA";
+  methodologyVersion?: string;
+  computationLog?: string[];
 }
 
 export interface ApiEndpoint {

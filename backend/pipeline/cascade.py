@@ -105,7 +105,10 @@ class CascadeEngine:
         # Texture Analysis
         tex_a = self.texture_analyzer.analyze_image(photo_a)
         tex_b = self.texture_analyzer.analyze_image(photo_b)
-        silicone_prob = float(max(tex_a.get("silicone_probability", 0), tex_b.get("silicone_probability", 0)))
+        # [FIX-70] Взвешенное среднее вместо max() — не усиливаем шум одного фото
+        raw_silicone_a = float(tex_a.get("silicone_probability", 0.0))
+        raw_silicone_b = float(tex_b.get("silicone_probability", 0.0))
+        silicone_prob = (raw_silicone_a + raw_silicone_b) / 2.0
         
         # --- Stage 2: Deep Geometry ---
         recon_a = resolve_reconstruction(self.recon_adapter, photo_a, self.recon_root / photo_a.stem, neutral_expression=False)
