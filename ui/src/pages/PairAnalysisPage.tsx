@@ -1,12 +1,12 @@
 import { useMemo, useState, useEffect } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { PHOTOS, type PhotoRecord } from "../mock/photos";
-import { FACE_ZONES } from "../mock/photoDetail";
+import StubBanner from "../components/common/StubBanner";
+import { type PhotoRecord, type PhotoDetail, type FaceZone, FACE_ZONES } from "../api/types";
 import { useApp } from "../store/appStore";
 import { api, type EvidenceBreakdown } from "../api";
 import { ALL_PHOTOS } from "../data/photoRegistry";
 import { getBucketFallbackPolicy, buildCalibrationHealth, type CalibrationHealth } from "../data/calibrationBuckets";
-import { EvidenceBadge, EvidenceNote } from "../components/common/EvidenceStatus";
+import { EvidenceBadge } from "../components/common/EvidenceStatus";
 import MeshMorphViewer from "../components/photo/MeshMorphViewer";
 
 /** Lookup the real pose record for a photo id. Returns null if unknown. */
@@ -25,12 +25,19 @@ function zoneVisibleFromYaw(zoneId: string, yawDeg: number | null): boolean {
 
 export default function PairAnalysisPage() {
   const { pairA, pairB, setPairA, setPairB } = useApp();
-  const a = PHOTOS.find((p) => p.id === pairA) ?? PHOTOS[0];
-  const b = PHOTOS.find((p) => p.id === pairB) ?? PHOTOS[1];
-  
+  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+  const a = photos.find((p) => p.id === pairA) ?? photos[0];
+  const b = photos.find((p) => p.id === pairB) ?? photos[1];
+
   const [calibrationHealth, setCalibrationHealth] = useState<CalibrationHealth | null>(null);
   const [ev, setEv] = useState<EvidenceBreakdown | null>(null);
   const [showDetail, setShowDetail] = useState(false);
+
+  useEffect(() => {
+    api.listPhotos({}).then((res) => {
+      setPhotos(res.items);
+    }).catch(console.error);
+  }, []);
   
   useEffect(() => {
     setCalibrationHealth(buildCalibrationHealth());
@@ -96,6 +103,7 @@ export default function PairAnalysisPage() {
         </button>
       }
     >
+      <StubBanner fields={["verdict", "posteriors", "zones", "texture"]} note="Байесовский суд и зональные метрики не запускались — отображаемые значения являются заглушками." />
       {calibrationContext && !calibrationContext.ready && (
         <div className="mb-3 p-2 rounded bg-warn/20 border border-warn/40 text-[11px]">
           <strong>⚠️ Резервный режим калибровки:</strong> Бакет «{calibrationContext.bucketKey}» —
@@ -104,14 +112,9 @@ export default function PairAnalysisPage() {
         </div>
       )}
 
-      <EvidenceNote level={insufficient ? "insufficient" : "partial"} className="mb-3">
-        Если backend вернул <span className="font-mono">INSUFFICIENT_DATA</span>, вероятности H0/H1/H2 ниже являются
-        диагностикой отсутствующих признаков, а не выводом о личности.
-      </EvidenceNote>
-      
       <div className="grid grid-cols-2 gap-3 mb-3">
-        <PhotoSlot label="Фото A" photo={a} onPick={setPairA} />
-        <PhotoSlot label="Фото B" photo={b} onPick={setPairB} />
+        <PhotoSlot label="Фото A" photo={a} onPick={setPairA} allPhotos={photos} />
+        <PhotoSlot label="Фото B" photo={b} onPick={setPairB} allPhotos={photos} />
       </div>
 
       <PanelCard title="Сравнение ракурсов (реальные данные)" className="mb-3">
@@ -427,13 +430,15 @@ function PhotoSlot({
   label,
   photo,
   onPick,
+  allPhotos,
 }: {
   label: string;
   photo: PhotoRecord;
   onPick: (id: string) => void;
+  allPhotos: PhotoRecord[];
 }) {
   const [q, setQ] = useState("");
-  const candidates = PHOTOS.filter((p) => !q || p.date.includes(q) || p.id.includes(q)).slice(0, 12);
+  const candidates = allPhotos.filter((p) => !q || p.date.includes(q) || p.id.includes(q)).slice(0, 12);
 
   return (
     <PanelCard title={label}>

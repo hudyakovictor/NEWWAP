@@ -1,6 +1,6 @@
 
 import { LABEL_W } from "./constants";
-import type { EventMarker } from "../../mock/data";
+import type { EventMarker } from "../../api/types";
 import { EventIcon } from "./icons";
 
 const H = 28;

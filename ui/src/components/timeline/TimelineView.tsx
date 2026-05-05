@@ -1,8 +1,6 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from "react";
 import PhotoStrip from "./PhotoStrip";
 import { SeverityIcon, EventIcon } from "./icons";
-import { evidenceOf } from "../../data/evidencePolicy";
-import { EvidenceNote } from "../../components/common/EvidenceStatus";
 import { api } from "../../api";
 
 const LABEL_W = 168;
@@ -122,7 +120,6 @@ export default function TimelineView() {
       <div className="px-3 py-2 flex justify-between items-center border-b border-[#1a2b44]/60 shrink-0">
         <div className="text-sm font-medium text-white/90 flex items-center gap-3">
           Таймлайн расследования — {photoPoints.length} точек улик
-          <EvidenceNote level={evidenceOf("timeline_metrics")?.level ?? "stub"} />
         </div>
         <div className="flex items-center gap-4">
           <select

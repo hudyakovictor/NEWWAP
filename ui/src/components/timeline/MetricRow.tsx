@@ -1,5 +1,5 @@
 import { LABEL_W, METRIC_H_MIN } from "./constants";
-import type { MetricConfig } from "../../mock/data";
+import type { MetricConfig } from "../../api/types";
 import { SeverityIcon } from "./icons";
 
 const VB_H = 100;

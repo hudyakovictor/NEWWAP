@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LABEL_W } from "./constants";
-import type { PhotoPoint } from "../../mock/data";
+import type { PhotoPoint } from "../../api/types";
 import { SeverityIcon } from "./icons";
 import PhotoDetailModal from "../photo/PhotoDetailModal";
 

@@ -15,9 +15,9 @@ import type {
   AgeingPoint,
   EvidenceBreakdown,
   PhotoListResult,
+  PhotoDetail,
+  PhotoRecord,
 } from "../api/types";
-import type { PhotoDetail } from "../mock/photoDetail";
-import type { PhotoRecord } from "../mock/photos";
 import { EXPECT, checkRange, checkSum } from "./expectations";
 import type { Violation } from "./logger";
 

@@ -1,5 +1,5 @@
 
-import type { MetricConfig, YearPoint } from "../../mock/data";
+import type { MetricConfig, YearPoint } from "../../api/types";
 
 export default function DetailPanel({
   point,

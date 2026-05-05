@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
 import { api, type PipelineStage, type CacheSummary } from "../api";
-import { EvidenceBadge, EvidenceNote } from "../components/common/EvidenceStatus";
+import { EvidenceBadge } from "../components/common/EvidenceStatus";
 
 export default function PipelinePage() {
   const [stages, setStages] = useState<PipelineStage[]>([]);
@@ -41,11 +41,6 @@ export default function PipelinePage() {
         <Stat label="ср. время на фото" value={`${totalTime} мс`} color="#a855f7" />
         <Stat label="пик GPU" value={`${maxGPU} МБ`} color="#22c55e" />
       </div>
-
-      <EvidenceNote level="partial" className="mb-3">
-        Важно: «ошибки» — это реальные сбои стадии. Непосчитанные downstream-этапы показываются в примечаниях как pending
-        и не считаются forensic-провалом.
-      </EvidenceNote>
 
       <PanelCard title="Поток стадий" className="mb-3">
         <div className="flex gap-2 overflow-auto pb-2">

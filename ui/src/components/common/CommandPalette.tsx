@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../store/appStore";
+import { api } from "../../api";
 import type { PageId } from "../TopBar";
-import { PHOTOS } from "../../mock/photos";
+import type { PhotoRecord } from "../../api/types";
 
 interface Cmd {
   id: string;
@@ -16,6 +17,7 @@ export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
+  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,7 +36,15 @@ export default function CommandPalette() {
   }, [open]);
 
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 10);
+    if (open) {
+      setTimeout(() => inputRef.current?.focus(), 10);
+      // Load photos when palette opens
+      api.listPhotos({ limit: 300 }).then((list) => {
+        setPhotos(list.items);
+      }).catch(() => {
+        setPhotos([]);
+      });
+    }
   }, [open]);
 
   const navCommands: Cmd[] = useMemo(() => {
@@ -74,10 +84,10 @@ export default function CommandPalette() {
 
   const photoCommands: Cmd[] = useMemo(
     () =>
-      PHOTOS.slice(0, 300).map((p) => ({
+      photos.slice(0, 300).map((p) => ({
         id: `photo-${p.id}`,
         label: `Photo ${p.date} — ${p.pose}`,
-        hint: p.cluster ?? undefined,
+        hint: (p as any).cluster ?? undefined,
         group: "photo",
         run: () => {
           // Hop to photos page with the photo pre-opened via focus state not supported,
@@ -86,7 +96,7 @@ export default function CommandPalette() {
           setOpen(false);
         },
       })),
-    [setPage]
+    [photos, setPage]
   );
 
   const filtered = useMemo(() => {

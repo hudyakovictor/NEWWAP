@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { Page, PanelCard } from "../components/common/Page";
+import StubBanner from "../components/common/StubBanner";
 import { ALL_PHOTOS } from "../data/photoRegistry";
 import { api, type EvidenceBreakdown } from "../api";
 
@@ -69,6 +70,7 @@ export default function ComparisonPage() {
 
   return (
     <Page title="Сравнение фотографий">
+      <StubBanner fields={["verdict", "posteriors", "geometric", "texture"]} note="Байесовский суд и зональные метрики не запускались — отображаемые значения являются заглушками." />
       <div className="space-y-4">
         {/* Photo Selection */}
         <div className="grid grid-cols-2 gap-4">

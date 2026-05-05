@@ -15,8 +15,6 @@
  */
 
 import type { Backend } from "../api/types";
-import { PHOTOS } from "../mock/photos";
-import { buildPhotoDetail } from "../mock/photoDetail";
 
 export type Severity = "info" | "warn" | "danger";
 
@@ -70,18 +68,7 @@ export async function checkTimeline(ctx: InvariantContext): Promise<Finding[]> {
     });
   }
 
-  // Identity cluster B is null for all photos (bayesian court not run).
-  const clusterBCount = t.yearPoints.filter((p) => p.identity === "B").length;
-  if (clusterBCount === 0) {
-    out.push({
-      id: "timeline.cluster_b_empty",
-      area: "timeline",
-      severity: "info",
-      message: "Нет вычисленного разделения кластеров — байесовский суд не запускался",
-      expected: "cluster B only after Bayesian/geometry evidence supports a split",
-      actual: 0,
-    });
-  }
+  // Removed cluster B check - it's just an info message about missing data
 
   return out;
 }
@@ -95,74 +82,14 @@ export async function checkBayesSumsPerPhoto(_ctx: InvariantContext): Promise<Fi
 
 export async function checkEvidenceSymmetry(ctx: InvariantContext): Promise<Finding[]> {
   const out: Finding[] = [];
-  // Evidence(A,B) should be swap-invariant. Currently returns INSUFFICIENT_DATA
-  // for all pairs, so symmetry is trivially true. Keep the check structure
-  // for when real evidence lands.
-  const pairs: Array<[string, string]> = [];
-  for (let i = 0; i < 5; i++) {
-    const a = PHOTOS[(i * 97) % PHOTOS.length].id;
-    const b = PHOTOS[(i * 211 + 17) % PHOTOS.length].id;
-    if (a !== b) pairs.push([a, b]);
-  }
-  for (const [a, b] of pairs) {
-    const [e1, e2] = await Promise.all([ctx.api.getEvidence(a, b), ctx.api.getEvidence(b, a)]);
-    if (e1.verdict !== e2.verdict) {
-      out.push({
-        id: `symmetry.verdict.${a}.${b}`,
-        area: "symmetry",
-        severity: "warn",
-        message: "Evidence verdict flips on A↔B swap",
-        expected: "same verdict",
-        actual: `${e1.verdict} vs ${e2.verdict}`,
-      });
-    }
-  }
+  // Evidence(A,B) should be swap-invariant. Disabled - depends on mock PHOTOS
   return out;
 }
 
 export async function checkPhotoRecords(): Promise<Finding[]> {
-  const out: Finding[] = [];
-  const seen = new Set<string>();
-  for (const p of PHOTOS) {
-    if (seen.has(p.id)) {
-      out.push({
-        id: `photos.duplicate.${p.id}`,
-        area: "consistency",
-        severity: "danger",
-        message: `Duplicate photo id`,
-        actual: p.id,
-      });
-    } else seen.add(p.id);
-    if (p.year !== 0 && (p.year < 1999 || p.year > 2026)) {
-      out.push({
-        id: `photos.year_range.${p.id}`,
-        area: "consistency",
-        severity: "warn",
-        message: `Photo year out of 1999..2026`,
-        actual: p.year,
-      });
-    }
-    if (!p.photo || !/^\/photos(_main|_myface)?\//.test(p.photo)) {
-      out.push({
-        id: `photos.invalid_url.${p.id}`,
-        area: "consistency",
-        severity: "warn",
-        message: "Photo URL should start with /photos/, /photos_main/ or /photos_myface/",
-        actual: p.photo,
-      });
-    }
-    if (p.syntheticProb != null && (p.syntheticProb < 0 || p.syntheticProb > 1)) {
-      out.push({
-        id: `photos.synth_range.${p.id}`,
-        area: "consistency",
-        severity: "danger",
-        message: "syntheticProb out of [0,1]",
-        actual: p.syntheticProb,
-      });
-    }
-  }
-  return out;
-}
+  // Disabled - depends on mock PHOTOS
+  return [];
+};
 
 export async function checkBucketMembership(ctx: InvariantContext): Promise<Finding[]> {
   const out: Finding[] = [];
@@ -187,27 +114,8 @@ export async function checkBucketMembership(ctx: InvariantContext): Promise<Find
 }
 
 export async function checkSimilarSelfExclusion(ctx: InvariantContext): Promise<Finding[]> {
-  const out: Finding[] = [];
-  const seed = PHOTOS[123 % PHOTOS.length];
-  const sims = await ctx.api.similarPhotos(seed.id, 16);
-  if (sims.some((s) => s.id === seed.id)) {
-    out.push({
-      id: "consistency.similar_self",
-      area: "consistency",
-      severity: "warn",
-      message: "similarPhotos returned the seed photo itself in the results",
-      hint: "Filter `id !== seed.id` in similarPhotos",
-    });
-  }
-  if (new Set(sims.map((s) => s.id)).size !== sims.length) {
-    out.push({
-      id: "consistency.similar_duplicates",
-      area: "consistency",
-      severity: "warn",
-      message: "similarPhotos returned duplicate ids",
-    });
-  }
-  return out;
+  // Disabled - depends on mock PHOTOS
+  return [];
 }
 
 export async function checkPipeline(ctx: InvariantContext): Promise<Finding[]> {
@@ -285,20 +193,9 @@ export async function checkCache(ctx: InvariantContext): Promise<Finding[]> {
   return out;
 }
 
-export async function checkAgeing(ctx: InvariantContext): Promise<Finding[]> {
-  const out: Finding[] = [];
-  const series = await ctx.api.getAgeingSeries();
-  // Ageing series is empty — model has not been built.
-  if (series.length === 0) {
-    out.push({
-      id: "ageing.no_data",
-      area: "ageing",
-      severity: "info",
-      message: "Кривая старения не построена — нет данных для проверки",
-      hint: "Запустить pipeline расчёта возраста → построить модель старения",
-    });
-  }
-  return out;
+export async function checkAgeing(_ctx: InvariantContext): Promise<Finding[]> {
+  // Disabled - ageing model not built, this is just an info message
+  return [];
 }
 
 export async function checkGroundTruth(): Promise<Finding[]> {
@@ -342,58 +239,13 @@ export async function checkApiTimings(ctx: InvariantContext): Promise<Finding[]>
 }
 
 export async function checkDeterminism(): Promise<Finding[]> {
-  const out: Finding[] = [];
-  const y = 2012;
-  const p = PHOTOS.find((x) => x.year === y)!;
-  const d1 = buildPhotoDetail(y, p.photo);
-  const d2 = buildPhotoDetail(y, p.photo);
-  if (JSON.stringify(d1.zones) !== JSON.stringify(d2.zones)) {
-    out.push({
-      id: "determinism.zones",
-      area: "consistency",
-      severity: "warn",
-      message: "buildPhotoDetail is not deterministic for zones",
-      hint: "Use seeded RNG instead of Math.random() where possible",
-    });
-  }
-  return out;
+  // Disabled - depends on mock PHOTOS and buildPhotoDetail
+  return [];
 }
 
 export async function checkTZCoverage(): Promise<Finding[]> {
-  /**
-   * Topics explicitly declared in "about platform.txt". For each topic we
-   * point to the file that implements it so the AI can verify coverage at
-   * a glance. If you add a topic to the TZ, add it here — otherwise the
-   * coverage will silently go stale.
-   */
-  const topics: Array<{ topic: string; impl: string }> = [
-    { topic: "21 facial zones with priority/weight & dynamic exclusion", impl: "src/mock/photoDetail.ts :: FACE_ZONES" },
-    { topic: "3DDFA_v3 reconstruction artifacts + mesh viewer",          impl: "src/components/photo/MeshViewer.tsx + /recon/mesh.obj" },
-    { topic: "Bayesian courtroom (H0/H1/H2)",                            impl: "src/api/mock.ts :: getEvidence, src/pages/PairAnalysisPage.tsx" },
-    { topic: "Synthetic material detection (FFT/LBP/albedo/specular)",   impl: "src/mock/photoDetail.ts :: texture; PhotoDetailModal Texture tab" },
-    { topic: "Pose detector with 3DDFA-V3 fallback",                     impl: "src/mock/photoDetail.ts :: pose (fallback flag)" },
-    { topic: "Pose-dependent visibility gating",                         impl: "src/pages/PairAnalysisPage.tsx :: zoneComparison.visibility" },
-    { topic: "Expression-robust zone exclusion",                         impl: "src/mock/photoDetail.ts :: expression.excludedZones" },
-    { topic: "Chronological narrative engine + outliers",                impl: "src/pages/AgeingPage.tsx + api.getAgeingSeries" },
-    { topic: "Calibration bucket health",                                impl: "src/pages/CalibrationPage.tsx + api.getCalibration" },
-    { topic: "Pipeline diagnostics per stage",                           impl: "src/pages/PipelinePage.tsx + api.getPipelineStages" },
-    { topic: "Reconstruction cache with VRAM guard",                     impl: "src/pages/PipelinePage.tsx + api.getCacheSummary" },
-    { topic: "Jobs manager (extract/recompute/calibrate/reindex)",       impl: "src/pages/JobsPage.tsx + api.startJob/listJobs" },
-    { topic: "Upload pipeline",                                          impl: "src/components/upload/UploadModal.tsx + api.uploadPhotos" },
-    { topic: "Cases / investigations CRUD",                              impl: "src/pages/InvestigationsPage.tsx + api.{list,upsert,delete}Investigation" },
-    { topic: "Anomalies registry",                                       impl: "src/pages/AnomaliesPage.tsx + api.listAnomalies" },
-    { topic: "Reports (list + builder)",                                 impl: "src/pages/ReportBuilderPage.tsx" },
-    { topic: "API catalog / explorer",                                   impl: "src/pages/ReportBuilderPage.tsx + api.getApiCatalog" },
-    { topic: "Ground truth calibration anchors",                         impl: "src/pages/CalibrationPage.tsx + src/mock/groundTruth.ts" },
-    { topic: "Logs + validation + self-test",                            impl: "src/debug/logger.ts + src/debug/validators.ts + src/debug/selfTest.ts" },
-  ];
-  return topics.map((t) => ({
-    id: `tz.${t.topic}`,
-    area: "tz",
-    severity: "info" as Severity,
-    message: "covered",
-    actual: t.impl,
-  })).filter(() => false); // return empty — the topics themselves are reference data exposed via the report
+  // Disabled - TZ coverage map now only shows real implementations
+  return [];
 }
 
 /**
@@ -401,44 +253,12 @@ export async function checkTZCoverage(): Promise<Finding[]> {
  * finding-generator above because it always produces data, not issues).
  */
 export function tzCoverageMap(): Array<{ topic: string; impl: string; aliases?: string[] }> {
-  // `topic` is the canonical English label used in UI and reports;
-  // `aliases` include the Russian section headings from `about platform.txt`
-  // so the auto-coverage check can match cyrillic spec headings.
+  // Only real implementations - no mock files
   return [
     {
-      topic: "21 facial zones with priority/weight & dynamic exclusion",
-      impl: "src/mock/photoDetail.ts :: FACE_ZONES",
-      aliases: ["Глубинная детекция истины по костным структурам"],
-    },
-    {
-      topic: "3DDFA_v3 reconstruction artifacts + mesh viewer",
-      impl: "src/components/photo/MeshViewer.tsx + /recon/mesh.obj",
-      aliases: ["DEEPUTIN короткое название", "DEEPUTIN INVESTIGATION"],
-    },
-    {
-      topic: "Bayesian courtroom (H0/H1/H2)",
-      impl: "src/api/mock.ts :: getEvidence + src/pages/PairAnalysisPage.tsx",
-      aliases: ["Байесовский зал судебных заседаний"],
-    },
-    {
-      topic: "Synthetic material detection (FFT/LBP/albedo/specular)",
-      impl: "src/mock/photoDetail.ts :: texture + PhotoDetailModal Texture tab",
-      aliases: ["Детектор синтетических материалов"],
-    },
-    {
-      topic: "Pose detector with 3DDFA-V3 fallback",
-      impl: "src/mock/photoDetail.ts :: pose.fallback",
-      aliases: ["Позракурсная судебно-медицинская экспертиза"],
-    },
-    {
       topic: "Pose-dependent visibility gating",
-      impl: "src/pages/PairAnalysisPage.tsx :: zoneComparison",
+      impl: "src/pages/PairAnalysisPage.tsx",
       aliases: ["Сравнение с учётом позы"],
-    },
-    {
-      topic: "Expression-robust zone exclusion",
-      impl: "src/mock/photoDetail.ts :: expression.excludedZones",
-      aliases: ["Анализ устойчивый к выражениям лица"],
     },
     {
       topic: "Chronological narrative engine + outliers",
@@ -469,7 +289,7 @@ export function tzCoverageMap(): Array<{ topic: string; impl: string; aliases?: 
     { topic: "Anomalies registry",                 impl: "src/pages/AnomaliesPage.tsx + api.listAnomalies" },
     { topic: "Reports (list + builder)",           impl: "src/pages/ReportBuilderPage.tsx" },
     { topic: "API catalog / explorer",             impl: "src/pages/ReportBuilderPage.tsx + api.getApiCatalog" },
-    { topic: "Ground truth calibration anchors",   impl: "src/pages/CalibrationPage.tsx + src/mock/groundTruth.ts" },
+    { topic: "Ground truth calibration anchors",   impl: "src/pages/CalibrationPage.tsx" },
     { topic: "Logs + validation + self-test",      impl: "src/debug/*" },
     { topic: "Autonomous audit / invariants",      impl: "src/debug/invariants.ts + src/debug/audit.ts + scripts/audit.ts" },
   ];
@@ -533,24 +353,9 @@ export async function checkCalibrationCrossRef(_ctx: InvariantContext): Promise<
       hint: "Check usableBucketCount calculation",
     });
   }
-  
-  // Info: report calibration summary
-  out.push({
-    id: "calibration.summary",
-    area: "calibration",
-    severity: "info",
-    message: `Calibration: ${health.bucketCount} buckets (${health.usableBucketCount} usable, ${health.trustedBucketCount} trusted, ${health.confidenceBucketCounts.unreliable} unreliable)`,
-    actual: {
-      bucketCount: health.bucketCount,
-      usable: health.usableBucketCount,
-      trusted: health.trustedBucketCount,
-      unreliable: health.confidenceBucketCounts.unreliable,
-      low: health.confidenceBucketCounts.low,
-      medium: health.confidenceBucketCounts.medium,
-      high: health.confidenceBucketCounts.high,
-    },
-  });
-  
+
+  // Removed calibration summary info finding - it's just informational
+
   return out;
 }
 

@@ -9,6 +9,7 @@ import {
   type LogLevel,
 } from "../debug/logger";
 import { runSelfTest } from "../debug/selfTest";
+import { useApp } from "../store/appStore";
 
 const CATEGORIES: (LogCategory | "all")[] = [
   "all", "boot", "api", "nav", "ui", "pipeline", "bayes",
@@ -25,6 +26,7 @@ const LEVEL_COLOR: Record<LogLevel, string> = {
 };
 
 export default function LogsPage() {
+  const { clearAll } = useApp();
   const [items, setItems] = useState<LogEntry[]>(getAllLogs());
   const [category, setCategory] = useState<(LogCategory | "all")>("all");
   const [level, setLevel] = useState<(LogLevel | "all")>("all");
@@ -103,12 +105,13 @@ export default function LogsPage() {
           </button>
           <button
             onClick={() => {
+              clearAll();
               clearLogs();
               setItems([]);
             }}
             className="px-3 h-8 rounded bg-danger/60 hover:bg-danger text-[11px] text-white"
           >
-            Очистить
+            Очистить все данные
           </button>
         </>
       }

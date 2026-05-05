@@ -10,7 +10,7 @@ import { PHOTOS } from "../mock/photos";
 import { buildPhotoDetail } from "../mock/photoDetail";
 import { getDhashIndex, dhashDistance } from "../debug/dhashIndex";
 import { detectPoseAnomalies } from "../data/poseAnomalies";
-import { MAIN_PHOTOS, MYFACE_PHOTOS, ALL_PHOTOS } from "../data/photoRegistry";
+import { MAIN_PHOTOS, MYFACE_PHOTOS, ALL_PHOTOS, type RealPhoto } from "../data/photoRegistry";
 import { buildCalibrationBuckets, buildCalibrationHealth } from "../data/calibrationBuckets";
 import FORENSIC_REGISTRY from "../data/forensic_registry.json";
 import type {
@@ -28,6 +28,39 @@ import type {
   ApiEndpoint,
   DiaryEntry,
 } from "./types";
+
+// Convert RealPhoto to PhotoRecord for mock compatibility
+function realToRecord(p: RealPhoto, folder: string): any {
+  return {
+    photo_id: p.photo_id,
+    id: p.photo_id,
+    filename: p.filename,
+    folder,
+    year: p.parsed_year,
+    date_str: p.date_str,
+    bucket: p.bucket,
+    pose: p.pose?.classification ?? "none",
+    syntheticProb: 0,
+    bayesH0: null,
+    photo: `/photos_${folder}/${p.filename}`,
+    cluster: null,
+    flags: [],
+    identity: null,
+    expression: null,
+    source: p.pose?.source ?? null,
+    md5: null,
+    resolution: null,
+    yaw: p.pose?.yaw ?? null,
+    poseSource: p.pose?.source ?? null,
+    date: p.date_str,
+  };
+}
+
+// Create combined photo list from real data
+const MOCK_PHOTOS: any[] = [
+  ...MAIN_PHOTOS.map(p => realToRecord(p, "main")),
+  ...MYFACE_PHOTOS.map(p => realToRecord(p, "myface")),
+];
 
 let jobs: Job[] = [
   {
@@ -82,7 +115,7 @@ let investigations: Investigation[] = [
     subject: "Subject 1",
     createdAt: "2025-04-10",
     updatedAt: "2025-04-24",
-    photoCount: PHOTOS.length,
+    photoCount: MOCK_PHOTOS.length,
     verdict: "H1",
     notes: "Primary investigation — spans 1999–2025 with multiple suspected substitutions.",
     tags: ["primary", "public"],
@@ -119,7 +152,7 @@ const calibrationBuckets: CalibrationBucket[] = buildCalibrationBuckets();
 // removed — they were derived from PRNG stubs that no longer exist.
 const anomalies: AnomalyRecord[] = [
   ...detectPoseAnomalies(),
-  ...PHOTOS.filter((p) => p.flags.includes("pose_fallback"))
+  ...MOCK_PHOTOS.filter((p) => p.poseSource === "3ddfa")
     .slice(0, 15)
     .map((p) => ({
       id: `anom-p-${p.id}`,
@@ -146,13 +179,13 @@ export const mockBackend: Backend = {
       identitySegments,
       eventMarkers,
       photoVolume,
-      totalPhotos: PHOTOS.length,
+      totalPhotos: MOCK_PHOTOS.length,
       calibrationLevel: "medium",
     });
   },
 
   async listPhotos(q: PhotoListQuery) {
-    let list = PHOTOS.slice();
+    let list = MOCK_PHOTOS.slice();
     if (q.search) {
       const s = q.search.toLowerCase();
       list = list.filter((p) => p.id.includes(s) || p.date.includes(s));
@@ -172,19 +205,19 @@ export const mockBackend: Backend = {
   },
 
   async getPhotoDetail(id: string) {
-    const rec = PHOTOS.find((p) => p.id === id) ?? PHOTOS[0];
+    const rec = MOCK_PHOTOS.find((p) => p.id === id) ?? MOCK_PHOTOS[0];
     const detail = buildPhotoDetail(rec.year, rec.photo);
     return delay({ ...detail, record: rec });
   },
 
   async similarPhotos(id: string, limit = 8) {
-    const rec = PHOTOS.find((p) => p.id === id) ?? PHOTOS[0];
+    const rec = MOCK_PHOTOS.find((p) => p.id === id) ?? MOCK_PHOTOS[0];
     // Use real perceptual distance (dHash) when available, plus
     // real pose similarity and temporal proximity.
     const idx = await getDhashIndex();
     const seedHash = idx.get(rec.photo);
 
-    const scored = PHOTOS.filter((p) => p.id !== rec.id).map((p) => {
+    const scored = MOCK_PHOTOS.filter((p) => p.id !== rec.id).map((p) => {
       // Real perceptual term when both photos point to a hashed file.
       let perceptual = 0;
       let usedDhash = false;
@@ -253,7 +286,7 @@ export const mockBackend: Backend = {
 
   async photosInBucket(pose: string, light: string) {
     // Only return calibration (myface) photos for bucket inspection
-    const list = PHOTOS.filter((p) => p.folder === "myface" && p.pose === pose).slice(0, 60);
+    const list = MOCK_PHOTOS.filter((p) => p.folder === "myface" && p.pose === pose).slice(0, 60);
     const seed = light.length + pose.length;
     return delay(list.filter((_, i) => (i + seed) % 2 === 0));
   },
@@ -380,9 +413,9 @@ export const mockBackend: Backend = {
   async getCacheSummary() {
     const r = (n: number) => Math.floor(Math.abs(Math.sin(n * 991.1) * 0xffffff))
       .toString(16).padStart(6, "0");
-    const sample = PHOTOS.slice(0, 10);
+    const sample = MOCK_PHOTOS.slice(0, 10);
     const entries: CacheEntry[] = sample.map((p, i) => ({
-      md5: p.md5 + r(i),
+      md5: (p.md5 || "000000") + r(i),
       photoId: p.id,
       year: p.year,
       neutral: i % 2 === 0,
@@ -413,8 +446,8 @@ export const mockBackend: Backend = {
   },
 
   async getEvidence(aId: string, bId: string) {
-    const a = PHOTOS.find((p) => p.id === aId) ?? PHOTOS[0];
-    const b = PHOTOS.find((p) => p.id === bId) ?? PHOTOS[1];
+    const a = MOCK_PHOTOS.find((p) => p.id === aId) ?? MOCK_PHOTOS[0];
+    const b = MOCK_PHOTOS.find((p) => p.id === bId) ?? MOCK_PHOTOS[1];
     const deltaYears = Math.abs(a.year - b.year);
 
     // Bayesian courtroom has not run — all numeric fields are fabricated.

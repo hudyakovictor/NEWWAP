@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import { LABEL_W } from "./constants";
-import type { IdentitySegment } from "../../mock/data";
+import type { IdentitySegment } from "../../api/types";
 
 const H = 32;
 

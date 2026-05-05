@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { buildPhotoDetail } from "../../mock/photoDetail";
-import type { YearPoint } from "../../mock/data";
+import type { YearPoint, PhotoRecord, PhotoDetail } from "../../api/types";
 import FaceZoneMap from "./FaceZoneMap";
 import MeshViewer from "./MeshViewer";
 import { api } from "../../api";
 import { MAIN_PHOTOS } from "../../data/photoRegistry";
-import type { PhotoRecord } from "../../mock/photos";
 import { useApp } from "../../store/appStore";
 import { log, getAllLogs, subscribe, type LogEntry } from "../../debug/logger";
 import { validatePhotoDetail } from "../../debug/validators";

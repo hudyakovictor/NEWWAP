@@ -1,8 +1,5 @@
 // Public API surface used by UI. A real backend client and the mock adapter
 // both implement this interface, so switching between them is a one-liner.
-import type { YearPoint, MetricConfig, IdentitySegment, EventMarker } from "../mock/data";
-import type { PhotoRecord } from "../mock/photos";
-import type { PhotoDetail } from "../mock/photoDetail";
 
 export interface TimelineSummary {
   years: number[];
@@ -254,4 +251,109 @@ export interface Backend {
   getDiaryEntries(): Promise<DiarySummary>;
   addDiaryEntry(entry: Omit<DiaryEntry, "id">): Promise<DiaryEntry>;
   updateDiaryEntry(id: string, updates: Partial<DiaryEntry>): Promise<DiaryEntry>;
+}
+
+// ─── Типы, перенесённые из mock/ ──────────────────────────────────────────
+export type Severity = "ok" | "info" | "warn" | "danger";
+
+export interface PhotoRecord {
+  photo_id: string;
+  id: string;
+  filename: string;
+  folder: string;
+  year: number;
+  date_str: string;
+  bucket: string;
+  pose: {
+    yaw: number | null;
+    pitch: number | null;
+    roll: number | null;
+    classification: string;
+    source: string;
+  } | null;
+  syntheticProb: number | null;
+  bayesH0: number | null;
+  photo: string;
+  cluster: string | null;
+  flags: string[];
+  identity: string | null;
+  expression: string | null;
+  source: string | null;
+  md5: string | null;
+  resolution: string | null;
+  yaw: number | null;
+  poseSource: string | null;
+  date: string;
+  [key: string]: any;
+}
+
+export interface FaceZone {
+  id: string;
+  name: string;
+  group: "bone" | "ligament" | "soft";
+  priority: "max" | "high" | "medium" | "low";
+  weight: number;
+}
+
+export const FACE_ZONES: FaceZone[] = [
+  { id: "forehead", name: "Forehead", group: "bone", priority: "max", weight: 1 },
+  { id: "nasal_bridge", name: "Nasal Bridge", group: "bone", priority: "max", weight: 1 },
+  { id: "orbital_l", name: "Left Orbital", group: "bone", priority: "high", weight: 1 },
+  { id: "orbital_r", name: "Right Orbital", group: "bone", priority: "high", weight: 1 },
+  { id: "cheek_l", name: "Left Cheek", group: "soft", priority: "medium", weight: 0.5 },
+  { id: "cheek_r", name: "Right Cheek", group: "soft", priority: "medium", weight: 0.5 },
+];
+
+export interface YearPoint {
+  year: number;
+  photo: string;
+  photoId: string;
+  anomaly: Severity | null;
+  identity: string | null;
+  note: string | null;
+  pose: {
+    classification: string;
+    yaw: number | null;
+    pitch: number | null;
+    source: string;
+  } | null;
+}
+
+export type PhotoPoint = YearPoint;
+
+export interface MetricConfig {
+  key: string;
+  label: string;
+  domain?: [number, number];
+  values: number[];
+  flags?: (string | undefined)[];
+  color?: string;
+}
+
+export interface IdentitySegment {
+  from: number;
+  to: number;
+  identity: string;
+  confidence: number;
+}
+
+export interface EventMarker {
+  year: number;
+  label: string;
+  severity: Severity;
+}
+
+export interface PhotoDetail {
+  year: number;
+  photo: string;
+  reconstruction: any;
+  zones: any[];
+  pose: any;
+  expression: any;
+  texture: any;
+  calibration: any;
+  chronology: any;
+  bayes: any;
+  meta: any;
+  notes: string[];
 }

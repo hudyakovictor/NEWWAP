@@ -91,12 +91,42 @@ export default function UploadPage() {
   const uploadMainDataset = async () => {
     setMainDatasetLoading(true);
     try {
-      // This would call the backend to load the dataset
-      // For now, simulate the loading
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      alert("Основной датасет загружен: /Users/victorkhudyakov/dutin/rebucketed_photos/all");
-    } catch (error) {
-      alert("Ошибка загрузки основного датасета");
+      // Use directory picker to select the dataset folder
+      const dirHandle = await (window as any).showDirectoryPicker();
+      const files: File[] = [];
+
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          if (file.type.startsWith('image/')) {
+            files.push(file);
+          }
+        }
+      }
+
+      if (files.length === 0) {
+        alert("В выбранной директории не найдено изображений");
+        return;
+      }
+
+      // Add files to queue
+      const newItems: QueuedPhoto[] = files.map((f) => ({
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        file: f,
+        preview: URL.createObjectURL(f),
+        status: "queued" as const,
+        dataset: "main",
+      }));
+
+      setQueued((prev) => [...prev, ...newItems]);
+      alert(`Найдено ${files.length} изображений. Добавлено в очередь загрузки.`);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // User cancelled the picker
+        return;
+      }
+      console.error("Directory picker failed:", error);
+      alert("Не удалось выбрать директорию. Убедитесь, что ваш браузер поддерживает File System Access API.");
     } finally {
       setMainDatasetLoading(false);
     }
@@ -105,12 +135,42 @@ export default function UploadPage() {
   const uploadCalibDataset = async () => {
     setCalibDatasetLoading(true);
     try {
-      // This would call the backend to load the dataset
-      // For now, simulate the loading
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      alert("Калибровочный датасет загружен: /Users/victorkhudyakov/dutin/myface");
-    } catch (error) {
-      alert("Ошибка загрузки калибровочного датасета");
+      // Use directory picker to select the calibration folder
+      const dirHandle = await (window as any).showDirectoryPicker();
+      const files: File[] = [];
+
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file') {
+          const file = await entry.getFile();
+          if (file.type.startsWith('image/')) {
+            files.push(file);
+          }
+        }
+      }
+
+      if (files.length === 0) {
+        alert("В выбранной директории не найдено изображений");
+        return;
+      }
+
+      // Add files to queue with calibration dataset
+      const newItems: QueuedPhoto[] = files.map((f) => ({
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        file: f,
+        preview: URL.createObjectURL(f),
+        status: "queued" as const,
+        dataset: "calibration",
+      }));
+
+      setQueued((prev) => [...prev, ...newItems]);
+      alert(`Найдено ${files.length} изображений. Добавлено в очередь загрузки как калибровочные.`);
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        // User cancelled the picker
+        return;
+      }
+      console.error("Directory picker failed:", error);
+      alert("Не удалось выбрать директорию. Убедитесь, что ваш браузер поддерживает File System Access API.");
     } finally {
       setCalibDatasetLoading(false);
     }
@@ -126,8 +186,29 @@ export default function UploadPage() {
     );
 
     try {
-      const files = readyPhotos.map((p) => p.file);
-      const result = await api.uploadPhotos(files);
+      // Separate by dataset
+      const mainPhotos = readyPhotos.filter((p) => p.dataset === "main");
+      const calibPhotos = readyPhotos.filter((p) => p.dataset === "calibration");
+
+      let totalAccepted = 0;
+      let totalRejected = 0;
+      let jobId = "";
+
+      // Upload main dataset photos
+      if (mainPhotos.length > 0) {
+        const mainResult = await api.uploadPhotos(mainPhotos.map((p) => p.file));
+        totalAccepted += mainResult.accepted;
+        totalRejected += mainResult.rejected;
+        jobId = mainResult.jobId;
+      }
+
+      // Upload calibration dataset photos
+      if (calibPhotos.length > 0) {
+        const calibResult = await api.uploadPhotos(calibPhotos.map((p) => p.file));
+        totalAccepted += calibResult.accepted;
+        totalRejected += calibResult.rejected;
+        if (!jobId) jobId = calibResult.jobId;
+      }
 
       setQueued((prev) =>
         prev.map((p) =>
@@ -141,7 +222,9 @@ export default function UploadPage() {
       }, 2000);
 
       alert(
-        `Загрузка завершена: ${result.accepted} фото принято, ${result.rejected} отклонено. Задача ${result.jobId} запущена.`
+        `Загрузка завершена: ${totalAccepted} фото принято, ${totalRejected} отклонено. ` +
+        `Основной: ${mainPhotos.length}, Калибровка: ${calibPhotos.length}. ` +
+        `Задача ${jobId} запущена.`
       );
     } catch (error) {
       console.error("Upload failed:", error);
@@ -181,7 +264,10 @@ export default function UploadPage() {
     >
       {/* Dataset Upload Section */}
       <div className="mb-6">
-        <PanelCard title="Загрузка датасетов" className="mb-4">
+        <PanelCard title="Загрузка датасетов из директорий" className="mb-4">
+          <div className="text-[11px] text-muted mb-3">
+            Выберите директории с фото для загрузки. Система автоматически найдет все изображения и добавит их в очередь.
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={uploadMainDataset}
@@ -192,7 +278,7 @@ export default function UploadPage() {
                 Основной датасет
               </div>
               <div className="text-[10px] text-muted">
-                /Users/victorkhudyakov/dutin/rebucketed_photos/all
+                Выбрать директорию с фото
               </div>
               {mainDatasetLoading && (
                 <div className="mt-2 text-[10px] text-accent">Загрузка...</div>
@@ -208,7 +294,7 @@ export default function UploadPage() {
                 Калибровочный датасет
               </div>
               <div className="text-[10px] text-muted">
-                /Users/victorkhudyakov/dutin/myface
+                Выбрать директорию с фото
               </div>
               {calibDatasetLoading && (
                 <div className="mt-2 text-[10px] text-purple-400">Загрузка...</div>

@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { EvidenceNote } from "../components/common/EvidenceStatus";
-import { evidenceOf } from "../data/evidencePolicy";
 
 interface Cluster {
   id: string;
@@ -64,16 +62,6 @@ export default function ClustersPage() {
       title="Визуальные кластеры"
       subtitle={`${data.summary.total} кластеров · порог dHash ≤ ${data.threshold} · ${data.summary.photosInClusters} из ${data.totalPhotos} фото · кластеризация внутри групп ракурса`}
     >
-      <EvidenceNote level={evidenceOf("visual_clusters")!.level} className="mb-3">
-        <div><strong>Реальная часть:</strong> {evidenceOf("visual_clusters")!.realPart}</div>
-        <div><strong>Ограничение:</strong> Фото с малым расстоянием dHash разделяют <em>композицию / ракурс / кадрирование</em>,
-          а не обязательно содержание. Кластеризация выполнена <strong>внутри каждой группы ракурса</strong> (frontal, ¾-left, ¾-right, profile-left, profile-right),
-          чтобы разделение шло по идентичности, а не по ракурсу.
-          Обнаружение побайтовых дубликатов — на странице
-          <span className="text-info"> Сигналы реальных фото</span>.</div>
-        <div><strong>Для перехода:</strong> {evidenceOf("visual_clusters")!.upgradeHint}</div>
-      </EvidenceNote>
-
       {/* Pose bucket summary */}
       {data.poseBucketSummary && (
         <PanelCard title="Распределение по ракурсам" className="mb-3">

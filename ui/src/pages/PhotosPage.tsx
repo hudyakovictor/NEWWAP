@@ -1,11 +1,11 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { type PhotoRecord } from "../mock/photos";
+import { type PhotoRecord } from "../api/types";
 import PhotoDetailModal from "../components/photo/PhotoDetailModal";
 import UploadModal from "../components/upload/UploadModal";
 import { useApp } from "../store/appStore";
 import { api } from "../api";
-import { EvidenceBadge, EvidenceNote } from "../components/common/EvidenceStatus";
+import { EvidenceBadge } from "../components/common/EvidenceStatus";
 
 const POSE_GROUPS = ["frontal", "three_quarter_left", "three_quarter_right", "profile_left", "profile_right", "none"] as const;
 const FOLDER_OPTIONS = ["any", "main", "myface"] as const;
@@ -186,12 +186,6 @@ export default function PhotosPage() {
         <MiniStat label="Не обработано" value={stats.unprocessed} color="#6b7a90" />
         <MiniStat label="Калибровочных" value={stats.calib} color="#a855f7" />
       </div>
-
-      <EvidenceNote level="real" className="mb-4">
-        Эта страница — навигация по реальным фото и pose-сигналам. Серые карточки означают отсутствие pose,
-        а не доказательство подделки. Синтетические флаги старого mock-слоя нельзя трактовать как forensic-вывод
-        до полного pipeline-прогона.
-      </EvidenceNote>
 
       {extractNotice && (
         <div className="mb-4 rounded-xl border border-warn/40 bg-warn/10 p-3 text-[11px] text-warn">

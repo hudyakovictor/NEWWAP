@@ -7,14 +7,23 @@
 
 import { api } from "../api";
 import { log, getAllLogs } from "./logger";
-import { PHOTOS } from "../mock/photos";
 
 export async function runSelfTest() {
   log.info("self_test", "self_test:start", "Starting boot self-test across all endpoints");
   const t0 = performance.now();
 
-  const a = PHOTOS[30]?.id;
-  const b = PHOTOS[PHOTOS.length - 40]?.id;
+  // Get real photo IDs from backend
+  let testIds: string[] = [];
+  try {
+    const list = await api.listPhotos({ limit: 50 });
+    testIds = list.items.map((p: any) => p.photo_id || p.id).filter(Boolean);
+  } catch {
+    // Use placeholder IDs if backend is unavailable
+    testIds = ["test-1", "test-2", "test-3"];
+  }
+  const a = testIds[0] || "test-1";
+  const b = testIds[Math.min(1, testIds.length - 1)] || a;
+  const c = testIds[Math.min(2, testIds.length - 1)] || a;
 
   const checks: Array<{ name: string; run: () => Promise<unknown> }> = [
     { name: "getTimeline",        run: () => api.getTimeline() },
@@ -31,7 +40,7 @@ export async function runSelfTest() {
     { name: "getAgeingSeries",    run: () => api.getAgeingSeries() },
     { name: "getEvidence",        run: () => api.getEvidence(a, b) },
     { name: "getApiCatalog",      run: () => api.getApiCatalog() },
-    { name: "comparisonMatrix",   run: () => api.comparisonMatrix([a, b, PHOTOS[100]?.id]) },
+    { name: "comparisonMatrix",   run: () => api.comparisonMatrix([a, b, c]) },
   ];
 
   const results: Array<{ name: string; status: "ok" | "fail"; violations: number; ms: number }> = [];

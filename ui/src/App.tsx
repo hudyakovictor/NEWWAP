@@ -31,9 +31,6 @@ export default function App() {
   return (
     <div className="h-screen w-screen flex flex-col bg-bg text-white/90 overflow-hidden">
       <TopBar current={page} onNav={setPage} />
-      <div className="flex-1 flex items-center justify-center">
-        <div>Страница: {page}</div>
-      </div>
       {page === "timeline" && <TimelineView />}
       {page === "photos" && <PhotosPage />}
       {page === "upload" && <UploadPage />}

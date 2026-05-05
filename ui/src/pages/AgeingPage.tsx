@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
+import StubBanner from "../components/common/StubBanner";
 import { api, type AgeingPoint } from "../api";
-import { EvidenceNote } from "../components/common/EvidenceStatus";
-import { evidenceOf } from "../data/evidencePolicy";
 
 export default function AgeingPage() {
   const [data, setData] = useState<AgeingPoint[]>([]);
@@ -18,6 +17,7 @@ export default function AgeingPage() {
   if (loading) {
     return (
       <Page title="Кривая старения" subtitle="Загрузка…">
+        <StubBanner note="Модель старения не запускалась — данных недостаточно." />
         <div className="text-[11px] text-muted">Подгонка модели старения…</div>
       </Page>
     );
@@ -27,6 +27,7 @@ export default function AgeingPage() {
   if (years.length === 0) {
     return (
       <Page title="Кривая старения" subtitle="Нет данных">
+        <StubBanner note="Модель старения не запускалась — данных недостаточно." />
         <div className="text-[11px] text-muted">Нет данных о старении.</div>
       </Page>
     );
@@ -46,11 +47,6 @@ export default function AgeingPage() {
 
   return (
     <Page title="Кривая старения (debug)" subtitle="Наблюдаемое vs модельное нормальное старение с обнаружением выбросов">
-      <EvidenceNote level={evidenceOf("ageing_curve")!.level} className="mb-3">
-        <div><strong>Реальная часть:</strong> {evidenceOf("ageing_curve")!.realPart || "нет"}</div>
-        <div><strong>Заглушка:</strong> {evidenceOf("ageing_curve")!.stubPart}</div>
-        <div><strong>Для перехода:</strong> {evidenceOf("ageing_curve")!.upgradeHint}</div>
-      </EvidenceNote>
       <PanelCard title="Подгонка таймлайна" className="mb-3">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-80 bg-bg-deep rounded">
           {/* gridlines */}

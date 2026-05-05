@@ -1,30 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
-import { api } from "../api";
-import { PHOTOS, type PhotoRecord } from "../mock/photos";
+import { api, type PhotoRecord } from "../api";
 import { useApp } from "../store/appStore";
-import { EvidenceNote } from "../components/common/EvidenceStatus";
-import { evidenceOf } from "../data/evidencePolicy";
-
-// Only main (non-calibration) photos for the comparison matrix
-const MAIN_PHOTOS = PHOTOS.filter((p) => p.folder === "main");
 
 export default function MatrixPage() {
   const { setPairA, setPairB, setPage } = useApp();
+  const [photos, setPhotos] = useState<PhotoRecord[]>([]);
+
+  const mainPhotos = useMemo(() => photos.filter((p) => p.folder === "main"), [photos]);
+
   const defaults = useMemo(() => {
     const spread: PhotoRecord[] = [];
-    const years = Array.from(new Set(MAIN_PHOTOS.map((p) => p.year)));
+    const years = Array.from(new Set(mainPhotos.map((p) => p.year)));
     years.forEach((y) => {
-      const first = MAIN_PHOTOS.find((p) => p.year === y);
+      const first = mainPhotos.find((p) => p.year === y);
       if (first) spread.push(first);
     });
     return spread.filter((_, i) => i % 2 === 0).slice(0, 10);
-  }, []);
+  }, [mainPhotos]);
 
   const [selected, setSelected] = useState<PhotoRecord[]>(defaults);
   const [matrix, setMatrix] = useState<number[][]>([]);
   const [loading, setLoading] = useState(false);
   const [picker, setPicker] = useState(false);
+
+  useEffect(() => {
+    api.listPhotos({}).then((res) => {
+      setPhotos(res.items);
+    }).catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!selected.length) {
@@ -61,8 +65,8 @@ export default function MatrixPage() {
           <button
             onClick={() => {
               // Deterministic spread: pick one per year
-              const years = Array.from(new Set(MAIN_PHOTOS.map(p => p.year)));
-              const picked = years.map(y => MAIN_PHOTOS.find(p => p.year === y)).filter(Boolean) as PhotoRecord[];
+              const years = Array.from(new Set(mainPhotos.map(p => p.year)));
+              const picked = years.map(y => mainPhotos.find(p => p.year === y)).filter(Boolean) as PhotoRecord[];
               setSelected(picked.filter((_, i) => i % 2 === 0).slice(0, 10));
             }}
             className="px-3 h-8 rounded bg-accent/70 hover:bg-accent text-[11px] text-white"
@@ -72,11 +76,6 @@ export default function MatrixPage() {
         </>
       }
     >
-      <EvidenceNote level={evidenceOf("comparison_matrix")!.level} className="mb-3">
-        <div><strong>Реальная часть:</strong> {evidenceOf("comparison_matrix")!.realPart || "нет"}</div>
-        <div><strong>Заглушка:</strong> {evidenceOf("comparison_matrix")!.stubPart}</div>
-        <div><strong>Для перехода:</strong> {evidenceOf("comparison_matrix")!.upgradeHint}</div>
-      </EvidenceNote>
       {loading ? (
         <div className="text-[11px] text-muted">Вычисление матрицы…</div>
       ) : !matrix.length ? (
@@ -143,6 +142,7 @@ export default function MatrixPage() {
           selected={selected}
           onClose={() => setPicker(false)}
           onChange={setSelected}
+          allPhotos={mainPhotos}
         />
       )}
     </Page>
@@ -153,14 +153,16 @@ function PhotoPicker({
   selected,
   onClose,
   onChange,
+  allPhotos,
 }: {
   selected: PhotoRecord[];
   onClose: () => void;
   onChange: (s: PhotoRecord[]) => void;
+  allPhotos: PhotoRecord[];
 }) {
   const [query, setQuery] = useState("");
   const selectedIds = new Set(selected.map((s) => s.id));
-  const candidates = MAIN_PHOTOS.filter(
+  const candidates = allPhotos.filter(
     (p) => !query || p.date.includes(query) || p.id.includes(query)
   ).slice(0, 120);
 

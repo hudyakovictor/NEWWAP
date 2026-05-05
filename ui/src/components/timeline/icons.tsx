@@ -1,5 +1,5 @@
 
-import type { Severity } from "../../mock/data";
+import type { Severity } from "../../api/types";
 
 const base = "w-[14px] h-[14px] inline-block";
 

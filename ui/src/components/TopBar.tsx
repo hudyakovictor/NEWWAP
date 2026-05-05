@@ -174,7 +174,7 @@ export default function TopBar({
             ) : audit.counts.total > 0 ? (
               <span className="text-info">ℹ {audit.counts.info}</span>
             ) : (
-              <span className="text-ok">✓ green</span>
+              <span className="text-ok">✓ OK</span>
             )
           ) : (
             <span className="text-muted">audit…</span>

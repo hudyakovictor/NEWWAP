@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-05-01T13:27:17.113Z",
-  "durationMs": 442,
+  "generatedAt": "2026-05-01T18:40:59.738Z",
+  "durationMs": 137,
   "environment": {
     "runtime": "node",
     "nodeVersion": "v22.14.0"
@@ -9,22 +9,24 @@
     {
       "name": "getTimeline",
       "status": "ok",
-      "ms": 3
+      "ms": 4
     },
     {
       "name": "listPhotos",
       "status": "ok",
-      "ms": 2
+      "ms": 3
     },
     {
       "name": "getPhotoDetail",
-      "status": "ok",
-      "ms": 2
+      "status": "fail",
+      "ms": 10,
+      "note": "Backend error: Not Found"
     },
     {
       "name": "similarPhotos",
-      "status": "ok",
-      "ms": 1
+      "status": "fail",
+      "ms": 2,
+      "note": "Backend error: Not Found"
     },
     {
       "name": "getCalibration",
@@ -44,7 +46,7 @@
     {
       "name": "listInvestigations",
       "status": "ok",
-      "ms": 1
+      "ms": 2
     },
     {
       "name": "listAnomalies",
@@ -54,12 +56,12 @@
     {
       "name": "getPipelineStages",
       "status": "ok",
-      "ms": 2
+      "ms": 3
     },
     {
       "name": "getCacheSummary",
       "status": "ok",
-      "ms": 1
+      "ms": 3
     },
     {
       "name": "getAgeingSeries",
@@ -68,282 +70,70 @@
     },
     {
       "name": "getEvidence",
-      "status": "ok",
-      "ms": 1
+      "status": "fail",
+      "ms": 4,
+      "note": "Backend error: Not Found"
     },
     {
       "name": "getApiCatalog",
       "status": "ok",
-      "ms": 1
+      "ms": 3
     },
     {
       "name": "comparisonMatrix",
-      "status": "ok",
-      "ms": 1
+      "status": "fail",
+      "ms": 2,
+      "note": "Backend error: Internal Server Error"
     }
   ],
   "findings": [
     {
-      "id": "timeline.cluster_b_empty",
+      "id": "timeline.year_coverage",
       "area": "timeline",
-      "severity": "info",
-      "message": "Нет вычисленного разделения кластеров — байесовский суд не запускался",
-      "expected": "cluster B only after Bayesian/geometry evidence supports a split",
-      "actual": 0
+      "severity": "warn",
+      "message": "Year coverage must be 1999..2025 per TZ",
+      "expected": "1999..2025",
+      "actual": "Infinity..-Infinity"
     },
     {
-      "id": "ageing.no_data",
-      "area": "ageing",
-      "severity": "info",
-      "message": "Кривая старения не построена — нет данных для проверки",
-      "hint": "Запустить pipeline расчёта возраста → построить модель старения"
-    },
-    {
-      "id": "calibration.summary",
-      "area": "calibration",
-      "severity": "info",
-      "message": "Calibration: 25 buckets (0 usable, 0 trusted, 25 unreliable)",
-      "actual": {
-        "bucketCount": 25,
-        "usable": 0,
-        "trusted": 0,
-        "unreliable": 25,
-        "low": 0,
-        "medium": 0,
-        "high": 0
-      }
-    },
-    {
-      "id": "timeline.age_metric_missing",
+      "id": "audit.assets_check_threw",
       "area": "consistency",
       "severity": "info",
-      "message": "Timeline omits the age metric because subject age is not configured",
-      "hint": "Keep this informational unless backend config sets subject_age_at_earliest_photo"
-    },
-    {
-      "id": "ageing.length_mismatch",
-      "area": "ageing",
-      "severity": "info",
-      "message": "Ageing series is empty — subject age not configured (subject_age_at_earliest_photo is null)",
-      "expected": "27",
-      "actual": 0,
-      "hint": "Set subject_age_at_earliest_photo in backend config to enable ageing model"
-    },
-    {
-      "id": "signals.similar_composition.2016_12_23.jpg.2024_12_19-6.jpg",
-      "area": "consistency",
-      "severity": "info",
-      "message": "Pair of files has very similar composition (dHash distance ≤ 2)",
-      "actual": {
-        "a": "2016_12_23.jpg",
-        "b": "2024_12_19-6.jpg",
-        "distance": 2
-      },
-      "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
-    },
-    {
-      "id": "signals.similar_composition.2018_07_06.jpg.2021_12_23.jpg",
-      "area": "consistency",
-      "severity": "info",
-      "message": "Pair of files has very similar composition (dHash distance ≤ 2)",
-      "actual": {
-        "a": "2018_07_06.jpg",
-        "b": "2021_12_23.jpg",
-        "distance": 2
-      },
-      "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
-    },
-    {
-      "id": "signals.similar_composition.photo82.jpg.photo89.jpg",
-      "area": "consistency",
-      "severity": "info",
-      "message": "Pair of files has very similar composition (dHash distance ≤ 2)",
-      "actual": {
-        "a": "photo82.jpg",
-        "b": "photo89.jpg",
-        "distance": 2
-      },
-      "hint": "Compare visually: typically same pose/framing, not same content. Use SHA-256 duplicates for byte-identical detection."
-    },
-    {
-      "id": "similar.no_dhash_anchor",
-      "area": "consistency",
-      "severity": "info",
-      "message": "similarPhotos result barely uses real dHash anchoring",
-      "actual": {
-        "anchored": 0,
-        "total": 1
-      },
-      "hint": "Confirm the seed photo URL is in signal-report.json"
-    },
-    {
-      "id": "tz_auto_coverage.summary",
-      "area": "tz",
-      "severity": "info",
-      "message": "TZ headings discovered: 10 · candidate matches: 10 · gaps: 0",
-      "actual": {
-        "totalTopics": 10,
-        "gaps": 0
-      }
+      "message": "Asset existence check threw (non-fatal)",
+      "actual": "GROUND_TRUTH is not iterable"
     }
   ],
   "timings": {
-    "timeline": 312,
+    "timeline": 39,
     "bayes_sum": 0,
-    "evidence_symmetry": 25,
-    "photo_records": 1,
+    "evidence_symmetry": 0,
+    "photo_records": 0,
     "bucket_membership": 5,
-    "similar_exclusion": 2,
+    "similar_exclusion": 0,
     "pipeline": 3,
-    "cache": 2,
-    "ageing": 2,
+    "cache": 3,
+    "ageing": 0,
     "ground_truth": 0,
-    "api_timings": 17,
+    "api_timings": 29,
     "determinism": 0,
     "calibration_cross": 5,
     "photo_year_coverage": 0,
-    "anomaly_integrity": 2,
-    "calibration_coverage": 1,
-    "investigations_integrity": 2,
-    "api_catalog": 1,
-    "timeline_vs_photo_detail": 4,
-    "ageing_vs_timeline": 5,
-    "expanded_determinism": 1,
-    "logs_for_errors": 0,
-    "ground_truth_files": 0,
-    "signals": 6,
-    "similar_photos": 6,
-    "tz_auto_coverage": 2,
-    "assets_node": 10
+    "anomaly_integrity": 0,
+    "calibration_coverage": 0,
+    "evidence_vs_anomalies": 0,
+    "ground_truth_alignment": 0,
+    "assets_node": 5
   },
   "counts": {
-    "info": 10,
-    "warn": 0,
+    "info": 1,
+    "warn": 1,
     "danger": 0,
-    "total": 10,
+    "total": 2,
     "byArea": {
       "timeline": 1,
-      "ageing": 2,
-      "calibration": 1,
-      "consistency": 5,
-      "tz": 1
+      "consistency": 1
     }
   },
-  "tzCoverage": [
-    {
-      "topic": "21 facial zones with priority/weight & dynamic exclusion",
-      "impl": "src/mock/photoDetail.ts :: FACE_ZONES",
-      "aliases": [
-        "Глубинная детекция истины по костным структурам"
-      ]
-    },
-    {
-      "topic": "3DDFA_v3 reconstruction artifacts + mesh viewer",
-      "impl": "src/components/photo/MeshViewer.tsx + /recon/mesh.obj",
-      "aliases": [
-        "DEEPUTIN короткое название",
-        "DEEPUTIN INVESTIGATION"
-      ]
-    },
-    {
-      "topic": "Bayesian courtroom (H0/H1/H2)",
-      "impl": "src/api/mock.ts :: getEvidence + src/pages/PairAnalysisPage.tsx",
-      "aliases": [
-        "Байесовский зал судебных заседаний"
-      ]
-    },
-    {
-      "topic": "Synthetic material detection (FFT/LBP/albedo/specular)",
-      "impl": "src/mock/photoDetail.ts :: texture + PhotoDetailModal Texture tab",
-      "aliases": [
-        "Детектор синтетических материалов"
-      ]
-    },
-    {
-      "topic": "Pose detector with 3DDFA-V3 fallback",
-      "impl": "src/mock/photoDetail.ts :: pose.fallback",
-      "aliases": [
-        "Позракурсная судебно-медицинская экспертиза"
-      ]
-    },
-    {
-      "topic": "Pose-dependent visibility gating",
-      "impl": "src/pages/PairAnalysisPage.tsx :: zoneComparison",
-      "aliases": [
-        "Сравнение с учётом позы"
-      ]
-    },
-    {
-      "topic": "Expression-robust zone exclusion",
-      "impl": "src/mock/photoDetail.ts :: expression.excludedZones",
-      "aliases": [
-        "Анализ устойчивый к выражениям лица"
-      ]
-    },
-    {
-      "topic": "Chronological narrative engine + outliers",
-      "impl": "src/pages/AgeingPage.tsx + api.getAgeingSeries",
-      "aliases": [
-        "Двигатель хронологических нарративов"
-      ]
-    },
-    {
-      "topic": "Calibration bucket health",
-      "impl": "src/pages/CalibrationPage.tsx + api.getCalibration",
-      "aliases": [
-        "Система здоровья калибровки"
-      ]
-    },
-    {
-      "topic": "Pipeline diagnostics per stage",
-      "impl": "src/pages/PipelinePage.tsx + api.getPipelineStages"
-    },
-    {
-      "topic": "Reconstruction cache with VRAM guard",
-      "impl": "src/pages/PipelinePage.tsx + api.getCacheSummary",
-      "aliases": [
-        "Умное кэширование с защитой от переполнения памяти"
-      ]
-    },
-    {
-      "topic": "Jobs manager",
-      "impl": "src/pages/JobsPage.tsx + api.startJob/listJobs"
-    },
-    {
-      "topic": "Upload pipeline",
-      "impl": "src/components/upload/UploadModal.tsx + api.uploadPhotos"
-    },
-    {
-      "topic": "Cases / investigations CRUD",
-      "impl": "src/pages/InvestigationsPage.tsx",
-      "aliases": [
-        "Судебно-медицинская рабочая станция"
-      ]
-    },
-    {
-      "topic": "Anomalies registry",
-      "impl": "src/pages/AnomaliesPage.tsx + api.listAnomalies"
-    },
-    {
-      "topic": "Reports (list + builder)",
-      "impl": "src/pages/ReportBuilderPage.tsx"
-    },
-    {
-      "topic": "API catalog / explorer",
-      "impl": "src/pages/ReportBuilderPage.tsx + api.getApiCatalog"
-    },
-    {
-      "topic": "Ground truth calibration anchors",
-      "impl": "src/pages/CalibrationPage.tsx + src/mock/groundTruth.ts"
-    },
-    {
-      "topic": "Logs + validation + self-test",
-      "impl": "src/debug/*"
-    },
-    {
-      "topic": "Autonomous audit / invariants",
-      "impl": "src/debug/invariants.ts + src/debug/audit.ts + scripts/audit.ts"
-    }
-  ],
-  "summary": "✓ AUDIT GREEN — all invariants pass, all endpoints respond, no validation warnings.\nEndpoints: 15/15 ok\nFindings total: 10 (danger=0, warn=0, info=10).\nBy area: consistency=5 · ageing=2 · timeline=1 · calibration=1 · tz=1."
+  "tzCoverage": [],
+  "summary": "⚠ AUDIT YELLOW — 1 warning(s), no dangers.\nEndpoints: 11/15 ok · failures: getPhotoDetail, similarPhotos, getEvidence, comparisonMatrix\nFindings total: 2 (danger=0, warn=1, info=1).\nBy area: timeline=1 · consistency=1."
 }

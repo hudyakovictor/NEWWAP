@@ -3,8 +3,6 @@ import { Page, PanelCard } from "../components/common/Page";
 import { api, type Investigation, type AnomalyRecord, type EvidenceBreakdown } from "../api";
 
 import { useApp } from "../store/appStore";
-import { EvidenceNote } from "../components/common/EvidenceStatus";
-import { evidenceOf } from "../data/evidencePolicy";
 
 interface SavedReport {
   id: string;
@@ -121,11 +119,6 @@ export default function ReportBuilderPage() {
         </button>
       }
     >
-      <EvidenceNote level={evidenceOf("report_builder")!.level} className="mb-3">
-        <div><strong>Реальная часть:</strong> {evidenceOf("report_builder")!.realPart || "нет"}</div>
-        <div><strong>Заглушка:</strong> {evidenceOf("report_builder")!.stubPart}</div>
-        <div><strong>Для перехода:</strong> {evidenceOf("report_builder")!.upgradeHint}</div>
-      </EvidenceNote>
       {/* Saved reports (merged from ReportsPage) */}
       <PanelCard
         title={`📁 Сохранённые отчёты (${SAVED_REPORTS.length})`}

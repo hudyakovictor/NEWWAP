@@ -240,26 +240,6 @@ export default function AuditPage() {
           </table>
         </PanelCard>
       )}
-
-      {/* TZ coverage */}
-      <PanelCard title={`Покрытие ТЗ (${report.tzCoverage.length} тем)`}>
-        <table className="w-full text-[11px]">
-          <thead className="text-muted border-b border-line">
-            <tr>
-              <th className="text-left p-2">тема</th>
-              <th className="text-left p-2">реализация</th>
-            </tr>
-          </thead>
-          <tbody>
-            {report.tzCoverage.map((t) => (
-              <tr key={t.topic} className="border-b border-line/30">
-                <td className="p-2 text-white">{t.topic}</td>
-                <td className="p-2 font-mono text-muted">{t.impl}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </PanelCard>
     </Page>
   );
 }

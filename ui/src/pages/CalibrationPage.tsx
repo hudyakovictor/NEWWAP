@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
 import { Page, PanelCard } from "../components/common/Page";
+import StubBanner from "../components/common/StubBanner";
 import Modal from "../components/common/Modal";
-import { api, type CalibrationBucket, type CalibrationSummary } from "../api";
-import type { PhotoRecord } from "../mock/photos";
+import { api, type CalibrationBucket, type CalibrationSummary, type PhotoRecord } from "../api";
 import PhotoDetailModal from "../components/photo/PhotoDetailModal";
-import { EvidenceNote } from "../components/common/EvidenceStatus";
-import { evidenceOf } from "../data/evidencePolicy";
 
 // Extended bucket type with person distribution from real data
 type Level = CalibrationBucket["level"];
@@ -58,6 +56,7 @@ export default function CalibrationPage() {
         </button>
       }
     >
+      <StubBanner note="Бакеты калибровки являются заглушкой — требуется запуск реального пайплайна калибровки." />
       <div className="grid grid-cols-4 gap-3 mb-3">
         {(Object.keys(totals) as Array<keyof typeof totals>).map((k) => (
           <PanelCard key={k} title={`${k === "high" ? "Высокие" : k === "medium" ? "Средние" : k === "low" ? "Низкие" : "Ненадёжные"} бакеты`}>
@@ -68,12 +67,6 @@ export default function CalibrationPage() {
           </PanelCard>
         ))}
       </div>
-
-      <EvidenceNote level={evidenceOf("calibration_buckets")!.level} className="mb-3">
-        <div><strong>Реальная часть:</strong> {evidenceOf("calibration_buckets")!.realPart}</div>
-        <div><strong>Заглушка:</strong> {evidenceOf("calibration_buckets")!.stubPart}</div>
-        <div><strong>Для перехода на следующий уровень:</strong> {evidenceOf("calibration_buckets")!.upgradeHint}</div>
-      </EvidenceNote>
 
       <PanelCard title="Матрица бакетов" className="mb-3">
         <div className="overflow-auto">

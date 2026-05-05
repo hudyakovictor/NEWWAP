@@ -1,4 +1,4 @@
-import type { FaceZone } from "../../mock/photoDetail";
+import type { FaceZone } from "../../api/types";
 
 export default function FaceZoneMap({
   photo,
