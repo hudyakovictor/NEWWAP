@@ -489,3 +489,40 @@ def extract_macro_bone_metrics(
             metrics["orbit_depth_L_ratio"] = None
     
     return metrics, reliability
+
+
+def apply_expression_exclusion_mask(metrics: dict, expression_params: np.ndarray) -> dict:
+    """
+    Удаляет зоны, искаженные мимикой. 
+    Использует np.nan вместо None для безопасности матричных вычислений.
+    """
+    smile_intensity = expression_params[0]
+    
+    cleaned_metrics = metrics.copy()
+    
+    if smile_intensity > 2.2:
+        # Улыбка искажает ширину носа и челюсть
+        # ВАЖНО: Заменяем на np.nan, а не None и не 0.0
+        cleaned_metrics['nose_width_ratio'] = np.nan
+        cleaned_metrics['jaw_width_ratio'] = np.nan
+        
+    return cleaned_metrics
+
+
+def calculate_coverage(cleaned_metrics: dict, pose_bucket: str) -> float:
+    """
+    Счет реального покрытия (Coverage).
+    Если зона удалена из-за мимики (np.nan), она снижает покрытие.
+    """
+    from backend.core.utils import BUCKET_METRIC_KEYS
+    expected_keys = BUCKET_METRIC_KEYS.get(pose_bucket, [])
+    if not expected_keys:
+        return 0.0
+        
+    valid_count = sum(
+        1 for key in expected_keys 
+        if key in cleaned_metrics and cleaned_metrics[key] is not None and not (isinstance(cleaned_metrics[key], float) and np.isnan(cleaned_metrics[key]))
+    )
+    
+    return valid_count / len(expected_keys)
+

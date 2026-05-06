@@ -86,3 +86,50 @@ class QualityGate:
             "overall_score": overall_score,
             "overall_quality": overall_score,
         }
+
+    def evaluate_face_quality(self, img_full: np.ndarray, face_bbox: dict, skin_mask: np.ndarray) -> dict:
+        """
+        Оценивает качество СТРОГО внутри Bounding Box и маски кожи.
+        Исправляет баг оценки качества по заднему фону (TX-07).
+        """
+        x, y, w, h = face_bbox['x'], face_bbox['y'], face_bbox['w'], face_bbox['h']
+        
+        # 1. Защита от микро-лиц (Баг: слишком маленькие лица проходили проверку)
+        if w < 60 or h < 60:
+            return {"success": False, "reason": "FACE_TOO_SMALL", "sharpness": 0.0}
+            
+        # 2. Вырезаем только лицо
+        face_crop = img_full[y:y+h, x:x+w]
+        
+        # Если маска кожи передана, применяем ее, чтобы исключить волосы и очки
+        if skin_mask is not None:
+            # Убедимся, что маска совпадает по размеру с кропом
+            mask_crop = skin_mask[y:y+h, x:x+w]
+            gray_crop = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+            
+            # 3. Измерение резкости (Variance of Laplacian) только по коже
+            # Пиксели вне маски не должны влиять на дисперсию
+            laplacian = cv2.Laplacian(gray_crop, cv2.CV_64F)
+            valid_laplacian = laplacian[mask_crop > 0]
+            
+            if len(valid_laplacian) < 100:
+                return {"success": False, "reason": "INSUFFICIENT_SKIN", "sharpness": 0.0}
+                
+            sharpness = np.var(valid_laplacian)
+        else:
+            gray_crop = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
+            sharpness = cv2.Laplacian(gray_crop, cv2.CV_64F).var()
+
+        # 4. Оценка шума (Median Blur разница)
+        median_blurred = cv2.medianBlur(gray_crop, 3)
+        noise_diff = np.abs(gray_crop.astype(np.int16) - median_blurred.astype(np.int16))
+        noise_level = np.mean(noise_diff[mask_crop > 0]) if skin_mask is not None else np.mean(noise_diff)
+
+        success = (sharpness > (self.blur_threshold if hasattr(self, 'blur_threshold') else 150.0)) and (noise_level < (self.noise_threshold if hasattr(self, 'noise_threshold') else 25.0))
+        
+        return {
+            "success": success,
+            "sharpness": float(sharpness),
+            "noise_level": float(noise_level),
+            "overall_score": float(np.clip(sharpness / 400.0, 0, 1.0)) # Нормализация
+        }

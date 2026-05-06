@@ -373,3 +373,19 @@ def analyze_chronology(timeline_data: List[Dict[str, Any]]) -> Dict[str, Any]:
         "anomaly_count": len(anomalies),
         "anomalies": anomalies
     }
+
+
+def evaluate_chronological_delta(raw_delta: float, allowed_delta: float, reliability: float):
+    """
+    Оценка аномальности изменения без искажения физического смысла (C-01).
+    """
+    # Сравниваем ЧИСТУЮ дельту с допустимым порогом
+    import numpy as np
+    anomaly_ratio = np.abs(raw_delta) / allowed_delta
+    
+    # Надежность влияет только на вес самого вывода в финальном голосовании,
+    # а не на размер измеренной кости!
+    evidence_weight = reliability 
+    
+    is_anomaly = anomaly_ratio > 2.0 # Двойное превышение нормы
+    return is_anomaly, float(anomaly_ratio), float(evidence_weight)

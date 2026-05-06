@@ -319,3 +319,84 @@ if __name__ == "__main__":
 
     detector = PoseDetector()
     print(detector.get_bucket(img_path))
+
+
+def compute_robust_pose(landmarks_68: np.ndarray, img_shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Вычисляет углы позы (Euler) и матрицы вращения с учетом динамического размера кадра.
+    
+    :param landmarks_68: Массив 2D-координат лица (68, 2)
+    :param img_shape: Форма текущего кропа (height, width)
+    :return: angles_deg [pitch, yaw, roll], Rotation Matrix, Translation Vector
+    """
+    from typing import Tuple
+    height, width = img_shape[:2]
+    
+    # 1. Динамический расчет фокусного расстояния (Pinhole Camera Model)
+    # Эталонное значение 3DDFA: focal = 112 для размера 224.
+    # Масштабируем фокус пропорционально реальной ширине кропа.
+    focal_length = width * (112.0 / 224.0) 
+    center_x = width / 2.0
+    center_y = height / 2.0
+    
+    # Истинная матрица камеры для текущего разрешения
+    camera_matrix = np.array([
+        [focal_length, 0, center_x],
+        [0, focal_length, center_y],
+        [0, 0, 1]
+    ], dtype=np.float64)
+    
+    # Предполагаем нулевую дисторсию для обрезанного лица
+    dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+    
+    # Standard 3D anthropometric landmarks model (68 points)
+    world_pts_std = np.array([
+        [-73.30, -0.11, -11.11], [ -72.61, -18.23,  -6.23], [ -70.47, -35.81,   0.24], [ -65.90, -52.44,   8.06],
+        [-58.20, -67.24,  17.06], [ -47.45, -79.37,  26.47], [ -34.29, -88.46,  34.81], [ -19.46, -94.70,  39.71],
+        [  0.00, -96.88,  40.40], [  19.46, -94.70,  39.71], [  34.29, -88.46,  34.81], [  47.45, -79.37,  26.47],
+        [ 58.20, -67.24,  17.06], [  65.90, -52.44,   8.06], [  70.47, -35.81,   0.24], [  72.61, -18.23,  -6.23],
+        [ 73.30,  -0.11, -11.11], [ -61.27,  22.15, -15.93], [ -53.47,  32.06, -21.43], [ -41.68,  34.87, -25.23],
+        [-29.62,  31.57, -27.33], [ -18.97,  24.96, -28.03], [  18.97,  24.96, -28.03], [  29.62,  31.57, -27.33],
+        [ 41.68,  34.87, -25.23], [  53.47,  32.06, -21.43], [  61.27,  22.15, -15.93], [   0.00,  12.16, -27.53],
+        [  0.00,   1.56, -30.93], [   0.00,  -9.04, -33.93], [   0.00, -19.64, -36.23], [ -14.62, -26.04, -28.43],
+        [ -7.31, -27.24, -30.93], [   0.00, -28.14, -31.83], [   7.31, -27.24, -30.93], [  14.62, -26.04, -28.43],
+        [-43.68,  11.56, -23.13], [ -34.87,  16.27, -25.93], [ -25.07,  15.87, -25.93], [ -17.07,   9.66, -23.23],
+        [-25.47,   7.56, -23.13], [ -35.27,   7.66, -22.93], [  17.07,   9.66, -23.23], [  25.07,  15.87, -25.93],
+        [ 34.87,  16.27, -25.93], [  43.68,  11.56, -23.13], [  35.27,   7.66, -22.93], [  25.47,   7.56, -23.13],
+        [-28.43, -48.44,  11.87], [ -15.42, -43.14, -13.03], [  -5.61, -41.54, -23.43], [   0.00, -42.24, -25.13],
+        [  5.61, -41.54, -23.43], [  15.42, -43.14, -13.03], [  28.43, -48.44,  11.87], [  20.42, -56.74,  15.07],
+        [ 10.21, -60.84,  17.77], [   0.00, -61.54,  18.47], [ -10.21, -60.84,  17.77], [ -20.42, -56.74,  15.07],
+        [-24.43, -49.04,   6.37], [ -10.21, -45.94, -13.23], [   0.00, -45.34, -16.43], [  10.21, -45.94, -13.23],
+        [ 24.43, -49.04,   6.37], [  15.42, -56.24,  12.77], [   0.00, -57.54,  14.07], [ -15.42, -56.24,  12.77]
+    ], dtype=np.float64)
+    
+    # ИСПОЛЬЗУЕМ RANSAC для защиты от выбросов (ошибок детекции на краях)
+    success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        world_pts_std, 
+        landmarks_68.astype(np.float64), 
+        camera_matrix, 
+        dist_coeffs, 
+        reprojectionError=2.0, # Жесткий допуск по ТЗ
+        iterationsCount=100
+    )
+    
+    if not success:
+        raise ValueError("solvePnPRansac не смог сойтись. Лицо сильно искажено или перекрыто.")
+        
+    # Преобразуем вектор вращения в матрицу SO(3)
+    rotation_matrix, _ = cv2.Rodrigues(rvec)
+    
+    # Извлечение углов Эйлера с правильным порядком осей [pitch, yaw, roll]
+    sy = np.sqrt(rotation_matrix[0, 0] * rotation_matrix[0, 0] +  rotation_matrix[1, 0] * rotation_matrix[1, 0])
+    singular = sy < 1e-6
+    if not singular:
+        pitch = np.arctan2(rotation_matrix[2, 1], rotation_matrix[2, 2])
+        yaw = np.arctan2(-rotation_matrix[2, 0], sy)
+        roll = np.arctan2(rotation_matrix[1, 0], rotation_matrix[0, 0])
+    else:
+        pitch = np.arctan2(-rotation_matrix[1, 2], rotation_matrix[1, 1])
+        yaw = np.arctan2(-rotation_matrix[2, 0], sy)
+        roll = 0
+        
+    angles_deg = np.degrees(np.array([pitch, yaw, roll]))
+    return angles_deg, rotation_matrix, tvec

@@ -199,3 +199,69 @@ def canonicalize_vertices_for_bucket(vertices: np.ndarray, angles_deg: np.ndarra
     aligned_vertices = (vertices - centroid) @ R_align + centroid
     
     return aligned_vertices
+
+
+def rigid_umeyama_robust(src: np.ndarray, dst: np.ndarray, allow_scale: bool = True) -> tuple[np.ndarray, np.ndarray, float]:
+    """
+    Алгоритм Умеямы для выравнивания 3D облаков точек.
+    Исправлена проблема сингулярности SVD и двойного масштабирования.
+    
+    :param src: Массив вершин A (N, 3)
+    :param dst: Массив вершин B (N, 3)
+    :return: (Rotation Matrix, Translation Vector, Scale)
+    """
+    assert src.shape == dst.shape, "Массивы вершин должны совпадать по размеру"
+    num_pts = src.shape[0]
+
+    # 1. Центрирование
+    src_mean = np.mean(src, axis=0)
+    dst_mean = np.mean(dst, axis=0)
+    src_c = src - src_mean
+    dst_c = dst - dst_mean
+
+    # Расчет дисперсии (для масштаба)
+    src_var = np.mean(np.sum(src_c ** 2, axis=1))
+
+    # 2. Матрица ковариации
+    H = (src_c.T @ dst_c) / num_pts
+
+    # ЗАЩИТА ОТ СИНГУЛЯРНОСТИ (Исправление бага M-01)
+    if np.linalg.matrix_rank(H) < 3:
+        raise np.linalg.LinAlgError("Матрица ковариации вырождена (rank < 3). Сравнение невозможно, точки коллинеарны.")
+
+    # 3. SVD разложение
+    U, S, Vt = np.linalg.svd(H)
+
+    # 4. Расчет матрицы вращения с защитой от отражения (Reflection)
+    R = Vt.T @ U.T
+    if np.linalg.det(R) < 0:
+        Vt[2, :] *= -1
+        R = Vt.T @ U.T
+
+    # 5. Расчет масштаба (Только один раз!)
+    scale = 1.0
+    if allow_scale:
+        scale = np.sum(S) / (src_var + 1e-10)
+
+    # 6. Вектор трансляции
+    t = dst_mean - scale * (src_mean @ R.T)
+
+    return R, t, scale
+
+
+def align_and_score_gpa(verts_a: np.ndarray, verts_b: np.ndarray, mask: np.ndarray):
+    """
+    Обобщенный Прокрустов Анализ только по валидным (shared) костным ориентирам.
+    """
+    valid_a = verts_a[mask]
+    valid_b = verts_b[mask]
+    
+    # Вызываем исправленный Умеяма с разрешением масштабирования
+    R, t, scale = rigid_umeyama_robust(valid_a, valid_b, allow_scale=True)
+    
+    # Применяем трансформацию ко ВСЕМ вершинам A
+    verts_a_aligned = (scale * (verts_a @ R.T)) + t
+    
+    # Теперь сырая ошибка считается в правильном метрическом пространстве
+    raw_errors = np.linalg.norm(verts_a_aligned - verts_b, axis=1)
+    return verts_a_aligned, raw_errors

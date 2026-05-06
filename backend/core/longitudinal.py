@@ -411,3 +411,37 @@ def build_longitudinal_model(summaries: list[dict[str, Any]]) -> LongitudinalAna
         analyzer.detect_anomalies()
     
     return analyzer
+
+
+class LongitudinalModel:
+    def __init__(self, alpha=0.3):
+        self.alpha = alpha # Фактор сглаживания EMA
+
+    def compute_prediction_interval(self, historical_metrics: list, new_metric: float, population_sigma: float):
+        """
+        Оценивает аномальность нового измерения относительно истории человека.
+        Исправлен математический баг 1/sqrt(n) (L-01).
+        """
+        n = len(historical_metrics)
+        if n < 3:
+            return 0.0 # Недостаточно данных для лонгитюдного вывода
+            
+        # 1. Защита от линейной деградации (Используем EMA вместо OLS регрессии)
+        # EMA плавно адаптируется к возрастным изменениям без ухода в минус
+        import numpy as np
+        ema = historical_metrics[0]
+        for val in historical_metrics[1:]:
+            ema = self.alpha * val + (1 - self.alpha) * ema
+            
+        # 2. Оценка индивидуальной дисперсии
+        individual_variance = np.var(historical_metrics, ddof=1)
+        
+        # 3. Истинный Интервал Предсказания (Prediction Interval)
+        # Мы прогнозируем СЛЕДУЮЩЕЕ единичное измерение, а не истинное среднее.
+        # Формула: sigma_pred = sqrt( sigma_ind^2 + population_sigma^2 / n )
+        # Коридор никогда не сожмется до нуля!
+        prediction_sigma = np.sqrt(individual_variance + (population_sigma**2 / n))
+        
+        # 4. Расчет Z-score для нового наблюдения
+        z_score = np.abs(new_metric - ema) / prediction_sigma
+        return float(z_score)

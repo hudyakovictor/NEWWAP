@@ -1,5 +1,6 @@
 from typing import Any, Dict, List
 import math
+import numpy as np
 from .utils import BUCKET_METRIC_KEYS
 
 # Mapping from frontend zone IDs to backend metric keys or zone names
@@ -94,13 +95,12 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             excluded = True # Dynamic in mock, here simplified
             
         # Determine score
-        score = 0.0
+        score = np.nan
         if visible and not excluded:
             if backend_key and backend_key in metrics:
                 score = metrics[backend_key]
             else:
-                # Stub deterministic score for missing real metrics
-                score = 0.85 if meta["group"] == "bone" else 0.65
+                score = np.nan
         
         zones.append({
             **meta,

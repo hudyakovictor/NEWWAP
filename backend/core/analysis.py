@@ -539,11 +539,56 @@ METHODOLOGY_VERSION = "ITER-6.5-2025-05-01"
 
 
 def calculate_bayesian_evidence(
-    summary_a: Dict[str, Any],
-    summary_b: Dict[str, Any],
+    summary_a: Dict[str, Any] | dict,
+    summary_b: Dict[str, Any] | dict,
     calibration_stats: Dict[str, Any] | None = None,
     longitudinal_model: LongitudinalAnalyzer | None = None,
+    *args,
+    **kwargs,
 ) -> Dict[str, Any]:
+    # Support simpler/direct signature calculate_bayesian_evidence(metrics_a, metrics_b, delta_years, pose_bucket)
+    if "metrics" in summary_a:
+        metrics_a = summary_a["metrics"]
+    else:
+        metrics_a = summary_a
+
+    if "metrics" in summary_b:
+        metrics_b = summary_b["metrics"]
+    else:
+        metrics_b = summary_b
+
+    # Check if this is the simplified direct signature
+    if not isinstance(summary_a, dict) or "photo_id" not in summary_a or not isinstance(summary_b, dict) or "photo_id" not in summary_b:
+        delta_years = args[0] if len(args) > 0 else kwargs.get("delta_years", 0.0)
+        # 1. Приоры на основе возраста (delta_years)
+        prior_h0 = max(0.2, 0.8 - (abs(delta_years) * 0.015))
+        prior_h1 = 1.0 - prior_h0 - 0.05
+        prior_h2 = 0.05
+        
+        # 2. Вычисление правдоподобия (Likelihood) на основе костных признаков
+        bone_diff = abs(metrics_a.get('cranial_face_index', 0.0) - metrics_b.get('cranial_face_index', 0.0))
+        
+        likelihood_h0 = np.exp(-bone_diff / 0.05)
+        likelihood_h1 = 1.0 - likelihood_h0
+        likelihood_h2 = np.exp(-bone_diff / 0.01)
+        
+        p_h0 = likelihood_h0 * prior_h0
+        p_h1 = likelihood_h1 * prior_h1
+        p_h2 = likelihood_h2 * prior_h2
+        
+        total = p_h0 + p_h1 + p_h2 + 1e-8
+        
+        return {
+            "H0": p_h0 / total,
+            "H1": p_h1 / total,
+            "H2": p_h2 / total,
+            "posteriors": {"H0": p_h0 / total, "H1": p_h1 / total, "H2": p_h2 / total},
+            "priors": {"H0": prior_h0, "H1": prior_h1, "H2": prior_h2},
+            "likelihoods": {"H0": likelihood_h0, "H1": likelihood_h1, "H2": likelihood_h2},
+        }
+
+    # [FIX-77, FIX-78] Проверяем статусы перед сравнением
+    status_a = summary_a.get("status", "unknown")
     """
     [ITER-6.5] Forensic Bayesian Evidence Breakdown — исправленная версия с traceability.
     
@@ -1141,6 +1186,9 @@ def calculate_bayesian_evidence(
         },
         "priors": {k: round(v, 4) for k, v in priors.items()},
         "posteriors": posteriors,
+        "H0": posteriors.get("H0", 0.0),
+        "H1": posteriors.get("H1", 0.0),
+        "H2": posteriors.get("H2", 0.0),
         "verdict": verdict,
         "methodologyVersion": METHODOLOGY_VERSION,
         "computationLog": computation_log,
@@ -1619,6 +1667,22 @@ def _save_mesh_assets(reconstruction: Any, texture_filename: str, output_dir: Pa
     return {"mesh_obj": obj_path.name, "mesh_mtl": mtl_path.name}
 
 
+def _safe_atomic_write_json(target_path: Path, data: dict):
+    import json, tempfile, os
+    from backend.core.utils import _NumpyEncoder
+    target_path = Path(target_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(dir=str(target_path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
+        os.replace(temp_path, str(target_path))
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise e
+
+
 def extract_photo_bundle(
     source_path: Path,
     dataset: str,
@@ -1632,16 +1696,29 @@ def extract_photo_bundle(
     if image_bgr is None:
         raise RuntimeError(f"Не удалось прочитать изображение: {source_path}")
 
-    pose = runtime.pose_detector.get_pose(source_path)
-    bucket = str(pose.get("bucket", "unclassified"))
-    angle = RAW_BUCKET_TO_UI.get(bucket, "unknown")
-
     reconstruction = resolve_reconstruction(
         runtime.reconstruction,
         source_path,
         output_dir,
         neutral_expression=False,
     )
+
+    angles_deg = reconstruction.angles_deg
+    yaw = float(angles_deg[1])
+    pitch = float(angles_deg[0])
+    roll = float(angles_deg[2])
+
+    bucket = reconstruction.pose_bucket
+    angle = RAW_BUCKET_TO_UI.get(bucket, bucket)
+
+    pose = {
+        "yaw": yaw,
+        "pitch": pitch,
+        "roll": roll,
+        "bucket": bucket,
+        "pose_source": "3DDFA_v3",
+        "needs_manual_review": abs(yaw) > 45.0,
+    }
 
     raw_result = reconstruction.payload.get("raw_result", {})
     # [PIPE-FIX] Skip render_face/render_shape/render_mask — not needed for pipeline.
@@ -1762,7 +1839,8 @@ def extract_photo_bundle(
         "methodology_version": METHODOLOGY_VERSION,  # [FIX-95] Версия методики
         "runtime_config_hash": ForensicManifest.compute_manifest_id(photo_id, runtime),
     }
-    write_json(output_dir / "summary.json", summary)
+    _safe_atomic_write_json(output_dir / "summary.json", summary)
+    _safe_atomic_write_json(output_dir / f"{photo_id}_summary.json", summary)
     return summary
 
 

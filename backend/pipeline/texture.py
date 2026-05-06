@@ -101,6 +101,63 @@ class SkinTextureAnalyzer:
     def __init__(self):
         pass
 
+    def compute_specular_gloss(self, gray_uv: np.ndarray, skin_mask: np.ndarray) -> float:
+        """
+        Оценивает наличие глянцевых бликов (часто признак силиконовой маски).
+        Исправлен баг порогов (TX-04).
+        """
+        valid_pixels = gray_uv[skin_mask > 0]
+        if len(valid_pixels) == 0:
+            return np.nan
+            
+        p97 = np.percentile(valid_pixels, 97)
+        mean_intensity = np.mean(valid_pixels)
+        adaptive_threshold = max(float(p97), float(mean_intensity) + 50.0) 
+        
+        specular_pixels = valid_pixels[valid_pixels >= adaptive_threshold]
+        gloss_score = len(specular_pixels) / len(valid_pixels)
+        return float(gloss_score)
+
+    def compute_glcm_features(self, gray_uv: np.ndarray, skin_mask: np.ndarray) -> dict:
+        """
+        Вычисляет текстурные фичи (Контраст, Однородность) только по коже.
+        """
+        # 1. Квантование до 32 уровней (экономия памяти и стабилизация шума)
+        quantized = (gray_uv / 8).astype(np.uint8)
+        
+        # 2. Изоляция фона
+        masked_quantized = np.zeros_like(quantized)
+        masked_quantized[skin_mask > 0] = quantized[skin_mask > 0] + 1
+        
+        # 3. Построение GLCM матрицы (levels=33, т.к. 0 - фон, 1-32 - кожа)
+        glcm = graycomatrix(
+            masked_quantized, 
+            distances=[1, 3], 
+            angles=[0, np.pi/4, np.pi/2, 3*np.pi/4], 
+            levels=33, 
+            symmetric=True, 
+            normed=True
+        )
+        
+        # 4. ИСКЛЮЧАЕМ ФОН ИЗ РАСЧЕТОВ!
+        glcm[0, :, :, :] = 0
+        glcm[:, 0, :, :] = 0
+        
+        # Перенормализуем матрицу после удаления фона
+        for d in range(glcm.shape[2]):
+            for a in range(glcm.shape[3]):
+                sum_val = np.sum(glcm[:, :, d, a])
+                if sum_val > 0:
+                    glcm[:, :, d, a] /= sum_val
+                    
+        contrast = graycoprops(glcm, 'contrast')[1:, :] # Игнорируем фон
+        homogeneity = graycoprops(glcm, 'homogeneity')[1:, :]
+        
+        return {
+            "glcm_contrast": float(np.mean(contrast)),
+            "glcm_homogeneity": float(np.mean(homogeneity))
+        }
+
     def analyze(
         self,
         face_crop_path: Path,
@@ -128,13 +185,29 @@ class SkinTextureAnalyzer:
             metrics.lbp_uniformity = float(np.sum(hist**2))
             metrics.lbp_entropy = float(-np.sum(hist * np.log(hist + 1e-9)))
 
-        # GLCM
+        # GLCM (with background exclusion)
         gray_32 = (gray // 8).astype(np.uint8)
-        glcm = graycomatrix(gray_32, distances=[1], angles=[0, np.pi/4], levels=32, symmetric=True, normed=True)
-        metrics.glcm_contrast = float(np.mean(graycoprops(glcm, 'contrast')))
-        metrics.glcm_energy = float(np.mean(graycoprops(glcm, 'energy')))
-        metrics.glcm_homogeneity = float(np.mean(graycoprops(glcm, 'homogeneity')))
-        metrics.glcm_correlation = float(np.mean(graycoprops(glcm, 'correlation')))
+        masked_quantized = np.zeros_like(gray_32)
+        masked_quantized[skin_mask > 0] = gray_32[skin_mask > 0] + 1
+        glcm = graycomatrix(
+            masked_quantized, 
+            distances=[1], 
+            angles=[0, np.pi/4], 
+            levels=33, 
+            symmetric=True, 
+            normed=True
+        )
+        glcm[0, :, :, :] = 0
+        glcm[:, 0, :, :] = 0
+        for d in range(glcm.shape[2]):
+            for a in range(glcm.shape[3]):
+                sum_val = np.sum(glcm[:, :, d, a])
+                if sum_val > 0:
+                    glcm[:, :, d, a] /= sum_val
+        metrics.glcm_contrast = float(np.mean(graycoprops(glcm, 'contrast')[1:, :])) if glcm.shape[0] > 1 else 0.0
+        metrics.glcm_energy = float(np.mean(graycoprops(glcm, 'energy')[1:, :])) if glcm.shape[0] > 1 else 0.0
+        metrics.glcm_homogeneity = float(np.mean(graycoprops(glcm, 'homogeneity')[1:, :])) if glcm.shape[0] > 1 else 0.0
+        metrics.glcm_correlation = float(np.mean(graycoprops(glcm, 'correlation')[1:, :])) if glcm.shape[0] > 1 else 0.0
 
         # Gabor responses
         gabor_responses = []
@@ -163,8 +236,10 @@ class SkinTextureAnalyzer:
 
         # Specular gloss
         p97 = np.percentile(masked_pixels, 97)
-        bright_threshold = min(float(p97), 230.0)  # не ниже 230 чтобы отсечь нормальную кожу
-        metrics.specular_gloss = float(np.sum(masked_pixels > bright_threshold) / masked_pixels.size)
+        mean_intensity = np.mean(masked_pixels)
+        adaptive_threshold = max(float(p97), float(mean_intensity) + 50.0)
+        specular_pixels = masked_pixels[masked_pixels >= adaptive_threshold]
+        metrics.specular_gloss = float(len(specular_pixels) / len(masked_pixels))
 
         # Lab color features
         lab = skcolor.rgb2lab(rgb)

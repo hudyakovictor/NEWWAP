@@ -311,3 +311,25 @@ class PairComparisonEngine:
             zones=zones,
             diagnostics=diagnostics
         )
+
+
+def geodesic_pose_distance(R_a: np.ndarray, R_b: np.ndarray) -> float:
+    """
+    Вычисляет истинное геодезическое расстояние между двумя матрицами вращения в пространстве SO(3).
+    Заменяет математически ошибочную Евклидову норму углов Эйлера.
+    
+    Формула: theta = arccos( (Trace(R_a^T * R_b) - 1) / 2 )
+    """
+    # Матрица относительного вращения
+    R_diff = R_a.T @ R_b
+    
+    # След матрицы (Trace)
+    trace = np.trace(R_diff)
+    
+    # Защита от ошибок плавающей точки (ограничение домена arccos [-1, 1])
+    cos_theta = np.clip((trace - 1.0) / 2.0, -1.0, 1.0)
+    
+    angle_rad = np.arccos(cos_theta)
+    angle_deg = np.degrees(angle_rad)
+    
+    return float(angle_deg)

@@ -39,13 +39,14 @@ class DatasetDescriptor:
 
 
 class ForensicWorkbenchService:
-    def __init__(self) -> None:
+    def __init__(self, dataset_path: str | Path | None = None, case_name: str | None = None) -> None:
+        main_dir = Path(dataset_path) if dataset_path else SETTINGS.main_photos_dir
         self.datasets = {
-            "main": DatasetDescriptor("main", SETTINGS.main_photos_dir),
+            "main": DatasetDescriptor("main", main_dir),
             "calibration": DatasetDescriptor("calibration", SETTINGS.calibration_dir),
         }
         self.storage_root = ensure_directory(SETTINGS.storage_root)
-        ensure_directory(SETTINGS.main_photos_dir)
+        ensure_directory(main_dir)
         ensure_directory(SETTINGS.calibration_dir)
         ensure_directory(self.storage_root / "main")
         ensure_directory(self.storage_root / "calibration")
@@ -291,18 +292,22 @@ class ForensicWorkbenchService:
 
     def process_dataset(
         self,
-        dataset: str,
+        dataset: str = "main",
         *,
-        limit: int,
+        limit: int = 999999,
         only_ids: list[str] | None = None,
         progress_callback: callable | None = None,
+        force_recompute: bool = False,
     ) -> None:
         candidates = self.list_dataset(dataset)
         if only_ids:
             wanted = set(only_ids)
             candidates = [record for record in candidates if record["photo_id"] in wanted]
         else:
-            candidates = [record for record in candidates if record["status"] != "ready"][:limit]
+            if force_recompute:
+                candidates = candidates[:limit]
+            else:
+                candidates = [record for record in candidates if record["status"] != "ready"][:limit]
 
         total = len(candidates)
         if progress_callback:
@@ -321,6 +326,15 @@ class ForensicWorkbenchService:
                     progress=(index / total) * 100.0,
                     message=record["filename"],
                 )
+
+    def compute_pairwise_matrix(self) -> np.ndarray:
+        """
+        [ITER-1.4] Сравнение N x N на основе готовых summaries.
+        """
+        from .compare import InvestigationEngine
+        engine = InvestigationEngine(self.storage_root / "main")
+        matrix = engine.compute_n_x_n_matrix()
+        return matrix
 
     def calibration_records(self) -> list[dict[str, Any]]:
         return self.list_dataset("calibration")
