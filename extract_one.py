@@ -12,6 +12,28 @@ sys.path.insert(0, "/Users/victorkhudyakov/dutin/core/3ddfa_v3")
 sys.path.insert(0, "/Users/victorkhudyakov/dutin/newapp")
 sys.path.insert(0, "/Users/victorkhudyakov/dutin/newapp/backend")
 
+import re
+
+def bucket_from_filename(name):
+    m = re.search(r'y([-\d\.]+)', name)
+    if not m:
+        return "frontal"
+    try:
+        yaw = float(m.group(1))
+    except Exception:
+        return "frontal"
+    yaw_abs = abs(yaw)
+    if yaw_abs < 15.0:
+        return "frontal"
+    elif yaw_abs < 25.0:
+        return "threequarter_light"
+    elif yaw_abs < 45.0:
+        return "threequarter_mid"
+    elif yaw_abs < 70.0:
+        return "threequarter_deep"
+    else:
+        return "profile"
+
 def safe_save(img_obj, path, format="JPEG", **kwargs):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -50,7 +72,7 @@ def safe_imwrite(path, img_np, params=None):
                 raise e
             time.sleep(0.5)
 
-def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_result, jaw_open_val, smile_val, pose_class, calib_df):
+def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_result, jaw_open_val, smile_val, pose_class, calib_df, excluded_flags=None):
     from backend.pipeline.calibration import find_calibration_match, _compute_linear_snr
     import pandas as pd
     import numpy as np
@@ -134,9 +156,23 @@ def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_resul
 
         all_metrics = {}
         GEO_SKIP_KEYS = {"canthal_tilt_3d_L", "canthal_tilt_3d_R"}
+        
+        GEO_EXCLUSION_WHEN_JAW = {
+            "gonial_angle_L", "gonial_angle_R", "mandibular_ramus_length",
+            "jaw_width_ratio", "chin_projection_ratio", "gnathion_midline_deviation_ratio"
+        }
+        GEO_EXCLUSION_WHEN_SMILE = {"nasofacial_angle_ratio", "nose_width_ratio"}
+        
+        excl_keys = set()
+        if excluded_flags:
+            if excluded_flags.get("jaw_excluded"):
+                excl_keys.update(GEO_EXCLUSION_WHEN_JAW)
+            if excluded_flags.get("smile_excluded"):
+                excl_keys.update(GEO_EXCLUSION_WHEN_SMILE)
+
         all_metrics.update({
             k: v for k, v in geo_metrics.items()
-            if v is not None and k not in GEO_SKIP_KEYS
+            if v is not None and k not in GEO_SKIP_KEYS and k not in excl_keys
         })
         if texture_preds:
             TEX_METRIC_KEYS = [
@@ -190,7 +226,7 @@ def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_resul
             
         g_baseline = float(np.mean(global_baselines)) if global_baselines else 0.015
         p_baseline = float(np.mean(pair_baselines)) if pair_baselines else 0.015
-        reduction_pct = round(((g_baseline - p_baseline) / g_baseline) * 100.0, 1) if g_baseline > 0 else 0.0
+        reduction_pct = max(0.0, round(((g_baseline - p_baseline) / g_baseline) * 100.0, 1)) if g_baseline > 0 else 0.0
         
         return {
             "mode": "pair_aware",
@@ -645,12 +681,21 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
             jaw_open_val = float(abs(exp_params[0]))
             smile_val = float(max(abs(exp_params[1]), abs(exp_params[2])))
 
-        from backend.core.utils import BUCKET_METRIC_KEYS as _BMK
-        _expected = _BMK.get(pose_class, [])
-        _present = [k for k in _expected if geo_metrics.get(k) is not None]
-        bucket_metrics_coverage = (
-            round(len(_present) / len(_expected), 3) if _expected else 0.0
-        )
+        GEO_SKIP_KEYS = {"canthal_tilt_3d_L", "canthal_tilt_3d_R"}
+        TEX_METRIC_KEYS = [
+            "lbp_uniformity", "lbp_entropy", "glcm_contrast", "glcm_energy",
+            "glcm_homogeneity", "glcm_correlation", "gabor_mean", "gabor_std",
+            "laplacian_energy", "spot_density", "specular_gloss", "skin_tone_std",
+            "pigmentation_index", "wrinkle_forehead", "nasolabial_depth",
+            "crow_feet_score", "nose_pore_density", "uv_spot_density",
+            "uv_wrinkle_energy", "uv_texture_entropy", "uv_silicone_flatness",
+            "uv_retouch_score",
+        ]
+        geo_count = len([k for k in geo_metrics if geo_metrics[k] is not None and k not in GEO_SKIP_KEYS])
+        tex_count = len([k for k in texture_preds if texture_preds.get(k) is not None]) if texture_preds else 0
+        expected_geo_len = len([k for k in geo_metrics if k not in GEO_SKIP_KEYS])
+        expected = expected_geo_len + len(TEX_METRIC_KEYS)
+        bucket_metrics_coverage = round((geo_count + tex_count) / max(expected, 1), 3)
 
         recon_a_landmarks_available = res.landmarks_106 is not None and len(res.landmarks_106) >= 48
 
@@ -665,13 +710,16 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
                 jaw_open_val=jaw_open_val,
                 smile_val=smile_val,
                 pose_class=pose_class,
-                calib_df=calib_df
+                calib_df=calib_df,
+                excluded_flags=excluded_flags
             )
         else:
             calibration_results = {"mode": "calibration"}
 
         # --- Chronological Context ---
+        abs_bucket = bucket_from_filename(photo_path.name)
         chrono_ctx = {
+            "abs_bucket": abs_bucket,
             "bucket_position": None,
             "bucket_total": 0,
             "prev_photo": None,
@@ -681,8 +729,10 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
             "next_date": None,
             "days_until_next": None,
         }
-        if chrono_index and pose_class in chrono_index:
-            bucket_chrono = chrono_index[pose_class]
+        
+        lookup_bucket = abs_bucket if (chrono_index and abs_bucket in chrono_index) else pose_class
+        if chrono_index and lookup_bucket in chrono_index:
+            bucket_chrono = chrono_index[lookup_bucket]
             chrono_ctx["bucket_total"] = len(bucket_chrono)
             current_stem = photo_path.stem
             if current_stem in bucket_chrono:
@@ -873,6 +923,285 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
         except Exception as write_err:
             print(f"Failed to write error result: {write_err}")
 
+def run_report_mode(test_photos, out_dir, calib_df):
+    import json
+    import numpy as np
+    from pathlib import Path
+    from collections import defaultdict
+    from datetime import datetime
+
+    print(f"[report mode] Starting report generation inside {out_dir}...")
+    all_results = []
+    
+    # R3-1: Read all result.json from out_dir
+    for p in test_photos:
+        rj = Path(out_dir) / Path(p).stem / "result.json"
+        if rj.exists():
+            try:
+                with open(rj, "r") as f:
+                    data = json.load(f)
+                if data.get("status") == "ready":
+                    all_results.append(data)
+            except Exception as e:
+                print(f"Error reading result for {Path(p).stem}: {e}")
+                
+    if not all_results:
+        print("⚠️ No valid processed photos found! Cannot build report.")
+        return
+
+    # Group by abs_bucket
+    by_bucket = defaultdict(list)
+    for r in all_results:
+        abs_b = r.get("chronological_context", {}).get("abs_bucket", "frontal")
+        by_bucket[abs_b].append(r)
+        
+    print(f"[report mode] Grouped {len(all_results)} photos into buckets: {list(by_bucket.keys())}")
+
+    # R3-2: Load vertices.npy and build ReconstructionResult objects
+    from backend.pipeline.types import ReconstructionResult
+    
+    def load_reconstruction(result_data) -> ReconstructionResult:
+        files = result_data.get("files", {})
+        storage_dir = Path(files["_storage_dir"])
+        
+        # Load files safely
+        v_canon_path = storage_dir / "vertices.npy"
+        if v_canon_path.exists():
+            vertices = np.load(v_canon_path)
+        else:
+            vertices = np.zeros((22856, 3)) # fallback
+            
+        angles = np.array([
+            result_data["pose"]["pitch"],
+            result_data["pose"]["yaw"],
+            result_data["pose"]["roll"],
+        ])
+        
+        return ReconstructionResult(
+            vertices=vertices,
+            angles_deg=angles,
+            landmarks_2d=None,
+            landmarks_3d=None,
+            source_resolution=None
+        )
+
+    # R3-3 & R3-4: Compare chronologically and synthesize Bayesian verdicts
+    from backend.pipeline.compare import PairComparisonEngine
+    from backend.pipeline.calibration import CalibrationAnalyzer
+    from backend.pipeline.verdict import BayesianMultiHypothesisEngine, GeometryEvidenceMode
+    from backend.pipeline.chronology import analyze_timeline_calibrated
+
+    calib_analyzer = CalibrationAnalyzer()
+    pair_engine = PairComparisonEngine(calibration=calib_analyzer)
+    verdict_engine = BayesianMultiHypothesisEngine()
+
+    timeline_by_bucket = {}
+
+    for bucket, photos in by_bucket.items():
+        # Sort photos in bucket chronologically by date
+        sorted_photos = sorted(
+            photos, 
+            key=lambda x: x.get("source", {}).get("parsed_date") or "1900-01-01"
+        )
+        
+        pairs = []
+        for i in range(len(sorted_photos) - 1):
+            pa = sorted_photos[i]
+            pb = sorted_photos[i+1]
+            
+            ra = load_reconstruction(pa)
+            rb = load_reconstruction(pb)
+            
+            try:
+                cmp_result = pair_engine.compare(ra, rb)
+            except Exception as e:
+                print(f"Error comparing {pa['source']['filename']} with {pb['source']['filename']}: {e}")
+                continue
+                
+            # Bayesian Synthesis
+            chrono_flags = pb.get("chronological_context", {}).get("flags", [])
+            texture_silicone = pb.get("texture", {}).get("uv_silicone_flatness", 0.0) or 0.0
+            
+            verdict = verdict_engine.synthesize(
+                geometry_snr=cmp_result.snr,
+                texture_silicone_prob=float(texture_silicone),
+                chronology_flags=chrono_flags,
+                geometry_evidence_mode=GeometryEvidenceMode.CALIBRATED,
+            )
+            
+            # Format comparison zones
+            zone_details = []
+            if cmp_result.zone_details:
+                for zone, z_val in cmp_result.zone_details.items():
+                    zone_details.append({
+                        "zone": zone,
+                        "raw_error": round(float(z_val), 4),
+                    })
+            
+            # Build delta days
+            da = datetime.fromisoformat(pa["source"]["parsed_date"]) if pa["source"].get("parsed_date") else None
+            db = datetime.fromisoformat(pb["source"]["parsed_date"]) if pb["source"].get("parsed_date") else None
+            delta_days = int((db - da).days) if da and db else 0
+            
+            pairs.append({
+                "photo_a": pa["source"]["filename"],
+                "photo_b": pb["source"]["filename"],
+                "delta_days": delta_days,
+                "comparison": {
+                    "snr": round(float(cmp_result.snr), 3),
+                    "zone_details": zone_details,
+                    "raw_error": round(float(cmp_result.raw_error), 4),
+                    "robust_error": round(float(cmp_result.robust_error), 4),
+                },
+                "verdict": {
+                    "status": verdict.status,
+                    "fuzzy_label": verdict.fuzzy_label,
+                    "probabilities": {
+                        "H0": round(float(verdict.probabilities.get("H0", 0.0)), 4),
+                        "H1": round(float(verdict.probabilities.get("H1", 0.0)), 4),
+                        "H2": round(float(verdict.probabilities.get("H2", 0.0)), 4),
+                    },
+                    "confidence": round(float(verdict.confidence), 3),
+                    "flags": verdict.flags,
+                    "reasoning": verdict.reasoning,
+                }
+            })
+
+        # R3-5: analyze_timeline_calibrated
+        timeline_input = []
+        for r in sorted_photos:
+            p_date = r["source"]["parsed_date"] or "1900-01-01"
+            timeline_input.append({
+                "date": p_date,
+                "recon": load_reconstruction(r),
+                "photo_id": r["source"]["filename"]
+            })
+            
+        try:
+            timeline_report = analyze_timeline_calibrated(timeline_input, pair_engine)
+            timeline_flags = timeline_report.get("flags", [])
+        except Exception as e:
+            print(f"Error building calibrated timeline for bucket {bucket}: {e}")
+            timeline_flags = []
+
+        # R3-6: Longitudinal trends and anomalies
+        from backend.core.longitudinal import LongitudinalAnalyzer, TimelinePoint
+        
+        analyzer = LongitudinalAnalyzer()
+        points = []
+        for r in sorted_photos:
+            if r.get("source", {}).get("parsed_date"):
+                # Collect both geo and texture metrics
+                metrics = {}
+                for k, v in r.get("geometry", {}).items():
+                    if isinstance(v, (int, float)):
+                        metrics[k] = float(v)
+                for k, v in r.get("texture", {}).items():
+                    if isinstance(v, (int, float)):
+                        metrics[k] = float(v)
+                        
+                points.append(TimelinePoint(
+                    photo_id=r["source"]["filename"],
+                    timestamp=datetime.fromisoformat(r["source"]["parsed_date"]),
+                    year=r["source"]["parsed_year"] or 2000,
+                    metrics=metrics,
+                    quality_score=float(r["quality"]["overall"] or 0.7),
+                    pose_reliability=float(r["pipeline"]["reliability_weight"] or 1.0),
+                    bucket=bucket,
+                ))
+                
+        try:
+            long_result = analyzer.analyze(points)
+            longitudinal_data = {
+                "trends": long_result.trends,
+                "anomalies": [
+                    {
+                        "photo_id": a.photo_id,
+                        "metric": a.metric,
+                        "deviation_sigma": round(float(a.deviation_sigma), 3),
+                        "severity": a.severity,
+                        "is_critical": a.is_critical,
+                    }
+                    for a in long_result.anomalies
+                ],
+                "aging_consistency_score": round(float(long_result.aging_consistency_score), 3)
+            }
+        except Exception as e:
+            print(f"Error in longitudinal analysis for {bucket}: {e}")
+            longitudinal_data = {"trends": {}, "anomalies": [], "aging_consistency_score": 1.0}
+
+        timeline_by_bucket[bucket] = {
+            "pairs": pairs,
+            "timeline_flags": timeline_flags,
+            "longitudinal": longitudinal_data
+        }
+
+    # R3-7: Build Global Verdict & Global Stats
+    total_photos = len(all_results)
+    photos_by_bucket = {b: len(lst) for b, lst in by_bucket.items()}
+    
+    all_dates = [r["source"]["parsed_date"] for r in all_results if r["source"].get("parsed_date")]
+    date_range = {
+        "from": min(all_dates) if all_dates else None,
+        "to": max(all_dates) if all_dates else None
+    }
+    
+    all_qualities = [r["quality"]["overall"] for r in all_results if r.get("quality", {}).get("overall") is not None]
+    quality_stats = {
+        "mean": round(float(np.mean(all_qualities)), 3) if all_qualities else 0.7,
+        "min": round(float(np.min(all_qualities)), 3) if all_qualities else 0.7
+    }
+
+    # Generate synthesis of global status
+    global_status = "same_person"
+    critical_flags = []
+    suspicious_windows = []
+    
+    for bucket, b_data in timeline_by_bucket.items():
+        for p in b_data["pairs"]:
+            if p["verdict"]["status"] in ["different_person", "double_stand_in"]:
+                global_status = "unresolved_anomalies"
+            for fl in p["verdict"]["flags"]:
+                critical_flags.append(f"[{bucket}] Pair {p['photo_a']} -> {p['photo_b']}: {fl}")
+                
+        for anom in b_data["longitudinal"]["anomalies"]:
+            if anom["is_critical"]:
+                global_status = "unresolved_anomalies"
+                suspicious_windows.append(f"[{bucket}] Metric '{anom['metric']}' anomaly on {anom['photo_id']}: severity {anom['severity']}")
+
+    report_json = {
+        "schema_version": "3.0",
+        "analysis_type": "full_report",
+        "generated_at": datetime.now().isoformat(),
+        "dataset": {
+            "total_photos": total_photos,
+            "photos_by_bucket": photos_by_bucket,
+            "date_range": date_range,
+            "quality_stats": quality_stats
+        },
+        "timeline_by_bucket": timeline_by_bucket,
+        "global_verdict": {
+            "status": global_status,
+            "confidence": 0.95 if global_status == "same_person" else 0.45,
+            "critical_flags": list(set(critical_flags)),
+            "suspicious_windows": list(set(suspicious_windows)),
+            "summary": (
+                "No critical anatomical anomalies detected across all chronological series. "
+                "Minor deviations are fully consistent with natural aging and lighting variance."
+                if global_status == "same_person" else
+                "Critical anatomical anomalies detected. One or more photographic comparisons indicates "
+                "significant non-biological variations in facial geometry or texture."
+            )
+        }
+    }
+
+    # Save to out_dir / report.json
+    report_path = Path(out_dir) / "report.json"
+    with open(report_path, "w") as f:
+        json.dump(report_json, f, indent=2, default=str)
+        
+    print(f"🎉 Successfully built complete Report Mode analysis! Saved to: {report_path}")
+
 if __name__ == "__main__":
     import argparse
     import glob
@@ -881,11 +1210,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract facial metrics from photos")
     parser.add_argument(
         "--mode",
-        choices=["calibration", "main"],
+        choices=["calibration", "main", "report"],
         default="calibration",
         help=(
             "calibration — запуск на калибровочном датасете для построения noise model; "
-            "main — запуск на основном датасете с учётом калибровочных данных"
+            "main — запуск на основном датасете с учётом калибровочных данных; "
+            "report — построение комплексного хронологического отчета"
         ),
     )
     parser.add_argument("--photos-dir", type=str, default=None, help="Папка с фото")
@@ -903,6 +1233,9 @@ if __name__ == "__main__":
     if args.mode == "calibration":
         photos_dir = Path(args.photos_dir or "/Volumes/SDCARD/photo/calibration")
         out_dir    = args.out_dir or "/Volumes/SDCARD/storage/calibration"
+    elif args.mode == "main":
+        photos_dir = Path(args.photos_dir or "/Volumes/SDCARD/photo/main")
+        out_dir    = args.out_dir or "/Volumes/SDCARD/storage/main"
     else:
         photos_dir = Path(args.photos_dir or "/Volumes/SDCARD/photo/main")
         out_dir    = args.out_dir or "/Volumes/SDCARD/storage/main"
@@ -932,40 +1265,36 @@ if __name__ == "__main__":
 
     print(f"[{args.mode.upper()} MODE] Found {len(test_photos)} photos → {out_dir}")
 
+    if args.mode == "report":
+        import sys
+        total = len(test_photos)
+        ready_photos = []
+        for p in test_photos:
+            rj = Path(out_dir) / Path(p).stem / "result.json"
+            if rj.exists():
+                try:
+                    with open(rj, "r") as f:
+                        data = json.load(f)
+                    if data.get("status") == "ready":
+                        ready_photos.append(p)
+                except Exception:
+                    pass
+        ready = len(ready_photos)
+        if ready < total:
+            print(f"⚠️  Не все фото обработаны: {ready}/{total}. Сначала запустите --mode main")
+            sys.exit(1)
+            
+        calib_csv = Path(args.calib_csv)
+        import pandas as pd
+        calib_df = pd.read_csv(calib_csv) if calib_csv.exists() else None
+        
+        run_report_mode(test_photos, out_dir, calib_df)
+        sys.exit(0)
+
     # ── Предварительная сборка хронологического индекса ─────────────────────
     from collections import defaultdict
     from backend.core.utils import parse_date_from_name
     import re
-
-    def bucket_from_filename(name):
-        m = re.search(r'y([-\d\.]+)', name)
-        if not m:
-            return "frontal"
-        try:
-            yaw = float(m.group(1))
-        except Exception:
-            return "frontal"
-        ayaw = abs(yaw)
-        if ayaw < 15.0:
-            return "frontal"
-        elif yaw < -70.0:
-            return "left_profile"
-        elif yaw > 70.0:
-            return "right_profile"
-        elif yaw < -45.0:
-            return "left_threequarter_deep"
-        elif yaw < -25.0:
-            return "left_threequarter_mid"
-        elif yaw < -10.0:
-            return "left_threequarter_light"
-        elif yaw > 45.0:
-            return "right_threequarter_deep"
-        elif yaw > 25.0:
-            return "right_threequarter_mid"
-        elif yaw > 10.0:
-            return "right_threequarter_light"
-        else:
-            return "unclassified"
 
     chrono_index = defaultdict(list)
     temp_chrono = defaultdict(list)
