@@ -1018,6 +1018,60 @@ def run_report_mode(test_photos, out_dir, calib_df):
             pose_bucket=result_data["pose"].get("bucket", "frontal"),
         )
 
+    def translate_reasoning(reasoning_lines):
+        translated = []
+        for line in reasoning_lines:
+            if line.startswith("Bayesian Posterior:"):
+                parts = line.replace("Bayesian Posterior:", "").strip().split(",")
+                same_val, swap_val, diff_val = "0.00", "0.00", "0.00"
+                for p in parts:
+                    if "Same=" in p: same_val = p.split("=")[1].strip()
+                    elif "Swap/Mask=" in p: swap_val = p.split("=")[1].strip()
+                    elif "Diff=" in p: diff_val = p.split("=")[1].strip()
+                translated.append(f"Апостериорные вероятности Байеса: Совпадение={same_val}, Подмена/Маска={swap_val}, Различие={diff_val}")
+            elif "Geometry evidence interpreted as calibrated" in line:
+                import re
+                m = re.search(r"SNR=([\d\.]+)", line)
+                snr_val = m.group(1) if m else "0.00"
+                translated.append(f"Геометрические доказательства интерпретированы как откалиброванные; вклад канала геометрии учтен полностью с SNR={snr_val}.")
+            elif "Geometry evidence interpreted as fallback" in line:
+                import re
+                m = re.search(r"SNR=([\d\.]+)", line)
+                snr_val = m.group(1) if m else "0.00"
+                translated.append(f"Геометрические доказательства интерпретированы как резервные (fallback); вклад канала геометрии ослаблен с исходным SNR={snr_val}.")
+            elif "Geometry evidence interpreted as unavailable" in line:
+                import re
+                m = re.search(r"SNR=([\d\.]+)", line)
+                snr_val = m.group(1) if m else "0.00"
+                translated.append(f"Геометрические доказательства недоступны; канал геометрии был отключен, исходный SNR={snr_val} сохранен для отслеживания.")
+            elif "Significant geometric deviation detected" in line:
+                import re
+                m = re.search(r"SNR=([\d\.]+)", line)
+                snr_val = m.group(1) if m else "0.00"
+                translated.append(f"Обнаружено значительное геометрическое отклонение (SNR={snr_val}).")
+            elif "Geometry remains within the expected natural-variation band" in line:
+                import re
+                m = re.search(r"SNR=([\d\.]+)", line)
+                snr_val = m.group(1) if m else "0.00"
+                translated.append(f"Геометрия остается в пределах ожидаемой естественной вариации (SNR={snr_val}).")
+            elif "Texture analysis indicates synthetic materials" in line:
+                import re
+                m = re.search(r"P=([\d\.]+)", line)
+                p_val = m.group(1) if m else "0.00"
+                translated.append(f"Анализ текстуры указывает на наличие синтетических материалов (P={p_val}).")
+            elif "Hard identity conclusions were downgraded" in line:
+                translated.append("Категоричные выводы об идентичности были снижены, так как геометрия получена из резервного прокси, а не из калиброванной модели.")
+            elif "Hard identity conclusions were disabled" in line:
+                translated.append("Категоричные выводы об идентичности заблокированы, так как не удалось установить рабочий канал геометрии.")
+            elif "Confidence was capped at" in line:
+                import re
+                m = re.search(r"capped at ([\d\.]+)", line)
+                cap_val = m.group(1) if m else "0.50"
+                translated.append(f"Уровень уверенности ограничен на уровне {cap_val} политикой геометрических данных.")
+            else:
+                translated.append(line)
+        return translated
+
     # R3-3 & R3-4: Compare chronologically and synthesize Bayesian verdicts
     from backend.pipeline.compare import PairComparisonEngine, _compute_linear_snr
     from backend.pipeline.calibration import CalibrationAnalyzer
@@ -1124,7 +1178,7 @@ def run_report_mode(test_photos, out_dir, calib_df):
                     },
                     "confidence": round(float(verdict.confidence), 3),
                     "flags": verdict.flags,
-                    "reasoning": verdict.reasoning,
+                    "reasoning": translate_reasoning(verdict.reasoning),
                     "evidence_snr": verdict_dict.get("evidence_snr"),
                 }
             })

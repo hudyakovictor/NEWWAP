@@ -93,6 +93,12 @@ class ZoneMetric:
     dominant_shift_direction: Optional[str] = None
     delta_mm: Optional[float] = None
     delta_rel: Optional[float] = None
+    metric: Optional[str] = None
+    view: Optional[str] = None
+    z_score: Optional[float] = None
+    level_1_5: Optional[int] = None
+    text_user: Optional[str] = None
+    text_expert: Optional[str] = None
 
 @dataclass(frozen=True)
 class ComparisonResult:

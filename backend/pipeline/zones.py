@@ -325,16 +325,24 @@ def _build_zone_metric(
 
 
 def compute_zone_metrics(
-    reconstruction_a: ReconstructionResult,
-    reconstruction_b: ReconstructionResult,
-    shared_indices: np.ndarray,
-    aligned_points_a: np.ndarray,
-    points_b: np.ndarray,
-    shared_weights: np.ndarray,
-    min_zone_vertices: int,
+    reconstruction_a: ReconstructionResult | None = None,
+    reconstruction_b: ReconstructionResult | None = None,
+    shared_indices: np.ndarray | None = None,
+    aligned_points_a: np.ndarray | None = None,
+    points_b: np.ndarray | None = None,
+    shared_weights: np.ndarray | None = None,
+    min_zone_vertices: int = 3,
     view_name: str | None = None,
     plane_normal: np.ndarray | None = None,
+    **kwargs
 ) -> list[ZoneMetric]:
+    recon_a_val = kwargs.get("recon_a", reconstruction_a)
+    recon_b_val = kwargs.get("recon_b", reconstruction_b)
+    if recon_a_val is not None:
+        reconstruction_a = recon_a_val
+    if recon_b_val is not None:
+        reconstruction_b = recon_b_val
+
     shared_lookup = {int(vertex_id): idx for idx, vertex_id in enumerate(shared_indices.tolist())}
     zones: list[ZoneMetric] = []
     
