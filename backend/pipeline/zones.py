@@ -100,6 +100,16 @@ ZONE_CONFIG = {
     'jaw_L': ('bone_priority_supporting', 'bone_priority_core', 0.8),
     'jaw_R': ('bone_priority_supporting', 'bone_priority_core', 0.8),
     'full_mesh': ('mixed_face_surface', 'bone_priority_supporting', 0.5),
+    'ligament_zygomatic_L': ('soft_tissue_anchored', 'bone_priority_supporting', 0.6),
+    'ligament_zygomatic_R': ('soft_tissue_anchored', 'bone_priority_supporting', 0.6),
+    'ligament_orbital_L': ('soft_tissue_anchored', 'bone_priority_supporting', 0.6),
+    'ligament_orbital_R': ('soft_tissue_anchored', 'bone_priority_supporting', 0.6),
+    'jaw_angle_L': ('bone_priority_core', 'bone_priority_core', 1.0),
+    'jaw_angle_R': ('bone_priority_core', 'bone_priority_core', 1.0),
+    'temporal_L': ('bone_priority_core', 'bone_priority_core', 0.8),
+    'temporal_R': ('bone_priority_core', 'bone_priority_core', 0.8),
+    'cheek_soft_L': ('soft_tissue_sensitive', 'soft_tissue_sensitive', 0.2),
+    'cheek_soft_R': ('soft_tissue_sensitive', 'soft_tissue_sensitive', 0.2),
 }
 
 MACRO_BONE_INDICES = {
