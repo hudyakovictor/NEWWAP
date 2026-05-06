@@ -50,7 +50,9 @@ def safe_imwrite(path, img_np, params=None):
                 raise e
             time.sleep(0.5)
 
-def extract_one(photo_path_str, out_root_dir_str):
+def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibration_norms=None):
+    import time
+    _t_start = time.time()
     photo_path = Path(photo_path_str)
     photo_name = photo_path.stem
     out_dir = Path(out_root_dir_str) / photo_name
@@ -453,109 +455,161 @@ def extract_one(photo_path_str, out_root_dir_str):
         except Exception:
             pass
 
-        result = {
-            "photo_path": str(photo_path),
-            "filename": photo_path.name,
-            "timestamp": datetime.now().isoformat(),
-            "parsed_year": parsed_year,
-            "image_width": img_info["width"],
-            "image_height": img_info["height"],
-            "image_format": img_info["format"] or "JPEG",
-            "image_mode": img_info["mode"],
-            "pose_yaw": pose_result.get("yaw"),
-            "pose_pitch": pose_result.get("pitch"),
-            "pose_roll": pose_result.get("roll"),
-            "pose_source": pose_result.get("pose_source", "none"),
-            "pose_classification": pose_result.get("pose_classification", "unknown"),
-            "bbox_x": bbox_result.get("x"),
-            "bbox_y": bbox_result.get("y"),
-            "bbox_w": bbox_result.get("w"),
-            "bbox_h": bbox_result.get("h"),
-            "bbox_score": bbox_result.get("score"),
-            "bbox_kp5": bbox_result.get("kp5", []),
-            "face_mean_lum": face_stats.get("meanLum") if face_stats.get("success") else None,
-            "face_std_lum": face_stats.get("stdLum") if face_stats.get("success") else None,
-            "face_mean_r": face_stats.get("meanR") if face_stats.get("success") else None,
-            "face_mean_g": face_stats.get("meanG") if face_stats.get("success") else None,
-            "face_mean_b": face_stats.get("meanB") if face_stats.get("success") else None,
-            "face_std_r": face_stats.get("stdR") if face_stats.get("success") else None,
-            "face_std_g": face_stats.get("stdG") if face_stats.get("success") else None,
-            "face_std_b": face_stats.get("stdB") if face_stats.get("success") else None,
-            "quality_blur": quality_metrics.get("blur_value") if quality_metrics.get("success") else None,
-            "quality_sharpness": quality_metrics.get("sharpness_value") if quality_metrics.get("success") else None,
-            "quality_jpeg": quality_metrics.get("jpeg_blockiness") if quality_metrics.get("success") else None,
-            "quality_overall": quality_metrics.get("overall_quality") if quality_metrics.get("success") else None,
-            "reconstruction_success": reconstruction.get("success", False),
-            "vertices_count": reconstruction.get("vertices_count"),
-            "triangles_count": reconstruction.get("triangles_count"),
-            "mesh_path": str(out_dir) if reconstruction.get("success") else None,
-            "uv_texture_path": str(out_dir / "uv_texture_hd.jpg") if reconstruction.get("success") else None,
-            "uv_confidence_mask_path": str(out_dir / "uv_confidence_mask.jpg") if reconstruction.get("success") else None,
-            "segmented_face_path": str(out_dir / "face_crop.png"),
-            "texture_predictions": texture_preds,
-            "texture_actual": texture_actual,
-            "texture_analysis_notes": texture_notes,
-            "geometric_metrics": geometric,
-            "errors": errors
-        }
-        
         from core.utils import RAW_BUCKET_TO_UI
-        bucket = pose_class
-        bucket_ui = RAW_BUCKET_TO_UI.get(bucket, "unknown")
+        bucket_ui = RAW_BUCKET_TO_UI.get(pose_class, "unknown")
 
-        result_dict = dict(result)
-        result_dict["bucket"] = bucket
-        result_dict["pose_bucket"] = bucket
-        result_dict["bucket_ui"] = bucket_ui
-        result_dict["status"] = "ready"
-        result_dict["reliability_weight"] = round(float(reliability), 3)
-        
-        # --- Extract expression and smile parameters ---
         exp_params = res.payload.get("exp_params") if hasattr(res, "payload") and isinstance(res.payload, dict) else None
         jaw_open_val = 0.0
         smile_val = 0.0
         if exp_params is not None and len(exp_params) >= 3:
             jaw_open_val = float(abs(exp_params[0]))
             smile_val = float(max(abs(exp_params[1]), abs(exp_params[2])))
-            
-        result_dict["expression"] = {
-            "mouth_open_intensity": round(jaw_open_val, 4),
-            "smile_intensity": round(smile_val, 4),
-            "is_mouth_open_detected": jaw_open_val > 0.12,
-            "is_smile_detected": smile_val > 0.08
-        }
-        
-        # Ensure metrics dictionary exists and is populated with geometric and texture metrics
-        if "metrics" not in result_dict or not isinstance(result_dict["metrics"], dict):
-            result_dict["metrics"] = {}
-            
-        if isinstance(geometric, dict):
-            result_dict["metrics"].update(geometric)
-            
-        if isinstance(texture_preds, dict):
-            # Mask forehead wrinkles when head yaw exceeds 30 degrees to avoid pose bias
-            forehead_wrinkle_val = texture_preds.get("wrinkle_forehead", 0.0)
-            if abs(yaw) > 30.0:
-                forehead_wrinkle_val = None
+
+        # Mask forehead wrinkles when head yaw exceeds 30 degrees to avoid pose bias
+        forehead_wrinkle_val = texture_preds.get("wrinkle_forehead", 0.0)
+        if abs(yaw) > 30.0:
+            forehead_wrinkle_val = None
+            if isinstance(texture_preds, dict):
                 texture_preds["wrinkle_forehead"] = None
-                
-            result_dict["metrics"].update({
-                "texture_studio_lighting": texture_preds.get("studio_lighting_score", 0.0),
-                "texture_retouch":         texture_preds.get("retouch_score", 0.0),
-                "texture_lbp_complexity":  texture_preds.get("lbp_complexity", 0.0),
-                "texture_specular_gloss":  texture_preds.get("specular_gloss", 0.0),
-                "texture_spot_density":    texture_preds.get("spot_density", 0.0),
-                "texture_wrinkle_forehead": forehead_wrinkle_val,
-            })
-        
+
         from backend.core.utils import BUCKET_METRIC_KEYS as _BMK
-        _bucket = result_dict.get("pose_bucket", "unclassified")
-        _expected = _BMK.get(_bucket, [])
-        _present = [k for k in _expected
-                    if result_dict.get("metrics", {}).get(k) is not None]
-        result_dict["bucket_metrics_coverage"] = (
+        _expected = _BMK.get(pose_class, [])
+        _present = [k for k in _expected if geo_metrics.get(k) is not None]
+        bucket_metrics_coverage = (
             round(len(_present) / len(_expected), 3) if _expected else 0.0
         )
+
+        recon_a_landmarks_available = res.landmarks_106 is not None and len(res.landmarks_106) >= 48
+
+        calibrated_flags = {}
+        if mode == "main" and calibration_norms:
+            all_metrics = {}
+            if isinstance(geo_metrics, dict):
+                all_metrics.update(geo_metrics)
+            
+            all_metrics.update({
+                "texture_studio_lighting": texture_preds.get("studio_lighting_score", 0.0) if texture_preds else 0.0,
+                "texture_retouch":         texture_preds.get("retouch_score", 0.0) if texture_preds else 0.0,
+                "texture_lbp_complexity":  texture_preds.get("lbp_complexity", 0.0) if texture_preds else 0.0,
+                "texture_specular_gloss":  texture_preds.get("specular_gloss", 0.0) if texture_preds else 0.0,
+                "texture_spot_density":    texture_preds.get("spot_density", 0.0) if texture_preds else 0.0,
+                "texture_wrinkle_forehead": forehead_wrinkle_val,
+            })
+
+            for metric, value in all_metrics.items():
+                if value is None:
+                    continue
+                norm_key = f"{pose_class}_{metric}"
+                norm = calibration_norms.get(norm_key) or calibration_norms.get(metric)
+                if norm:
+                    deviation = abs(value - norm["mean"]) / (norm["std"] + 1e-9)
+                    calibrated_flags[metric] = {
+                        "value":     value,
+                        "norm_mean": norm["mean"],
+                        "norm_std":  norm["std"],
+                        "z_score":   round(deviation, 3),
+                        "flagged":   deviation > 2.5,
+                    }
+
+        result_dict = {
+            "schema_version": "2.0",
+            "status": "ready",
+            "pipeline": {
+                "mode": mode,
+                "timestamp": datetime.now().isoformat(),
+                "processing_time_sec": round(time.time() - _t_start, 2),
+                "reliability_weight": round(float(reliability), 3),
+                "bucket_metrics_coverage": bucket_metrics_coverage,
+            },
+            "source": {
+                "photo_path": str(photo_path),
+                "filename": photo_path.name,
+                "parsed_year": parsed_year,
+                "image": {
+                    "width": img_info["width"],
+                    "height": img_info["height"],
+                    "format": img_info["format"],
+                    "mode": img_info["mode"],
+                },
+            },
+            "pose": {
+                "bucket": pose_class,
+                "bucket_ui": bucket_ui,
+                "source": "3ddfa",
+                "yaw":   round(float(res.angles_deg[1]), 4),
+                "pitch": round(float(res.angles_deg[0]), 4),
+                "roll":  round(float(res.angles_deg[2]), 4),
+            },
+            "quality": {
+                "overall":    quality_metrics.get("overall_quality"),
+                "sharpness":  quality_metrics.get("sharpness_value"),
+                "blur":       quality_metrics.get("blur_value"),
+                "jpeg_noise": quality_metrics.get("jpeg_blockiness"),
+            },
+            "expression": {
+                "mouth_open_intensity": round(jaw_open_val, 4),
+                "smile_intensity":      round(smile_val, 4),
+                "is_mouth_open":        jaw_open_val > 0.12,
+                "is_smile":             smile_val > 0.08,
+            },
+            "face_detection": {
+                "bbox": {
+                    "x": bbox_result.get("x"),
+                    "y": bbox_result.get("y"),
+                    "w": bbox_result.get("w"),
+                    "h": bbox_result.get("h"),
+                    "score": bbox_result.get("score"),
+                },
+                "color": {
+                    "mean_lum": face_stats.get("meanLum"),
+                    "std_lum":  face_stats.get("stdLum"),
+                    "mean_rgb": [face_stats.get("meanR"), face_stats.get("meanG"), face_stats.get("meanB")],
+                    "std_rgb":  [face_stats.get("stdR"),  face_stats.get("stdG"),  face_stats.get("stdB")],
+                } if face_stats.get("success") else None,
+            },
+            "reconstruction": {
+                "success":        reconstruction.get("success", False),
+                "vertices_count": reconstruction.get("vertices_count"),
+                "triangles_count": reconstruction.get("triangles_count"),
+                "ipd_available":  recon_a_landmarks_available,
+            },
+            "geometry": {
+                k: v for k, v in geo_metrics.items()
+            },
+            "texture": {
+                "studio_lighting":  texture_preds.get("studio_lighting_score") if texture_preds else None,
+                "retouch":          texture_preds.get("retouch_score") if texture_preds else None,
+                "lbp_complexity":   texture_preds.get("lbp_complexity") if texture_preds else None,
+                "specular_gloss":   texture_preds.get("specular_gloss") if texture_preds else None,
+                "spot_density":     texture_preds.get("spot_density") if texture_preds else None,
+                "wrinkle_forehead": forehead_wrinkle_val,
+                "silicone_prob":    texture_preds.get("silicone_probability") if texture_preds else None,
+                "quality": {
+                    "laplacian_var":   texture_preds.get("quality_laplacian_var") if texture_preds else None,
+                    "sharpness_score": texture_preds.get("quality_sharpness_score") if texture_preds else None,
+                    "noise_score":     texture_preds.get("quality_noise_score") if texture_preds else None,
+                    "jpeg_score":      texture_preds.get("quality_jpeg_score") if texture_preds else None,
+                    "quality_index":   texture_preds.get("quality_quality_index") if texture_preds else None,
+                },
+                "notes": texture_notes,
+            },
+            "calibration": {
+                "mode": mode,
+                "norms_loaded": len(calibration_norms) if calibration_norms else 0,
+                "flags": calibrated_flags,
+            } if mode == "main" else {"mode": "calibration"},
+            "files": {
+                "original":         str(out_dir / "original.jpg"),
+                "thumbnail":        str(out_dir / "thumbnail.jpg"),
+                "face_crop":        str(out_dir / "face_crop.png"),
+                "mesh_obj":         str(out_dir / "face_mesh.obj"),
+                "vertices_canon":   str(out_dir / "vertices.npy"),
+                "vertices_raw":     str(out_dir / "vertices_world_raw.npy"),
+                "uv_texture":       str(out_dir / "uv_texture_hd.jpg"),
+                "uv_mask":          str(out_dir / "uv_confidence_mask.jpg"),
+            },
+            "errors": errors,
+        }
 
         def recursive_round(obj, precision=4):
             if isinstance(obj, (bool, np.bool_)):
@@ -667,53 +721,28 @@ if __name__ == "__main__":
             if out_path.exists():
                 out_path.unlink()
 
-            result = extract_one(photo, out_dir)
-
-            # В режиме main — обогащаем результат калибровочными нормами
-            if args.mode == "main" and calibration_norms and out_path.exists():
-                with open(out_path, "r") as f:
-                    res_data = json.load(f)
-
-                metrics = res_data.get("metrics", {})
-                pose_bucket = res_data.get("pose_bucket", "frontal")
-                calibrated_flags = {}
-
-                for metric, value in metrics.items():
-                    if value is None:
-                        continue
-                    norm_key = f"{pose_bucket}_{metric}"
-                    norm = calibration_norms.get(norm_key) or calibration_norms.get(metric)
-                    if norm:
-                        deviation = abs(value - norm["mean"]) / (norm["std"] + 1e-9)
-                        calibrated_flags[metric] = {
-                            "value":     value,
-                            "norm_mean": norm["mean"],
-                            "norm_std":  norm["std"],
-                            "z_score":   round(deviation, 3),
-                            "flagged":   deviation > 2.5,
-                        }
-
-                res_data["calibrated_flags"] = calibrated_flags
-                res_data["calibration_mode"] = "main"
-                res_data["calib_norms_loaded"] = len(calibration_norms)
-
-                with open(out_path, "w") as f:
-                    json.dump(res_data, f, ensure_ascii=False, indent=2)
+            result = extract_one(photo, out_dir, mode=args.mode, calibration_norms=calibration_norms)
 
             # Верификация
             if out_path.exists():
                 with open(out_path, "r") as f:
                     res_data = json.load(f)
-                metrics   = res_data.get("metrics", {})
+                
+                pose_bucket = res_data.get("pose", {}).get("bucket", "unknown")
+                geo_metrics = res_data.get("geometry", {}) or {}
+                tex_metrics = res_data.get("texture", {}) or {}
+                metrics = {**geo_metrics, **tex_metrics}
                 null_keys = [k for k, v in metrics.items() if v is None]
-                flagged   = []
+                
+                flagged = []
                 if args.mode == "main":
                     flagged = [
-                        k for k, v in res_data.get("calibrated_flags", {}).items()
+                        k for k, v in res_data.get("calibration", {}).get("flags", {}).items()
                         if isinstance(v, dict) and v.get("flagged")
                     ]
+                
                 print(
-                    f"✅ {Path(photo).name} | bucket={res_data.get('pose_bucket')} "
+                    f"✅ {Path(photo).name} | bucket={pose_bucket} "
                     f"| metrics={len(metrics)} | nulls={len(null_keys)}"
                     + (f" | flagged={len(flagged)}" if args.mode == "main" else "")
                 )
@@ -736,13 +765,17 @@ if __name__ == "__main__":
                         data = json.load(f)
                     
                     expr = data.get("expression", {}) or {}
+                    source = data.get("source", {}) or {}
+                    pose = data.get("pose", {}) or {}
+                    qual = data.get("quality", {}) or {}
+                    expr = data.get("expression", {}) or {}
                     calib_records.append({
-                        "filename": data.get("filename"),
-                        "bucket": data.get("pose_bucket", "frontal"),
+                        "filename": source.get("filename") or data.get("filename"),
+                        "bucket": pose.get("bucket", "frontal"),
                         "mesh_path": str(Path(out_dir) / Path(photo).stem),
-                        "pose_yaw": float(data.get("pose_yaw") or 0.0),
-                        "pose_pitch": float(data.get("pose_pitch") or 0.0),
-                        "quality_overall": float(data.get("quality_overall") or 0.7),
+                        "pose_yaw": float(pose.get("yaw") or 0.0),
+                        "pose_pitch": float(pose.get("pitch") or 0.0),
+                        "quality_overall": float(qual.get("overall") or 0.7),
                         "expression_mouth_open_intensity": float(expr.get("mouth_open_intensity") or 0.0),
                         "expression_smile_intensity": float(expr.get("smile_intensity") or 0.0),
                     })
