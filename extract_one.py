@@ -381,6 +381,8 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
         np.save(out_dir / "vertices.npy", _vertices_canon)          # канон для compare
         np.save(out_dir / "vertices_world_raw.npy", np.array(res.vertices_world))  # raw для дебага
         np.save(out_dir / "normals_world.npy", np.array(res.normals_world))       # normals для дебага/visibility
+        np.save(out_dir / "normals_camera.npy", np.array(res.normals_camera))     # normals_camera для visibility
+        np.save(out_dir / "vertices_camera.npy", np.array(res.vertices_camera))   # vertices_camera для z-buffer
         np.save(out_dir / "triangles.npy", np.array(res.triangles))               # triangles для ReconstructionResult
         with open(out_dir / "face_mesh.obj", 'w') as f:
              for v in res.vertices_world:
@@ -981,6 +983,14 @@ def run_report_mode(test_photos, out_dir, calib_df):
             if (storage_dir / "normals_world.npy").exists() \
             else np.zeros((N, 3), dtype=np.float32)
 
+        normals_camera = np.load(storage_dir / "normals_camera.npy") \
+            if (storage_dir / "normals_camera.npy").exists() \
+            else np.zeros((N, 3), dtype=np.float32)
+
+        v_cam = np.load(storage_dir / "vertices_camera.npy") \
+            if (storage_dir / "vertices_camera.npy").exists() \
+            else v_world
+
         triangles = np.load(storage_dir / "triangles.npy") \
             if (storage_dir / "triangles.npy").exists() \
             else np.zeros((1, 3), dtype=np.int32)
@@ -994,14 +1004,14 @@ def run_report_mode(test_photos, out_dir, calib_df):
         return ReconstructionResult(
             image_path=Path(storage_dir / "original.jpg"),
             vertices_world=v_world,
-            vertices_camera=v_world,    # stub
+            vertices_camera=v_cam,
             vertices_image=v_world[:, :2],  # stub
             triangles=triangles,
             point_buffer=np.zeros((N, 3), dtype=np.float32),
             annotation_groups=[],
             visible_idx_renderer=np.arange(N),
             normals_world=normals_world,
-            normals_camera=np.zeros((N, 3), dtype=np.float32),
+            normals_camera=normals_camera,
             rotation_matrix=np.eye(3, dtype=np.float64),
             translation=np.zeros(3, dtype=np.float64),
             angles_deg=angles,
@@ -1077,6 +1087,20 @@ def run_report_mode(test_photos, out_dir, calib_df):
             db = datetime.fromisoformat(pb["source"]["parsed_date"]) if pb["source"].get("parsed_date") else None
             delta_days = int((db - da).days) if da and db else 0
             
+            # БЛОКЕР 2 & БЛОКЕР 3 & ПРАВКА 7
+            verdict_dict = verdict.to_dict()
+            probs_raw = verdict.probabilities
+            if hasattr(probs_raw, "items"):  # dict
+                h0 = probs_raw.get("H0_same") if "H0_same" in probs_raw else probs_raw.get("H0", 0.0)
+                h1 = probs_raw.get("H1_swap") if "H1_swap" in probs_raw else probs_raw.get("H1", 0.0)
+                h2 = probs_raw.get("H2_diff") if "H2_diff" in probs_raw else probs_raw.get("H2", 0.0)
+            else:
+                h0 = getattr(probs_raw, "H0_same") if hasattr(probs_raw, "H0_same") else getattr(probs_raw, "H0", 0.0)
+                h1 = getattr(probs_raw, "H1_swap") if hasattr(probs_raw, "H1_swap") else getattr(probs_raw, "H1", 0.0)
+                h2 = getattr(probs_raw, "H2_diff") if hasattr(probs_raw, "H2_diff") else getattr(probs_raw, "H2", 0.0)
+
+            print(f"DEBUG verdict.probabilities = {probs_raw}")
+
             pairs.append({
                 "photo_a": pa["source"]["filename"],
                 "photo_b": pb["source"]["filename"],
@@ -1088,18 +1112,20 @@ def run_report_mode(test_photos, out_dir, calib_df):
                     "robust_score_raw": round(float(cmp_result.robust_score_raw or 0), 4),
                     "provisional_band": cmp_result.provisional_band,
                     "robust_provisional_band": cmp_result.robust_provisional_band,
+                    "geometry_evidence_mode": verdict_dict.get("evidence_snr", {}).get("geometry_evidence_mode"),
                 },
                 "verdict": {
-                    "status": verdict.status,
-                    "fuzzy_label": verdict.fuzzy_label,
+                    "status":      verdict_dict["status"],       # "uncertain"
+                    "fuzzy_label": verdict_dict["fuzzy_label"],  # "suspicious_texture"
                     "probabilities": {
-                        "H0": round(float(verdict.probabilities.get("H0", 0.0)), 4),
-                        "H1": round(float(verdict.probabilities.get("H1", 0.0)), 4),
-                        "H2": round(float(verdict.probabilities.get("H2", 0.0)), 4),
+                        "H0": round(float(h0), 4),
+                        "H1": round(float(h1), 4),
+                        "H2": round(float(h2), 4),
                     },
                     "confidence": round(float(verdict.confidence), 3),
                     "flags": verdict.flags,
                     "reasoning": verdict.reasoning,
+                    "evidence_snr": verdict_dict.get("evidence_snr"),
                 }
             })
 
@@ -1166,21 +1192,34 @@ def run_report_mode(test_photos, out_dir, calib_df):
             analyzer.detect_anomalies()
             summary = analyzer.get_summary()
 
+            # Сериализация трендов — analyzer.trends это dict[str, TrendAnalysis]
+            trends_serialized = {}
+            for metric_key, trend in (getattr(analyzer, "trends", {}) or {}).items():
+                trends_serialized[metric_key] = {
+                    "slope": round(float(getattr(trend, "slope", 0)), 4),
+                    "r_squared": round(float(getattr(trend, "r_squared", 0)), 4),
+                    "direction": getattr(trend, "direction", "stable"),
+                    "is_significant": getattr(trend, "is_significant", False),
+                }
+
+            # Сериализация аномалий
+            anomalies_serialized = []
+            for a in (getattr(analyzer, "anomalies", []) or []):
+                anomalies_serialized.append({
+                    "photo_id": getattr(a, "photo_id", ""),
+                    "metric_key": getattr(a, "metric_key", ""),
+                    "severity": getattr(a, "severity", "info"),
+                    "deviation_sigma": round(float(getattr(a, "deviation_sigma", 0)), 2),
+                    "explanation": getattr(a, "explanation", ""),
+                    "is_critical": getattr(a, "severity", "") == "danger",
+                })
+
             longitudinal_data = {
-                "trends": summary.get("trends_analyzed", {}),
+                "trends_analyzed": summary.get("trends_analyzed", 0),
+                "trends": trends_serialized,
                 "anomalies_detected": summary.get("anomalies_detected", 0),
-                "anomalies": [
-                    {
-                        "photo_id": a.photo_id,
-                        "metric": a.metric_key,
-                        "severity": a.severity,
-                        "deviation_sigma": round(a.deviation_sigma, 2),
-                        "explanation": a.explanation,
-                        "is_critical": a.severity in ["critical", "high"]
-                    }
-                    for a in analyzer.anomalies
-                ],
-                "aging_consistency_score": round(float(summary.get("aging_consistency_score", 1.0)), 3)
+                "anomalies": anomalies_serialized,
+                "aging_consistency_score": round(float(summary.get("aging_consistency_score", 1.0)), 3),
             }
         except Exception as e:
             print(f"Error in longitudinal analysis for {bucket}: {e}")
@@ -1196,7 +1235,12 @@ def run_report_mode(test_photos, out_dir, calib_df):
     total_photos = len(all_results)
     photos_by_bucket = {b: len(lst) for b, lst in by_bucket.items()}
     
-    all_dates = [r["source"]["parsed_date"] for r in all_results if r["source"].get("parsed_date")]
+    all_dates = [
+        r["source"]["parsed_date"]
+        for r in all_results
+        if r.get("source", {}).get("parsed_date") 
+        and r["source"]["parsed_date"] > "1900-01-01"
+    ]
     date_range = {
         "from": min(all_dates) if all_dates else None,
         "to": max(all_dates) if all_dates else None
@@ -1225,6 +1269,23 @@ def run_report_mode(test_photos, out_dir, calib_df):
                 global_status = "unresolved_anomalies"
                 suspicious_windows.append(f"[{bucket}] Metric '{anom['metric']}' anomaly on {anom['photo_id']}: severity {anom['severity']}")
 
+    all_h0 = []
+    all_reliability = []
+    for b_data in timeline_by_bucket.values():
+        for pair in b_data["pairs"]:
+            h0 = pair["verdict"]["probabilities"].get("H0", 0.0)
+            # взять reliability из result.json фото_a
+            rel = next((r["pipeline"]["reliability_weight"] for r in all_results
+                        if r["source"]["filename"] == pair["photo_a"]), 0.5)
+            all_h0.append(h0)
+            all_reliability.append(rel)
+
+    if all_h0 and sum(all_reliability) > 0:
+        w = np.array(all_reliability)
+        confidence = float(np.average(all_h0, weights=w))
+    else:
+        confidence = 0.95 if global_status == "same_person" else 0.45
+
     report_json = {
         "schema_version": "3.0",
         "analysis_type": "full_report",
@@ -1238,15 +1299,15 @@ def run_report_mode(test_photos, out_dir, calib_df):
         "timeline_by_bucket": timeline_by_bucket,
         "global_verdict": {
             "status": global_status,
-            "confidence": 0.95 if global_status == "same_person" else 0.45,
+            "confidence": round(confidence, 3),
             "critical_flags": list(set(critical_flags)),
             "suspicious_windows": list(set(suspicious_windows)),
             "summary": (
-                "No critical anatomical anomalies detected across all chronological series. "
-                "Minor deviations are fully consistent with natural aging and lighting variance."
+                "Критических анатомических аномалий не обнаружено. "
+                "Незначительные отклонения соответствуют естественному старению и вариациям освещения."
                 if global_status == "same_person" else
-                "Critical anatomical anomalies detected. One or more photographic comparisons indicates "
-                "significant non-biological variations in facial geometry or texture."
+                "Обнаружены критические анатомические аномалии. "
+                "Одно или несколько хронологических сравнений указывает на потенциальное несоответствие идентичности."
             )
         }
     }
