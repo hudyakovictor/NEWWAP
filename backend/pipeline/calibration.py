@@ -11,18 +11,31 @@ from .types import AlignmentResult, VisibilityResult
 from core.utils import iso_now, read_json, write_json
 
 
+from typing import Any, Dict, List, Optional, Protocol
+
 def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
     """
     [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
     """
     # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
-    # чтобы избежать взрывного роста SNR при идеальных масках.
-    safe_noise = max(abs(noise_baseline), 0.015)
+    # чтобы избежать взрывного роста SNR при идеальных масках (G-03).
+    safe_noise = max(abs(noise_baseline), 0.005)
 
     # Сигнал не может быть отрицательным
     safe_signal = max(signal_error - safe_noise, 0.0)
 
     return safe_signal / safe_noise
+
+@dataclass
+class CalibrationDecomposition:
+    signal: float
+    noise: float
+    snr: float
+
+class CalibrationProtocol(Protocol):
+    def decompose(self, raw_error: float, pose_delta: float) -> CalibrationDecomposition:
+        ...
+
 
 @dataclass
 class NoiseObservation:
@@ -124,6 +137,8 @@ class CalibrationAnalyzer:
     Orchestrates the calibration process and noise model application.
     """
     def __init__(self, model_path: Optional[Path] = None):
+        from core.constants import MIN_SUCCESSFUL_PAIRS_FOR_CALIBRATION
+        self.min_successful_pairs = MIN_SUCCESSFUL_PAIRS_FOR_CALIBRATION
         self.model_path = model_path
         self.model = NoiseModel()
         if model_path and model_path.exists():
@@ -181,3 +196,20 @@ class CalibrationAnalyzer:
             is_significant=bool(final_snr > 2.0), # Standard forensic threshold
             zone_details=zone_details
         )
+
+    def decompose(self, raw_error: float, pose_delta: float) -> CalibrationDecomposition:
+        """
+        Decomposes raw error into signal, expected noise, and linear SNR.
+        """
+        avg_base_noise = float(np.mean([p.mean for p in self.model.zone_profiles.values()])) if self.model.zone_profiles else 0.015
+        expected_noise = avg_base_noise * (1.0 + 0.02 * pose_delta)
+        
+        signal = max(raw_error - expected_noise, 0.0)
+        snr = _compute_linear_snr(raw_error, expected_noise)
+        
+        return CalibrationDecomposition(
+            signal=float(signal),
+            noise=float(expected_noise),
+            snr=float(snr)
+        )
+

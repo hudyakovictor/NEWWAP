@@ -9,9 +9,9 @@ from .types import ComparisonResult, ReconstructionResult, VisibilityResult, Ali
 from .alignment import rigid_umeyama, gpa_unit_scale
 from .scoring import align_and_score, extract_macro_bone_metrics
 from .visibility import compute_visibility
-from .calibration import CalibrationAnalyzer
+from .calibration import CalibrationAnalyzer, CalibrationProtocol, CalibrationDecomposition
 from .zones import MACRO_BONE_INDICES, compute_zone_metrics, provisional_band_from_score
-from core.constants import ALIGNMENT_MIN_RANK
+from core.constants import ALIGNMENT_MIN_RANK, VISIBILITY_ANGLE_DEG
 from core.utils import iso_now, json_ready
 
 
@@ -20,8 +20,8 @@ def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
     [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
     """
     # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
-    # чтобы избежать взрывного роста SNR при идеальных масках.
-    safe_noise = max(abs(noise_baseline), 0.015)
+    # чтобы избежать взрывного роста SNR при идеальных масках (G-03).
+    safe_noise = max(abs(noise_baseline), 0.005)
 
     # Сигнал не может быть отрицательным
     safe_signal = max(signal_error - safe_noise, 0.0)
@@ -29,59 +29,36 @@ def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
     return safe_signal / safe_noise
 
 def _extract_calibrated_geometry_evidence(
-    calibration: CalibrationAnalyzer,
+    calibration: CalibrationProtocol,
     raw_error: float,
     robust_error: float,
     pose_delta: float,
-) -> Dict[str, float]:
+    forced_mode: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Best-effort extraction of calibrated geometry evidence.
-    Falls back to a stable proxy when no dedicated calibration API is available.
+    Unified extraction of calibrated geometry evidence.
     """
-    signal = float(max(robust_error, 0.0))
-    noise = float(max(raw_error - robust_error, 0.0))
-    snr = 0.0
-    evidence_mode = "fallback"
-
-    for method_name in ("decompose_comparison", "estimate_geometry_evidence", "estimate_snr"):
-        method = getattr(calibration, method_name, None)
-        if not callable(method):
-            continue
-
-        candidate = None
-        for kwargs in (
-            {"raw_error": raw_error, "pose_delta": pose_delta},
-            {"error": raw_error, "pose_delta": pose_delta},
-            {"raw_error": raw_error},
-            {"error": raw_error},
-        ):
-            try:
-                candidate = method(**kwargs)
-                break
-            except TypeError:
-                continue
-            except Exception:
-                candidate = None
-                break
-
-        if candidate is None:
-            continue
-
-        if isinstance(candidate, dict):
-            signal = float(candidate.get("signal", candidate.get("signal_error", signal)))
-            noise = float(candidate.get("noise", candidate.get("predicted_noise", noise)))
-            snr = float(candidate.get("snr", candidate.get("signal_to_noise_ratio", snr)))
-        else:
-            signal = float(getattr(candidate, "signal", getattr(candidate, "signal_error", signal)))
-            noise = float(getattr(candidate, "noise", getattr(candidate, "predicted_noise", noise)))
-            snr = float(getattr(candidate, "snr", getattr(candidate, "signal_to_noise_ratio", snr)))
-        evidence_mode = "calibrated"
-        break
-
-    if snr <= 0.0:
-        # [ITER-1] ИСПРАВЛЕНИЕ: Используем унифицированную функцию линейного SNR
-        # с защитой от отрицательного шума и взрывного роста
+    evidence_mode = forced_mode if forced_mode is not None else "calibrated"
+    
+    if evidence_mode == "fallback":
+        # Force fallback behavior
+        signal = float(max(robust_error, 0.0))
+        noise = float(max(raw_error - robust_error, 0.0))
         snr = _compute_linear_snr(signal, noise)
+    else:
+        try:
+            # Call direct decompose method from CalibrationProtocol
+            decomp = calibration.decompose(raw_error, pose_delta)
+            signal = float(decomp.signal)
+            noise = float(decomp.noise)
+            snr = float(decomp.snr)
+            evidence_mode = "calibrated"
+        except Exception:
+            # Fallback
+            signal = float(max(robust_error, 0.0))
+            noise = float(max(raw_error - robust_error, 0.0))
+            snr = _compute_linear_snr(signal, noise)
+            evidence_mode = "fallback"
 
     return {
         "geometry_signal": float(signal),
@@ -89,6 +66,7 @@ def _extract_calibrated_geometry_evidence(
         "geometry_snr": float(max(snr, 0.0)),
         "geometry_evidence_mode": evidence_mode,
     }
+
 
 def shared_vertex_indices(vis_a: VisibilityResult, vis_b: VisibilityResult) -> np.ndarray:
     """Intersection of visible vertices."""
@@ -116,17 +94,23 @@ class PairComparisonEngine:
         self, 
         recon_a: ReconstructionResult, 
         recon_b: ReconstructionResult,
-        visibility_angle_threshold: float = 82.0
+        visibility_angle_threshold: float = VISIBILITY_ANGLE_DEG
     ) -> ComparisonResult:
         # 1. Visibility & Shared Indices
         vis_a = compute_visibility(recon_a, visibility_angle_threshold)
         vis_b = compute_visibility(recon_b, visibility_angle_threshold)
         shared_idx = shared_vertex_indices(vis_a, vis_b)
         
-        # 2. Pose Delta (Gimbal Lock safe compute would be here)
-        # For now, simple diff of angles_deg
-        pose_delta_vec = np.abs(recon_a.angles_deg - recon_b.angles_deg)
-        pose_delta = float(np.linalg.norm(pose_delta_vec))
+        # 2. Pose Delta (Gimbal Lock safe geodesic compute)
+        from scipy.spatial.transform import Rotation
+        try:
+            R_a = Rotation.from_euler('yxz', recon_a.angles_deg, degrees=True)
+            R_b = Rotation.from_euler('yxz', recon_b.angles_deg, degrees=True)
+            rot_vec = (R_a.inv() * R_b).as_rotvec()
+            pose_delta = float(np.linalg.norm(rot_vec) * 180.0 / np.pi)
+        except Exception:
+            pose_delta_vec = np.abs(recon_a.angles_deg - recon_b.angles_deg)
+            pose_delta = float(np.linalg.norm(pose_delta_vec))
 
         if shared_idx.size < ALIGNMENT_MIN_RANK:
             diagnostics = {
@@ -153,11 +137,39 @@ class PairComparisonEngine:
                 diagnostics=diagnostics,
             )
 
-        # 3. Unit Scale Procrustes (GPA)
-        # Normalize both to unit scale based on shared vertices
-        _, scale_a, centroid_a = gpa_unit_scale(recon_a.vertices_world[shared_idx])
-        _, scale_b, centroid_b = gpa_unit_scale(recon_b.vertices_world[shared_idx])
+        # 3. Unit Scale Procrustes (GPA) or Landmark IPD (G-02)
+        # Normalize both to unit scale based on shared vertices or IPD
+        _, scale_a_gpa, centroid_a = gpa_unit_scale(recon_a.vertices_world[shared_idx])
+        _, scale_b_gpa, centroid_b = gpa_unit_scale(recon_b.vertices_world[shared_idx])
         
+        landmarks_available = False
+        geometry_evidence_mode = "calibrated"
+        
+        if (recon_a.landmarks_106 is not None and len(recon_a.landmarks_106) >= 48 and 
+            recon_b.landmarks_106 is not None and len(recon_b.landmarks_106) >= 48):
+            try:
+                lm_a = recon_a.landmarks_106
+                lm_b = recon_b.landmarks_106
+                le_a = lm_a[36:42].mean(0)
+                re_a = lm_a[42:48].mean(0)
+                scale_a_ipd = float(np.linalg.norm(le_a - re_a))
+                
+                le_b = lm_b[36:42].mean(0)
+                re_b = lm_b[42:48].mean(0)
+                scale_b_ipd = float(np.linalg.norm(le_b - re_b))
+                
+                if scale_a_ipd > 1e-6 and scale_b_ipd > 1e-6:
+                    landmarks_available = True
+                    scale_a = scale_a_ipd
+                    scale_b = scale_b_ipd
+            except Exception:
+                pass
+                
+        if not landmarks_available:
+            scale_a = scale_a_gpa
+            scale_b = scale_b_gpa
+            geometry_evidence_mode = "fallback"
+            
         points_a_unit = (recon_a.vertices_world - centroid_a) / (scale_a + 1e-8)
         points_b_unit = (recon_b.vertices_world - centroid_b) / (scale_b + 1e-8)
         
@@ -183,13 +195,12 @@ class PairComparisonEngine:
         )
         
         # 6. Noise Decomposition (Calibration)
-        # decompose_comparison would be called here if available
-        
         geometry_evidence = _extract_calibrated_geometry_evidence(
             self.calibration,
             raw_error=err,
             robust_error=r_err,
             pose_delta=pose_delta,
+            forced_mode=geometry_evidence_mode,
         )
 
         diagnostics = {
@@ -202,6 +213,7 @@ class PairComparisonEngine:
             "geometry_evidence_mode": geometry_evidence["geometry_evidence_mode"],
             "generated_at": iso_now()
         }
+
         
         return ComparisonResult(
             status="ok",

@@ -124,6 +124,35 @@ ALL_BUCKETS = [
     "right_profile",
 ]
 
+def classify_pose_bucket(yaw_deg: float) -> str:
+    """
+    Классифицирует угол поворота (yaw в градусах) в один из стандартных ракурсов.
+    """
+    yaw = float(yaw_deg)
+    yaw_abs = abs(yaw)
+    if yaw_abs <= 12.0:
+        return "frontal"
+    elif yaw > 0:
+        if yaw_abs <= 25.0:
+            return "right_threequarter_light"
+        elif yaw_abs <= 45.0:
+            return "right_threequarter_mid"
+        elif yaw_abs <= 65.0:
+            return "right_threequarter_deep"
+        else:
+            return "right_profile"
+    else:
+        if yaw_abs <= 25.0:
+            return "left_threequarter_light"
+        elif yaw_abs <= 45.0:
+            return "left_threequarter_mid"
+        elif yaw_abs <= 65.0:
+            return "left_threequarter_deep"
+        else:
+            return "left_profile"
+
+
+
 DATE_PATTERNS = [
     re.compile(r"(\d{4})_(\d{2})_(\d{2})"),
     re.compile(r"(\d{4})-(\d{2})-(\d{2})"),

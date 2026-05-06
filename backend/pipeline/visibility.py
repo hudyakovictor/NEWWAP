@@ -65,6 +65,30 @@ def compute_visibility(reconstruction: ReconstructionResult, angle_threshold_deg
     cosine_weights = np.clip((facing_cosines - cosine_threshold) / max(1e-6, 1.0 - cosine_threshold), 0.0, 1.0)
     cosine_weights *= binary_mask.astype(np.float32)
 
+    # V-01: Gradient fade for yaw 45-60 degrees to prevent geometric "hallucinations" in profile shots
+    try:
+        angles = getattr(reconstruction, "angles_deg", None)
+        if angles is not None and len(angles) > 0:
+            yaw = float(angles[0])
+            yaw_abs = abs(yaw)
+            if 45.0 <= yaw_abs <= 60.0:
+                fade = float((60.0 - yaw_abs) / 15.0)
+                x_coords = reconstruction.vertices_camera[:, 0]
+                if yaw > 0:
+                    turning_away = x_coords < 0
+                else:
+                    turning_away = x_coords > 0
+                cosine_weights[turning_away] *= fade
+            elif yaw_abs > 60.0:
+                x_coords = reconstruction.vertices_camera[:, 0]
+                if yaw > 0:
+                    turning_away = x_coords < 0
+                else:
+                    turning_away = x_coords > 0
+                cosine_weights[turning_away] *= 0.0
+    except Exception:
+        pass
+
     return VisibilityResult(
         binary_mask=binary_mask,
         cosine_weights=cosine_weights,

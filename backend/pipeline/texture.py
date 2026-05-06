@@ -122,7 +122,43 @@ class SkinTextureAnalyzer:
         self.fft_analyzer = TextureFrequencyAnalyzer(patch_size=64)
         self.quality_analyzer = ImageQualityAnalyzer()
 
-    def analyze_image(self, image_path: Path, mask_path: Path | None = None) -> dict[str, Any]:
+    def analyze_uv_metrics(self, uv_path: Path | None, uv_mask_path: Path | None) -> float:
+        """
+        [T-03] High-precision pore density estimation using UV unwrapped HD texture.
+        Applies a Laplacian (or LoG) filter on the skin mask of uv_texture_hd.jpg.
+        """
+        if not uv_path or not Path(uv_path).exists():
+            return 0.0
+        try:
+            uv_img = cv2.imread(str(uv_path), cv2.IMREAD_GRAYSCALE)
+            if uv_img is None:
+                return 0.0
+            
+            # Apply Laplacian to detect high-frequency microtexture (pores)
+            laplacian = cv2.Laplacian(uv_img, cv2.CV_64F)
+            
+            if uv_mask_path and Path(uv_mask_path).exists():
+                uv_mask = cv2.imread(str(uv_mask_path), cv2.IMREAD_GRAYSCALE)
+                if uv_mask is not None:
+                    if uv_mask.shape != uv_img.shape:
+                        uv_mask = cv2.resize(uv_mask, (uv_img.shape[1], uv_img.shape[0]), interpolation=cv2.INTER_NEAREST)
+                    valid_skin = uv_mask > 128
+                    if valid_skin.sum() > 100:
+                        pore_density = float(np.std(laplacian[valid_skin]) / 255.0)
+                        return pore_density
+            
+            pore_density = float(np.std(laplacian) / 255.0)
+            return pore_density
+        except Exception:
+            return 0.0
+
+    def analyze_image(
+        self, 
+        image_path: Path, 
+        mask_path: Path | None = None,
+        uv_path: Path | None = None,
+        uv_mask_path: Path | None = None
+    ) -> dict[str, Any]:
         try:
             # [FIX-14] Читаем RGBA если доступно (для face_crop.png с альфа-каналом)
             bgra = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
@@ -189,18 +225,25 @@ class SkinTextureAnalyzer:
             # [ITER-1.3] Normalization by Laplacian variance to avoid sharpness bias
             norm_factor = laplacian_var + 1.0
             
-            # Pore Density
-            patch_gray = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
-            pore_density = (float(cv2.Laplacian(patch_gray, cv2.CV_64F).var()) / norm_factor) if patch_gray.size > 0 else 0.0
+            # Pore Density (T-03)
+            pore_density = self.analyze_uv_metrics(uv_path, uv_mask_path)
+            if pore_density == 0.0:
+                # Fallback to local patch if UV is not available
+                patch_gray = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
+                pore_density = (float(cv2.Laplacian(patch_gray, cv2.CV_64F).var()) / norm_factor) if patch_gray.size > 0 else 0.0
             
             # Forehead Wrinkles
-            forehead_patch = gray[max(0, cy-50):min(h, cy+50), max(0, cx-100):min(w, cx+100)]
-            wrinkle_forehead = (float(np.mean(cv2.Sobel(forehead_patch, cv2.CV_64F, 1, 0, ksize=3)**2)) / norm_factor) if forehead_patch.size > 0 else 0.0
+            forehead_patch = gray[max(0, cy-80):min(h, cy-10), max(0, cx-100):min(w, cx+100)]
+            wrinkle_forehead = (float(np.mean(cv2.Sobel(forehead_patch, cv2.CV_64F, 0, 1, ksize=5)**2)) / norm_factor) if forehead_patch.size > 0 else 0.0
             
-            # [ITER-1.3] Nasolabial Wrinkles - FIX: Use dx=1 for vertical folds
+            # [ITER-1.3] Nasolabial Wrinkles - FIX: Use dx=1 for vertical folds and norm_factor (T-02)
             nasolabial_cy = int(h * 0.6)
             nasolabial_patch = gray[max(0, nasolabial_cy-40):min(h, nasolabial_cy+40), max(0, cx-80):min(w, cx+80)]
-            wrinkle_nasolabial = (float(np.mean(cv2.Sobel(nasolabial_patch, cv2.CV_64F, 1, 0, ksize=3)**2)) / (np.mean(nasolabial_patch) + 1.0)) if nasolabial_patch.size > 0 else 0.0
+            wrinkle_nasolabial = (float(np.mean(cv2.Sobel(nasolabial_patch, cv2.CV_64F, 1, 0, ksize=3)**2)) / norm_factor) if nasolabial_patch.size > 0 else 0.0
+
+            # Albedo Uniformity (T-06)
+            albedo_patch = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
+            albedo_uniformity = (1.0 - float(np.std(albedo_patch)) / 255.0) if albedo_patch.size > 0 else 1.0
 
             # Reliability Weight (Combined with Quality Index)
             res_score = min(w, h) / 1024.0
@@ -208,16 +251,20 @@ class SkinTextureAnalyzer:
 
             # Silicone Probability
             # High lbp_uniformity = uniform texture = likely synthetic/mask
-            # (1.0 - lbp_uniformity) was inverted — it flagged diverse real skin as synthetic
             score = (specular_gloss * 2.1 + lbp_uniformity * 0.8) 
             silicone_probability = _sigmoid(score, bias=SILICONE_SIGMOID_BIAS)
 
             # [FIX-15] Корректировка silicone_probability на основе студийного света/ретуши
-            # Если высокие показатели студийного света или ретуши - понижаем synthetic_prob
-            # (это артефакты обработки, а не синтетика)
             synthetic_adj = (1.0 - studio_lighting_score * 0.3) * (1.0 - retouch_score * 0.4)
             adjusted_silicone_prob = silicone_probability * synthetic_adj
             
+            # Global Smoothness (T-04)
+            fft_res = self.fft_analyzer.analyze_periodicity(gray, cx, cy)
+            periodicity = fft_res.get("periodicity_index", 0.0) if fft_res.get("status") == "ok" else 0.0
+            FFT = float(np.clip(1.0 - periodicity / 10.0, 0.0, 1.0))
+            LBP = float(np.clip(1.0 - lbp_complexity / 5.0, 0.0, 1.0))
+            global_smoothness = LBP * 0.5 + FFT * 0.5
+
             return {
                 "lbp_complexity": lbp_complexity,
                 "lbp_uniformity": lbp_uniformity,
@@ -228,7 +275,8 @@ class SkinTextureAnalyzer:
                 "pore_density": pore_density,
                 "wrinkle_forehead": wrinkle_forehead,
                 "wrinkle_nasolabial": wrinkle_nasolabial,
-                "global_smoothness": float(min(50.0, 1.0 / (lbp_complexity + 1e-6))),
+                "albedo_uniformity": albedo_uniformity,
+                "global_smoothness": global_smoothness,
                 "studio_lighting_score": studio_lighting_score,  # [FIX-15]
                 "retouch_score": retouch_score,  # [FIX-15]
                 "quality": quality
@@ -240,11 +288,6 @@ class SkinTextureAnalyzer:
         """
         [FIX-15] Детекция признаков студийного освещения.
         Возвращает score [0, 1], где 1 = высокая вероятность студийного света.
-        
-        Признаки:
-        - Резкие тени (высокий contrast ratio)
-        - Specular highlights на лбу/носу
-        - Равномерная освещённость фона
         """
         try:
             gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
@@ -258,28 +301,13 @@ class SkinTextureAnalyzer:
             if len(face_pixels) < 100:
                 return 0.0
             
-            # Студийный свет часто даёт низкий dynamic range (всё освещено равномерно)
-            # ИЛИ резкий контраст (harsh shadows)
             p10, p90 = np.percentile(face_pixels, [10, 90])
             dynamic_range = (p90 - p10) / 255.0
             
-            # 2. Анализ бликов (specular highlights)
-            hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-            v_channel = hsv[:, :, 2].astype(np.float32) / 255.0
-            
-            # Взвешенный percentile для насыщенных областей
-            highlight_threshold = 0.85
-            highlight_mask = (v_channel > highlight_threshold) & (mask_float > 0.3)
-            highlight_ratio = highlight_mask.sum() / (mask_float > 0.3).sum() if (mask_float > 0.3).sum() > 0 else 0
-            
-            # 3. Комбинированный score
-            # Низкий dynamic range (< 0.4) + высокие блики (> 0.05) = студийный свет
-            if dynamic_range < 0.35 and highlight_ratio > 0.03:
-                return 0.7  # Вероятно студийный свет
-            elif dynamic_range > 0.6:
-                return 0.3  # Естественный свет (высокий контраст)
-            else:
-                return 0.5  # Неопределённо
+            # T-07: Formula based studio lighting estimation
+            score = 0.5 - abs(dynamic_range - 0.475) * 1.5
+            return float(np.clip(score, 0.0, 1.0))
+
                 
         except Exception:
             return 0.0

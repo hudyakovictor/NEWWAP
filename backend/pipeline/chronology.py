@@ -7,7 +7,10 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
-from core.constants import REFERENCE_PERIOD_END, RTR_RATIO, RTR_MIN_ABS_DELTA, IMPOSSIBLE_SHORTENING_DAYS
+from core.constants import (
+    REFERENCE_PERIOD_END, RTR_RATIO, RTR_MIN_ABS_DELTA, IMPOSSIBLE_AGE_REVERSAL_DAYS,
+    CHRONO_FLAG_IMPOSSIBLE, CHRONO_FLAG_RETURN, CHRONO_FLAG_TRANSITION
+)
 from core.utils import iso_now, BUCKET_METRIC_KEYS
 
 
@@ -20,6 +23,18 @@ def get_ordered_metric_vector(metrics_dict: dict, required_keys: list) -> np.nda
         # Если метрики нет, подставляем 0.0 для сохранения размерности пространства
         vector.append(metrics_dict.get(key, 0.0))
     return np.array(vector, dtype=np.float64)
+
+
+def get_ordered_metric_vectors(metrics_a: dict, metrics_b: dict, required_keys: list) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    [CH-02] Вычисляет векторы метрик только по общим ключам, чтобы избежать искажений расстояния.
+    """
+    common = set(metrics_a.keys()) & set(metrics_b.keys()) & set(required_keys)
+    sorted_keys = sorted(list(common))
+    v1 = np.array([metrics_a[k] for k in sorted_keys], dtype=np.float64)
+    v2 = np.array([metrics_b[k] for k in sorted_keys], dtype=np.float64)
+    return v1, v2
+
 
 class SuspiciousWindow:
     """
@@ -35,7 +50,7 @@ class SuspiciousWindow:
 
     def _calculate_p_substitution(self):
         # [ITER-3] Prior probability increases as time gap decreases for large deviations
-        if self.days < IMPOSSIBLE_SHORTENING_DAYS:
+        if self.days < IMPOSSIBLE_AGE_REVERSAL_DAYS:
             self.prior_p_substitution = 0.8
         elif self.days < 90:
             self.prior_p_substitution = 0.4
@@ -69,7 +84,7 @@ class ChronologyAnalyzer:
     def __init__(self, deviation_threshold: float = 1.2):
         self.deviation_threshold = deviation_threshold
 
-    def check_pair_consistency(self, date_a: str, date_b: str) -> List[Dict[str, Any]]:
+    def check_pair_consistency(self, date_a: str, date_b: str, y_a: float = 0.0, y_b: float = 0.0) -> List[Dict[str, Any]]:
         """
         [GATE-0] Fast temporal check for a pair of images.
         """
@@ -81,17 +96,22 @@ class ChronologyAnalyzer:
             return flags
             
         # Ensure chronological order for comparison logic
-        if d1 > d2: d1, d2 = d2, d1
+        if d1 > d2:
+            d1, d2 = d2, d1
+            y_a, y_b = y_b, y_a
         
         days_delta = abs((d2 - d1).days)
         window = SuspiciousWindow(d1, d2)
         
-        if days_delta < IMPOSSIBLE_SHORTENING_DAYS:
+        # Check for age reversal: younger_score(b) > younger_score(a) when date_b > date_a
+        is_reversal = y_b > y_a
+        
+        if days_delta < IMPOSSIBLE_AGE_REVERSAL_DAYS and is_reversal:
             flags.append({
-                "type": "impossible_short",
+                "type": CHRONO_FLAG_IMPOSSIBLE,
                 "severity": "critical",
                 "prior_p": window.prior_p_substitution,
-                "description": f"Extremely short timeframe ({days_delta} days) for biometric changes."
+                "description": f"Extremely short timeframe ({days_delta} days) with biometric age reversal."
             })
             
         return flags
@@ -135,21 +155,20 @@ class ChronologyAnalyzer:
                 # Deviation Analysis
                 # [ITER-1] ИСПРАВЛЕНИЕ: Используем упорядоченные векторы метрик
                 metrics_keys = sorted(set(prev.get("metrics", {}).keys()) | set(curr.get("metrics", {}).keys()))
-                m1 = get_ordered_metric_vector(prev.get("metrics", {}), metrics_keys)
-                m2 = get_ordered_metric_vector(curr.get("metrics", {}), metrics_keys)
+                m1, m2 = get_ordered_metric_vectors(prev.get("metrics", {}), curr.get("metrics", {}), metrics_keys)
 
                 if m1.size > 0 and m1.size == m2.size:
                     dist = float(np.linalg.norm(m1 - m2))
                     if dist > self.deviation_threshold:
                         if window.prior_p_substitution > 0.5:
                             flags.append({
-                                "type": "impossible_short",
+                                "type": CHRONO_FLAG_IMPOSSIBLE,
                                 "severity": "critical",
-                                "description": f"Critical geometric change (dist={dist:.3f}) in <30 days."
+                                "description": f"Critical geometric change (dist={dist:.3f}) in <{IMPOSSIBLE_AGE_REVERSAL_DAYS} days."
                             })
                         else:
                             flags.append({
-                                "type": "transition_anomaly",
+                                "type": CHRONO_FLAG_TRANSITION,
                                 "severity": "medium",
                                 "description": f"Significant deviation (dist={dist:.3f}) over {days_delta} days."
                             })
@@ -187,19 +206,26 @@ class ChronologyAnalyzer:
                 if not is_reference_period(curr.get("extracted_at")):
                     ref_photos = [p for p in bucket_photos[:i] if is_reference_period(p.get("extracted_at"))]
                     if ref_photos:
-                        # [ITER-1] ИСПРАВЛЕНИЕ: Используем упорядоченные векторы метрик
+                        # [ITER-1] ИСПРАВЛЕНИЕ: Используем упорядоченные векторы метрик по общим ключам
                         all_ref_keys = sorted(set().union(*[p.get("metrics", {}).keys() for p in ref_photos]))
-                        ref_metrics = [get_ordered_metric_vector(p.get("metrics", {}), all_ref_keys) for p in ref_photos]
-                        ref_avg = np.mean(ref_metrics, axis=0)
+                        common_r_keys = set(curr.get("metrics", {}).keys()) & set(all_ref_keys)
+                        valid_ref_photos = [p for p in ref_photos if all(k in p.get("metrics", {}) for k in common_r_keys)]
+                        if valid_ref_photos:
+                            ref_metrics = []
+                            for p in valid_ref_photos:
+                                r_vec, _ = get_ordered_metric_vectors(p.get("metrics", {}), p.get("metrics", {}), sorted(list(common_r_keys)))
+                                ref_metrics.append(r_vec)
+                            ref_avg = np.mean(ref_metrics, axis=0)
+                            curr_vec, _ = get_ordered_metric_vectors(curr.get("metrics", {}), curr.get("metrics", {}), sorted(list(common_r_keys)))
+                            dist_to_ref = float(np.linalg.norm(curr_vec - ref_avg))
+                            dist_to_prev = float(np.linalg.norm(curr_vec - m1)) if m1.size > 0 else 999.0
 
-                        dist_to_ref = float(np.linalg.norm(m2 - ref_avg))
-                        dist_to_prev = float(np.linalg.norm(m2 - m1)) if m1.size > 0 else 999.0
-                        
-                        if dist_to_ref < dist_to_prev * RTR_RATIO and dist_to_prev > RTR_MIN_ABS_DELTA:
-                            flags.append({
-                                "type": "return_to_reference",
-                                "severity": "critical",
-                                "description": "Return to 1999-2001 baseline detected (Deepfake/Mask indicator)."
-                            })
+                            if dist_to_ref < dist_to_prev * RTR_RATIO and dist_to_prev > RTR_MIN_ABS_DELTA:
+                                flags.append({
+                                    "type": CHRONO_FLAG_RETURN,
+                                    "severity": "critical",
+                                    "description": "Return to 1999-2001 baseline detected (Deepfake/Mask indicator)."
+                                })
 
         return photos
+

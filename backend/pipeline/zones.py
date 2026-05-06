@@ -8,6 +8,7 @@ from .utils import bounded_score_from_error, weighted_mean_abs, provisional_band
 
 # --- Exclusion Config ---
 EAR_INDICES = {13, 14, 15, 16}
+assert len(EAR_INDICES) == 4, "EAR_INDICES must contain exactly 4 vertices"
 
 def filter_indices(indices: set | list | np.ndarray | frozenset) -> set:
     """Removes ear indices from any given vertex set."""
@@ -22,8 +23,6 @@ EXCLUDED_ZONES = frozenset(
         "mouth",
         "mouth_corner_L",
         "mouth_corner_R",
-        "right_eyebrow",
-        "left_eyebrow",
         "cheek_lower_L",
         "cheek_lower_R",
         "nose_wing_L",
@@ -43,6 +42,7 @@ def apply_expression_exclusion_mask(
     base_mask: np.ndarray,
     exp_params: np.ndarray | None,
     bfm_indices: dict[str, np.ndarray],
+    face_scale: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, bool]]:
     """
     Динамически исключает зоны мимики из маски расчета.
@@ -57,7 +57,8 @@ def apply_expression_exclusion_mask(
     jaw_open_intensity = float(abs(exp_params[0]))
     smile_intensity = float(max(abs(exp_params[1]), abs(exp_params[2])))
 
-    jaw_excluded = jaw_open_intensity > THRESHOLD_JAW_OPEN
+    # Z-03: Normalize jaw opening threshold using face_scale
+    jaw_excluded = jaw_open_intensity > (THRESHOLD_JAW_OPEN * face_scale)
     cheeks_excluded = smile_intensity > THRESHOLD_SMILE
 
     if jaw_excluded:
@@ -78,11 +79,12 @@ def apply_expression_exclusion_mask(
         "cheeks_excluded_due_to_smile": bool(cheeks_excluded),
     }
 
+
 ZONE_CONFIG = {
     'right_eye': ('soft_tissue_sensitive', 'soft_tissue_sensitive', 0.15),
     'left_eye': ('soft_tissue_sensitive', 'soft_tissue_sensitive', 0.15),
-    'right_eyebrow': ('supporting_structure', 'bone_priority_supporting', 0.45),
-    'left_eyebrow': ('supporting_structure', 'bone_priority_supporting', 0.45),
+    'right_eyebrow': ('brow_ridge', 'bone_priority_core', 0.8),
+    'left_eyebrow': ('brow_ridge', 'bone_priority_core', 0.8),
     'nose': ('bone_priority_supporting', 'bone_priority_core', 0.7),
     'upper_lip': ('soft_tissue_sensitive', 'soft_tissue_sensitive', 0.1),
     'lower_lip': ('soft_tissue_sensitive', 'soft_tissue_sensitive', 0.1),
@@ -125,6 +127,8 @@ MACRO_BONE_INDICES = {
     'cheek_soft_L': [4000, 4001], 'cheek_soft_R': [14000, 14001],
 }
 
+MACRO_BONE_INDICES['right_eyebrow'] = MACRO_BONE_INDICES['brow_ridge_R']
+MACRO_BONE_INDICES['left_eyebrow'] = MACRO_BONE_INDICES['brow_ridge_L']
 
 # --- Helpers ---
 def zone_analysis_role(zone_name: str) -> str:

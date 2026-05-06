@@ -23,6 +23,15 @@ def _get_face_scale_from_points(points: np.ndarray) -> float:
     scale = float(max(x_extent, y_extent * FACE_SCALE_Y_FACTOR))
     return max(scale, 1e-6)
 
+def compute_interorbital_ratio(canthus_L_inner: np.ndarray, canthus_R_inner: np.ndarray, zygomatic_breadth: float) -> float:
+    """
+    [K-03] Вычисляет отношение межорбитального расстояния к скуловой ширине.
+    """
+    if np.allclose(canthus_L_inner, 0) or np.allclose(canthus_R_inner, 0) or zygomatic_breadth <= 1e-6:
+        return 0.0
+    interorbital_dist = float(np.linalg.norm(canthus_L_inner - canthus_R_inner))
+    return interorbital_dist / zygomatic_breadth
+
 def _robust_trimmed_3d_error(
     values: np.ndarray, 
     weights: np.ndarray, 
@@ -238,6 +247,7 @@ def extract_macro_bone_metrics(
 
     metrics["canthal_tilt_L"] = calc_tilt(canthus_L_inner, canthus_L_outer)
     metrics["canthal_tilt_R"] = calc_tilt(canthus_R_inner, canthus_R_outer)
+    metrics["interorbital_ratio"] = compute_interorbital_ratio(canthus_L_inner, canthus_R_inner, zygomatic_breadth)
     
     # Orbit depth (NaN guard)
     if orbit_L_pts.size > 0:

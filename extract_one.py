@@ -36,7 +36,7 @@ def extract_one(photo_path_str, out_root_dir_str):
         img.convert("RGB").save(out_dir / "original.jpg", "JPEG", quality=95)
         
         orig_w, orig_h = img.size
-        new_h = 50
+        new_h = 160
         new_w = int(orig_w * (new_h / orig_h))
         img.copy().resize((new_w, new_h), Image.Resampling.LANCZOS).save(out_dir / "thumbnail.jpg", "JPEG", quality=85)
         
@@ -137,6 +137,22 @@ def extract_one(photo_path_str, out_root_dir_str):
             reconstruction["uv_confidence_mask"] = uv_confidence_mask
                      
         masked_full, masked_face, refined_bbox = psp.apply_segmentation_mask(img, recon_data)
+        if masked_face is not None:
+            if isinstance(masked_face, np.ndarray):
+                face_pil = Image.fromarray(masked_face)
+            else:
+                face_pil = masked_face.copy()
+            face_rgba = face_pil.convert("RGBA")
+            datas = face_rgba.getdata()
+            newData = []
+            for item in datas:
+                if item[0] == 0 and item[1] == 0 and item[2] == 0:
+                    newData.append((0, 0, 0, 0))
+                else:
+                    newData.append(item)
+            face_rgba.putdata(newData)
+            face_rgba.save(out_dir / "face_crop.png", "PNG")
+
         if refined_bbox.get("success"):
             bbox_result = refined_bbox
             
@@ -199,7 +215,7 @@ def extract_one(photo_path_str, out_root_dir_str):
             uv_texture_path=str(out_dir / "uv_texture_hd.jpg") if reconstruction.get("success") else None,
             uv_normalized_path=str(out_dir / "uv_normalized.jpg") if reconstruction.get("uv_normalized_path") else None,
             uv_confidence_mask_path=str(out_dir / "uv_confidence_mask.jpg") if reconstruction.get("success") else None,
-            segmented_face_path=str(out_dir / "face_crop.jpg"),
+            segmented_face_path=str(out_dir / "face_crop.png"),
             texture_predictions=texture_preds,
             texture_actual=texture_actual,
             texture_analysis_notes=texture_notes,
@@ -207,8 +223,19 @@ def extract_one(photo_path_str, out_root_dir_str):
             errors=errors
         )
         
+        from core.utils import RAW_BUCKET_TO_UI
+        bucket = str(pose_result.get("pose_classification", "unknown")).lower()
+        if bucket == "unknown":
+            bucket = "unclassified"
+        bucket_ui = RAW_BUCKET_TO_UI.get(bucket, "unknown")
+
         result_dict = asdict(result)
+        result_dict["bucket"] = bucket
+        result_dict["bucket_ui"] = bucket_ui
+
         if "texture_predictions" in result_dict:
+            with open(out_dir / "texture_raw.json", 'w') as f_raw:
+                json.dump(result_dict["texture_predictions"], f_raw, indent=2, default=str)
             del result_dict["texture_predictions"]
         
         with open(out_dir / "result.json", 'w') as f:

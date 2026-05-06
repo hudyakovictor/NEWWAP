@@ -102,13 +102,38 @@ class CascadeEngine:
                 reasoning=[f"Quality gate rejected input photo(s): {', '.join(rejected)}"],
             )
 
-        # Texture Analysis
-        tex_a = self.texture_analyzer.analyze_image(photo_a)
-        tex_b = self.texture_analyzer.analyze_image(photo_b)
-        # [FIX-70] Взвешенное среднее вместо max() — не усиливаем шум одного фото
+        # C-01: Texture Analysis using face crops and UV textures if available
+        crop_png_a = self.recon_root / photo_a.stem / "face_crop.png"
+        crop_jpg_a = self.recon_root / photo_a.stem / "face_crop.jpg"
+        crop_a = crop_png_a if crop_png_a.exists() else crop_jpg_a
+
+        crop_png_b = self.recon_root / photo_b.stem / "face_crop.png"
+        crop_jpg_b = self.recon_root / photo_b.stem / "face_crop.jpg"
+        crop_b = crop_png_b if crop_png_b.exists() else crop_jpg_b
+
+        uv_a = self.recon_root / photo_a.stem / "uv_texture_hd.jpg"
+        uv_mask_a = self.recon_root / photo_a.stem / "uv_confidence_mask.jpg"
+        uv_b = self.recon_root / photo_b.stem / "uv_texture_hd.jpg"
+        uv_mask_b = self.recon_root / photo_b.stem / "uv_confidence_mask.jpg"
+        
+        target_a = crop_a if crop_a.exists() else photo_a
+        target_b = crop_b if crop_b.exists() else photo_b
+        
+        tex_a = self.texture_analyzer.analyze_image(target_a, uv_path=uv_a, uv_mask_path=uv_mask_a)
+        tex_b = self.texture_analyzer.analyze_image(target_b, uv_path=uv_b, uv_mask_path=uv_mask_b)
+        
+        # Calculate younger scores (1.0 - wrinkles) for Gate-0 (CH-01)
+        y_a = 1.0 - float(tex_a.get("wrinkle_forehead", 0.0)) - float(tex_a.get("wrinkle_nasolabial", 0.0))
+        y_b = 1.0 - float(tex_b.get("wrinkle_forehead", 0.0)) - float(tex_b.get("wrinkle_nasolabial", 0.0))
+        
+        # --- Stage 0: Temporal Gate ---
+        chron_flags = self.chronology.check_pair_consistency(date_a, date_b, y_a=y_a, y_b=y_b)
+        chron_flags.extend(self._collect_timeline_flags(timeline_context, date_a, date_b))
+
+        # C-03: Use max() instead of mean() for silicone probability to preserve mask anomaly signal
         raw_silicone_a = float(tex_a.get("silicone_probability", 0.0))
         raw_silicone_b = float(tex_b.get("silicone_probability", 0.0))
-        silicone_prob = (raw_silicone_a + raw_silicone_b) / 2.0
+        silicone_prob = max(raw_silicone_a, raw_silicone_b)
         
         # --- Stage 2: Deep Geometry ---
         recon_a = resolve_reconstruction(self.recon_adapter, photo_a, self.recon_root / photo_a.stem, neutral_expression=False)
@@ -157,15 +182,32 @@ class CascadeEngine:
         Extracts a forensic passport for a single photo.
         """
         recon = resolve_reconstruction(self.recon_adapter, photo, self.recon_root / photo.stem, neutral_expression=False)
-        tex = self.texture_analyzer.analyze_image(photo)
+        
+        # C-01: Pass face crop and UV if available
+        crop_png_path = self.recon_root / photo.stem / "face_crop.png"
+        crop_jpg_path = self.recon_root / photo.stem / "face_crop.jpg"
+        crop_path = crop_png_path if crop_png_path.exists() else crop_jpg_path
+        
+        uv_path = self.recon_root / photo.stem / "uv_texture_hd.jpg"
+        uv_mask_path = self.recon_root / photo.stem / "uv_confidence_mask.jpg"
+        target_path = crop_path if crop_path.exists() else photo
+        
+        tex = self.texture_analyzer.analyze_image(target_path, uv_path=uv_path, uv_mask_path=uv_mask_path)
         quality = self.quality_gate.evaluate(photo)
+        
+        # C-02: Filter texture metrics based on pose bucket keys
+        from core.utils import BUCKET_METRIC_KEYS, classify_pose_bucket
+        bucket = classify_pose_bucket(recon.angles_deg[1])
+        valid_keys = BUCKET_METRIC_KEYS.get(bucket, set())
+        filtered_tex = {k: v for k, v in tex.items() if k in valid_keys or k == "quality"}
         
         return {
             "photo_id": photo.stem,
             "quality": quality,
-            "texture": tex,
+            "texture": filtered_tex,
             "reconstruction_summary": {
                 "vertex_count": len(recon.vertices_world),
                 "pose": recon.angles_deg.tolist()
             }
         }
+

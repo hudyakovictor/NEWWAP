@@ -6,7 +6,15 @@ from enum import Enum
 from dataclasses import dataclass, asdict, field
 from typing import Any, Dict, List, Optional
 
-from core.constants import PRIOR_SAME_PERSON, SNR_SIGNAL_THRESHOLD, SNR_UNCERTAIN_THRESHOLD
+from core.constants import (
+    PRIOR_SAME_PERSON,
+    PRIOR_IDENTITY_SWAP,
+    SNR_SIGNAL_THRESHOLD,
+    SNR_UNCERTAIN_THRESHOLD,
+    CHRONO_FLAG_IMPOSSIBLE,
+    CHRONO_FLAG_RETURN,
+    CHRONO_FLAG_TRANSITION,
+)
 
 def _clamp01(value: float) -> float:
     return float(min(1.0, max(0.0, value)))
@@ -119,10 +127,10 @@ class BayesianMultiHypothesisEngine:
     - H2: Different Person (Natural variation)
     """
     def __init__(self):
-        h2_prior = max(0.0, 1.0 - PRIOR_SAME_PERSON - 0.05)
+        h2_prior = max(0.0, 1.0 - PRIOR_SAME_PERSON - PRIOR_IDENTITY_SWAP)
         self.priors = {
             "H0": PRIOR_SAME_PERSON,      # Same
-            "H1": 0.05,                  # Swap/Mask (Rare but critical)
+            "H1": PRIOR_IDENTITY_SWAP,   # Swap/Mask (Rare but critical)
             "H2": h2_prior               # Different (guarded against negative)
         }
 
@@ -180,7 +188,8 @@ class BayesianMultiHypothesisEngine:
         #   different people can still have natural skin statistics.
         l_tex_h1 = max(tex, 1e-3)
         l_tex_h0 = max(1.0 - tex, 1e-3)
-        l_tex_h2 = max(0.35, 1.0 - tex * 0.5)
+        # B-03: Tighten soft texture likelihood clip
+        l_tex_h2 = max(0.10, 1.0 - tex * 0.80)
 
         # Chronology evidence as multiplicative gates (converted to log-domain).
         log_chrono_h0 = 0.0
@@ -191,15 +200,16 @@ class BayesianMultiHypothesisEngine:
             flag_type = str(flag.get("type", ""))
             prior_p = float(flag.get("prior_p", 0.0) or 0.0)
             impossible_prior = max(impossible_prior, prior_p)
-            if flag_type == "impossible_short":
+            if flag_type == CHRONO_FLAG_IMPOSSIBLE:
                 log_chrono_h0 += math.log(0.05)
-                log_chrono_h1 += math.log(1.0 + max(0.5, prior_p))
+                # CH-03: Weight chronology log-domain
+                log_chrono_h1 += math.log(1.0 + prior_p * 2.0)
                 log_chrono_h2 += math.log(0.60)
-            elif flag_type == "return":  # chronology.py generates type="return"
+            elif flag_type == CHRONO_FLAG_RETURN:
                 log_chrono_h0 += math.log(0.15)
                 log_chrono_h1 += math.log(1.75)
                 log_chrono_h2 += math.log(0.75)
-            elif flag_type == "transition":  # chronology.py generates type="transition"
+            elif flag_type == CHRONO_FLAG_TRANSITION:
                 log_chrono_h0 += math.log(0.60)
                 log_chrono_h1 += math.log(1.15)
                 log_chrono_h2 += math.log(1.20)
@@ -234,8 +244,8 @@ class BayesianMultiHypothesisEngine:
         # 3. Deterministic chronology gates + provenance flags
         flags = []
         reasoning = []
-        is_impossible = any(f["type"] == "impossible_short" for f in chronology_flags)
-        is_rtr = any(f["type"] == "return" for f in chronology_flags)  # chronology.py uses "return"
+        is_impossible = any(f["type"] == CHRONO_FLAG_IMPOSSIBLE for f in chronology_flags)
+        is_rtr = any(f["type"] == CHRONO_FLAG_RETURN for f in chronology_flags)
 
         if is_impossible:
             flags.append("TEMPORAL_IMPOSSIBILITY")
@@ -256,7 +266,8 @@ class BayesianMultiHypothesisEngine:
         elif geometry_channel_enabled and p_h0 > 0.80 and snr <= SNR_UNCERTAIN_THRESHOLD and tex < 0.35:
             status = ForensicStatus.SAME_PERSON
             label = FuzzyLabel.STRONGLY_MATCHING
-            confidence = p_h0
+            # B-04: Adjust same-person confidence to attenuate when texture silicone signal rises
+            confidence = _clamp01(p_h0 * (1.0 - tex * 0.5))
         elif geometry_channel_enabled and p_h2 > 0.75 and snr >= SNR_SIGNAL_THRESHOLD:
             status = ForensicStatus.DIFFERENT_PERSON
             label = FuzzyLabel.GEOMETRIC_MISMATCH
