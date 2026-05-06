@@ -231,7 +231,7 @@ def extract_macro_bone_metrics(
     orbit_L_pts = vertices[orbit_L_idx] if orbit_L_idx.size > 0 else np.zeros((0, 3))
     orbit_R_pts = vertices[orbit_R_idx] if orbit_R_idx.size > 0 else np.zeros((0, 3))
     
-    def calc_tilt_3d_coronal(p_inner, p_outer, face_normal):
+    def calc_tilt_3d_coronal(p_inner, p_outer, face_normal, side='L'):
         """
         Вычисляет наклон глазной щели строго в корональной плоскости лица.
         Устойчиво к yaw-вращениям до 70 градусов.
@@ -239,6 +239,11 @@ def extract_macro_bone_metrics(
         import math
         # Вектор от внутреннего угла к внешнему
         eye_vector = p_outer - p_inner
+
+        # Для правого глаза инвертируем направление вектора,
+        # чтобы угол измерялся в одной системе координат с левым
+        if side == 'R':
+            eye_vector = -eye_vector
         
         # Проецируем вектор на плоскость лица (удаляем Z-компоненту относительно нормали лица)
         eye_vector_proj = eye_vector - np.dot(eye_vector, face_normal) * face_normal
@@ -315,10 +320,10 @@ def extract_macro_bone_metrics(
     if face_plane_normal[2] < 0:
         face_plane_normal = -face_plane_normal
 
-    metrics["canthal_tilt_L"] = calc_tilt_3d_coronal(canthus_L_inner, canthus_L_outer, face_plane_normal)
-    metrics["canthal_tilt_R"] = calc_tilt_3d_coronal(canthus_R_inner, canthus_R_outer, face_plane_normal)
-    metrics["canthal_tilt_3d_L"] = metrics["canthal_tilt_L"]
-    metrics["canthal_tilt_3d_R"] = metrics["canthal_tilt_R"]
+    metrics["canthal_tilt_3d_L"] = calc_tilt_3d_coronal(canthus_L_inner, canthus_L_outer, face_plane_normal, side='L')
+    metrics["canthal_tilt_3d_R"] = calc_tilt_3d_coronal(canthus_R_inner, canthus_R_outer, face_plane_normal, side='R')
+    metrics["canthal_tilt_L"] = metrics["canthal_tilt_3d_L"]
+    metrics["canthal_tilt_R"] = metrics["canthal_tilt_3d_R"]
     metrics["interorbital_ratio"] = compute_interorbital_ratio(canthus_L_inner, canthus_R_inner, zygomatic_breadth)
     
     def depth_along_normal(point: np.ndarray, reference: np.ndarray, normal: np.ndarray) -> float:
@@ -396,12 +401,14 @@ def extract_macro_bone_metrics(
     else:
         metrics["mandibular_ramus_length"] = None
 
-    # 6. Nose
     nose_bridge = get_zone_centroid('nose_bridge_tip')
     nose_wing_L = get_zone_centroid('nose_wing_L')
     nose_wing_R = get_zone_centroid('nose_wing_R')
     
-    metrics["nose_width_ratio"] = float(np.linalg.norm(nose_wing_L - nose_wing_R)) / zygomatic_breadth
+    if not np.allclose(nose_wing_L, 0) and not np.allclose(nose_wing_R, 0):
+        metrics["nose_width_ratio"] = float(np.linalg.norm(nose_wing_L - nose_wing_R)) / zygomatic_breadth
+    else:
+        metrics["nose_width_ratio"] = None
     metrics["nose_projection_ratio"] = depth_along_normal(nose_bridge, mid_cheek_pt, face_plane_normal) / zygomatic_breadth
     
     forehead_centroid = get_zone_centroid('forehead')
@@ -444,7 +451,7 @@ def extract_macro_bone_metrics(
     metrics["orbital_perimeter_symmetry"] = min(perimeter_L, perimeter_R) / (max(perimeter_L, perimeter_R) + 1e-8)
     metrics["orbital_asymmetry_index"] = float(1.0 - metrics["orbital_perimeter_symmetry"])
 
-    # 12. Chin offset asymmetry & Gnathion midline deviation
+    # 12. Gnathion midline deviation
     nasion_pt = get_zone_centroid('nose_bridge_tip')
     subnasale_pt = (get_zone_centroid('nose_wing_L') + get_zone_centroid('nose_wing_R')) / 2.0
     gnathion_pt = get_zone_centroid('chin')
@@ -454,7 +461,6 @@ def extract_macro_bone_metrics(
     metrics["gnathion_midline_deviation_ratio"] = calc_point_to_line_distance(
         gnathion_pt, nasion_pt, subnasale_pt
     ) / zygomatic_breadth
-    metrics["chin_offset_asymmetry"] = float(metrics["gnathion_midline_deviation_ratio"])
 
     # 13. Reliability
     yaw_abs = abs(angles[1])
@@ -464,13 +470,12 @@ def extract_macro_bone_metrics(
     if yaw_abs > 30: reliability *= 0.5
     if pitch_abs > 20: reliability *= 0.7
     
-    # Pitch guard: при наклоне головы > 15° подбородок геометрически недостоверен,
+    # Pitch guard: при наклоне головы > 20° подбородок геометрически недостоверен,
     # но только для околофронтальных ракурсов (abs(yaw) <= 30.0).
     # Для выраженных профилей подбородок и профиль носа видны идеально.
-    if pitch_abs > 15.0 and yaw_abs <= 30.0:
+    if pitch_abs > 20.0 and yaw_abs <= 30.0:
         metrics["chin_projection_ratio"] = None
-        metrics["nasofacial_angle_ratio"] = None
-        metrics["chin_offset_asymmetry"] = None
+        metrics["gnathion_midline_deviation_ratio"] = None
 
     # Mask unreliable canthal tilt on the occluded side for non-frontal views
     if yaw_abs > 30.0:

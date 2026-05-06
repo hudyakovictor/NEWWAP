@@ -142,7 +142,10 @@ class SkinTextureAnalyzer:
             filt_real, filt_imag = gabor(gray, frequency=freq)
             gabor_responses.append(np.sqrt(filt_real**2 + filt_imag**2))
         gabor_stack = np.mean(gabor_responses, axis=0)
-        gabor_masked = _apply_mask(gabor_stack, skin_mask)
+        # Нормализуем в [0,255] для корректной работы _apply_mask с uint8 маской
+        gabor_norm = ((gabor_stack - gabor_stack.min()) /
+                      (gabor_stack.ptp() + 1e-8) * 255).astype(np.float32)
+        gabor_masked = _apply_mask(gabor_norm, skin_mask)
         if gabor_masked.size > 0:
             metrics.gabor_mean = float(np.mean(gabor_masked))
             metrics.gabor_std = float(np.std(gabor_masked))
@@ -159,7 +162,9 @@ class SkinTextureAnalyzer:
         metrics.spot_density = float(np.sum(masked_pixels < (mean_val - 1.5 * std_val)) / masked_pixels.size)
 
         # Specular gloss
-        metrics.specular_gloss = float(np.sum(masked_pixels > 240) / masked_pixels.size)
+        p97 = np.percentile(masked_pixels, 97)
+        bright_threshold = min(float(p97), 230.0)  # не ниже 230 чтобы отсечь нормальную кожу
+        metrics.specular_gloss = float(np.sum(masked_pixels > bright_threshold) / masked_pixels.size)
 
         # Lab color features
         lab = skcolor.rgb2lab(rgb)
@@ -197,9 +202,9 @@ class SkinTextureAnalyzer:
         if abs(yaw_deg) < _YAW_FRONTAL:
             roi_nose = _roi_by_fraction(gray, 0.35, 0.65, 0.30, 0.70)
             if roi_nose.size > 0:
-                mean_n = np.mean(roi_nose)
-                std_n = np.std(roi_nose)
-                metrics.nose_pore_density = float(np.sum(roi_nose < (mean_n - 1.5 * std_n)) / roi_nose.size)
+                # Variance of Laplacian = мера резкости мелких деталей (поры, текстура)
+                # Не зависит от абсолютной яркости и не требует порогов
+                metrics.nose_pore_density = float(np.var(laplace(roi_nose.astype(np.float32))))
 
         # 3. UV ZONE Group
         if uv_path and Path(uv_path).exists():
@@ -219,7 +224,9 @@ class SkinTextureAnalyzer:
                     std_uv = np.std(uv_pixels)
                     metrics.uv_spot_density = float(np.sum(uv_pixels < (mean_uv - 1.5 * std_uv)) / uv_pixels.size)
                     
-                    uv_lap = laplace(uv_gray)
+                    import cv2 as _cv2
+                    uv_gray_smooth = _cv2.GaussianBlur(uv_gray, (3, 3), sigmaX=0.8)
+                    uv_lap = laplace(uv_gray_smooth.astype(np.float32))
                     uv_lap_masked = _apply_mask(uv_lap, uv_mask)
                     metrics.uv_wrinkle_energy = float(np.mean(uv_lap_masked**2))
                     
