@@ -380,6 +380,8 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
         )
         np.save(out_dir / "vertices.npy", _vertices_canon)          # канон для compare
         np.save(out_dir / "vertices_world_raw.npy", np.array(res.vertices_world))  # raw для дебага
+        np.save(out_dir / "normals_world.npy", np.array(res.normals_world))       # normals для дебага/visibility
+        np.save(out_dir / "triangles.npy", np.array(res.triangles))               # triangles для ReconstructionResult
         with open(out_dir / "face_mesh.obj", 'w') as f:
              for v in res.vertices_world:
                  f.write(f"v {v[0]} {v[1]} {v[2]}\n")
@@ -957,39 +959,57 @@ def run_report_mode(test_photos, out_dir, calib_df):
         
     print(f"[report mode] Grouped {len(all_results)} photos into buckets: {list(by_bucket.keys())}")
 
-    # R3-2: Load vertices.npy and build ReconstructionResult objects
+    # R3-2 & R3-F: Load vertices, normals, triangles and build ReconstructionResult objects
     from backend.pipeline.types import ReconstructionResult
     
     def load_reconstruction(result_data) -> ReconstructionResult:
         files = result_data.get("files", {})
         storage_dir = Path(files["_storage_dir"])
+        N = 22856  # число вершин FLAME
         
-        # Load files safely
-        v_canon_path = storage_dir / "vertices.npy"
-        if v_canon_path.exists():
-            vertices = np.load(v_canon_path)
-        else:
-            vertices = np.zeros((22856, 3)) # fallback
-            
+        v_world = np.load(storage_dir / "vertices_world_raw.npy") \
+            if (storage_dir / "vertices_world_raw.npy").exists() \
+            else np.zeros((N, 3), dtype=np.float32)
+
+        v_canon = np.load(storage_dir / "vertices.npy") \
+            if (storage_dir / "vertices.npy").exists() \
+            else np.zeros((N, 3), dtype=np.float32)
+
+        normals_world = np.load(storage_dir / "normals_world.npy") \
+            if (storage_dir / "normals_world.npy").exists() \
+            else np.zeros((N, 3), dtype=np.float32)
+
+        triangles = np.load(storage_dir / "triangles.npy") \
+            if (storage_dir / "triangles.npy").exists() \
+            else np.zeros((1, 3), dtype=np.int32)
+
         angles = np.array([
             result_data["pose"]["pitch"],
             result_data["pose"]["yaw"],
             result_data["pose"]["roll"],
-        ])
+        ], dtype=np.float64)
         
         return ReconstructionResult(
-            vertices=vertices,
+            image_path=Path(storage_dir / "original.jpg"),
+            vertices_world=v_world,
+            vertices_camera=v_world,    # stub
+            vertices_image=v_world[:, :2],  # stub
+            triangles=triangles,
+            point_buffer=np.zeros((N, 3), dtype=np.float32),
+            annotation_groups=[],
+            visible_idx_renderer=np.arange(N),
+            normals_world=normals_world,
+            normals_camera=np.zeros((N, 3), dtype=np.float32),
+            rotation_matrix=np.eye(3, dtype=np.float64),
+            translation=np.zeros(3, dtype=np.float64),
             angles_deg=angles,
-            landmarks_2d=None,
-            landmarks_3d=None,
-            source_resolution=None
+            pose_bucket=result_data["pose"].get("bucket", "frontal"),
         )
 
     # R3-3 & R3-4: Compare chronologically and synthesize Bayesian verdicts
-    from backend.pipeline.compare import PairComparisonEngine
+    from backend.pipeline.compare import PairComparisonEngine, _compute_linear_snr
     from backend.pipeline.calibration import CalibrationAnalyzer
     from backend.pipeline.verdict import BayesianMultiHypothesisEngine, GeometryEvidenceMode
-    from backend.pipeline.chronology import analyze_timeline_calibrated
 
     calib_analyzer = CalibrationAnalyzer()
     pair_engine = PairComparisonEngine(calibration=calib_analyzer)
@@ -1018,25 +1038,35 @@ def run_report_mode(test_photos, out_dir, calib_df):
                 print(f"Error comparing {pa['source']['filename']} with {pb['source']['filename']}: {e}")
                 continue
                 
+            # R3-A: Compute linear SNR
+            noise_baseline = 0.015
+            geometry_snr = _compute_linear_snr(
+                signal_error=cmp_result.score_raw or 0.0,
+                noise_baseline=noise_baseline
+            )
+            
             # Bayesian Synthesis
             chrono_flags = pb.get("chronological_context", {}).get("flags", [])
             texture_silicone = pb.get("texture", {}).get("uv_silicone_flatness", 0.0) or 0.0
             
             verdict = verdict_engine.synthesize(
-                geometry_snr=cmp_result.snr,
+                geometry_snr=geometry_snr,
                 texture_silicone_prob=float(texture_silicone),
                 chronology_flags=chrono_flags,
                 geometry_evidence_mode=GeometryEvidenceMode.CALIBRATED,
             )
             
-            # Format comparison zones
-            zone_details = []
-            if cmp_result.zone_details:
-                for zone, z_val in cmp_result.zone_details.items():
-                    zone_details.append({
-                        "zone": zone,
-                        "raw_error": round(float(z_val), 4),
-                    })
+            # R3-B: Format comparison zones correctly
+            zone_details_out = []
+            for z in cmp_result.zones:
+                zone_details_out.append({
+                    "zone": z.name,
+                    "raw_error": round(float(z.raw_error or 0), 4),
+                    "bounded_score": round(float(z.bounded_score or 0), 4),
+                    "delta_mm": round(float(z.delta_mm or 0), 3),
+                    "bone_priority": z.bone_priority_class,
+                    "status": z.status,
+                })
             
             # Build delta days
             da = datetime.fromisoformat(pa["source"]["parsed_date"]) if pa["source"].get("parsed_date") else None
@@ -1048,10 +1078,12 @@ def run_report_mode(test_photos, out_dir, calib_df):
                 "photo_b": pb["source"]["filename"],
                 "delta_days": delta_days,
                 "comparison": {
-                    "snr": round(float(cmp_result.snr), 3),
-                    "zone_details": zone_details,
-                    "raw_error": round(float(cmp_result.raw_error), 4),
-                    "robust_error": round(float(cmp_result.robust_error), 4),
+                    "snr": round(geometry_snr, 3),
+                    "zone_details": zone_details_out,
+                    "score_raw": round(float(cmp_result.score_raw or 0), 4),
+                    "robust_score_raw": round(float(cmp_result.robust_score_raw or 0), 4),
+                    "provisional_band": cmp_result.provisional_band,
+                    "robust_provisional_band": cmp_result.robust_provisional_band,
                 },
                 "verdict": {
                     "status": verdict.status,
@@ -1067,7 +1099,7 @@ def run_report_mode(test_photos, out_dir, calib_df):
                 }
             })
 
-        # R3-5: analyze_timeline_calibrated
+        # R3-D: Inline timeline evaluation
         timeline_input = []
         for r in sorted_photos:
             p_date = r["source"]["parsed_date"] or "1900-01-01"
@@ -1077,54 +1109,74 @@ def run_report_mode(test_photos, out_dir, calib_df):
                 "photo_id": r["source"]["filename"]
             })
             
-        try:
-            timeline_report = analyze_timeline_calibrated(timeline_input, pair_engine)
-            timeline_flags = timeline_report.get("flags", [])
-        except Exception as e:
-            print(f"Error building calibrated timeline for bucket {bucket}: {e}")
-            timeline_flags = []
+        timeline_flags = []
+        SNR_IMPOSSIBLE = 3.0
+        SNR_TRANSITION = 2.5
+        BASELINE_MATCH = 1.5
+        baseline_recon = timeline_input[0]["recon"] if timeline_input else None
+        for i in range(1, len(timeline_input)):
+            prev = timeline_input[i-1]
+            curr = timeline_input[i]
+            try:
+                res_prev = pair_engine.compare(prev["recon"], curr["recon"])
+                snr_prev = _compute_linear_snr(res_prev.score_raw or 0, 0.015)
+                if snr_prev > SNR_IMPOSSIBLE:
+                    timeline_flags.append({
+                        "type": "IMPOSSIBLE_TRANSITION",
+                        "date": curr["date"],
+                        "snr": round(snr_prev, 3)
+                    })
+                if baseline_recon and snr_prev > SNR_TRANSITION:
+                    res_base = pair_engine.compare(baseline_recon, curr["recon"])
+                    snr_base = _compute_linear_snr(res_base.score_raw or 0, 0.015)
+                    if snr_base < BASELINE_MATCH:
+                        timeline_flags.append({
+                            "type": "RETURN_TO_REFERENCE",
+                            "date": curr["date"]
+                        })
+            except Exception as te:
+                print(f"Error evaluating timeline step: {te}")
 
-        # R3-6: Longitudinal trends and anomalies
-        from backend.core.longitudinal import LongitudinalAnalyzer, TimelinePoint
+        # R3-E: Longitudinal trends and anomalies using build_longitudinal_model
+        from backend.core.longitudinal import build_longitudinal_model
         
-        analyzer = LongitudinalAnalyzer()
-        points = []
+        summaries = []
         for r in sorted_photos:
-            if r.get("source", {}).get("parsed_date"):
-                # Collect both geo and texture metrics
-                metrics = {}
-                for k, v in r.get("geometry", {}).items():
-                    if isinstance(v, (int, float)):
-                        metrics[k] = float(v)
-                for k, v in r.get("texture", {}).items():
-                    if isinstance(v, (int, float)):
-                        metrics[k] = float(v)
-                        
-                points.append(TimelinePoint(
-                    photo_id=r["source"]["filename"],
-                    timestamp=datetime.fromisoformat(r["source"]["parsed_date"]),
-                    year=r["source"]["parsed_year"] or 2000,
-                    metrics=metrics,
-                    quality_score=float(r["quality"]["overall"] or 0.7),
-                    pose_reliability=float(r["pipeline"]["reliability_weight"] or 1.0),
-                    bucket=bucket,
-                ))
-                
+            geo = r.get("geometry", {}) or {}
+            tex = r.get("texture", {}) or {}
+            summaries.append({
+                "photo_id": r["source"]["filename"],
+                "parsed_date": r["source"]["parsed_date"] or "1900-01-01",
+                "metrics": {
+                    k: v for k, v in {**geo, **tex}.items()
+                    if isinstance(v, (int, float)) and v is not None
+                },
+                "quality_score": r["quality"].get("overall") or 0.0,
+                "pose_reliability": r["pipeline"].get("reliability_weight") or 0.0,
+                "bucket": r["pose"].get("bucket", "frontal"),
+            })
+
         try:
-            long_result = analyzer.analyze(points)
+            analyzer = build_longitudinal_model(summaries)
+            analyzer.analyze_trends()
+            analyzer.detect_anomalies()
+            summary = analyzer.get_summary()
+
             longitudinal_data = {
-                "trends": long_result.trends,
+                "trends": summary.get("trends_analyzed", {}),
+                "anomalies_detected": summary.get("anomalies_detected", 0),
                 "anomalies": [
                     {
                         "photo_id": a.photo_id,
-                        "metric": a.metric,
-                        "deviation_sigma": round(float(a.deviation_sigma), 3),
+                        "metric": a.metric_key,
                         "severity": a.severity,
-                        "is_critical": a.is_critical,
+                        "deviation_sigma": round(a.deviation_sigma, 2),
+                        "explanation": a.explanation,
+                        "is_critical": a.severity in ["critical", "high"]
                     }
-                    for a in long_result.anomalies
+                    for a in analyzer.anomalies
                 ],
-                "aging_consistency_score": round(float(long_result.aging_consistency_score), 3)
+                "aging_consistency_score": round(float(summary.get("aging_consistency_score", 1.0)), 3)
             }
         except Exception as e:
             print(f"Error in longitudinal analysis for {bucket}: {e}")
@@ -1164,8 +1216,8 @@ def run_report_mode(test_photos, out_dir, calib_df):
             for fl in p["verdict"]["flags"]:
                 critical_flags.append(f"[{bucket}] Pair {p['photo_a']} -> {p['photo_b']}: {fl}")
                 
-        for anom in b_data["longitudinal"]["anomalies"]:
-            if anom["is_critical"]:
+        for anom in b_data["longitudinal"].get("anomalies", []):
+            if anom.get("is_critical"):
                 global_status = "unresolved_anomalies"
                 suspicious_windows.append(f"[{bucket}] Metric '{anom['metric']}' anomaly on {anom['photo_id']}: severity {anom['severity']}")
 
