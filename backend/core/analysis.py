@@ -1089,7 +1089,6 @@ def _save_mesh_assets(reconstruction: Any, texture_filename: str, output_dir: Pa
 
     with obj_path.open("w", encoding="utf-8") as handle:
         handle.write("mtllib mesh.mtl\n")
-        handle.write("usemtl FaceMaterial\n")
         for vertex in vertices:
             handle.write(f"v {vertex[0]:.6f} {vertex[1]:.6f} {vertex[2]:.6f}\n")
         if uv_coords is not None:
@@ -1097,6 +1096,8 @@ def _save_mesh_assets(reconstruction: Any, texture_filename: str, output_dir: Pa
                 handle.write(f"vt {uv[0]:.6f} {1.0 - uv[1]:.6f}\n")
         for normal in normals:
             handle.write(f"vn {normal[0]:.6f} {normal[1]:.6f} {normal[2]:.6f}\n")
+        handle.write("g face\n")
+        handle.write("usemtl FaceMaterial\n")
         for triangle in triangles:
             a, b, c = (int(index) + 1 for index in triangle.tolist())
             handle.write(f"f {a}/{a}/{a} {b}/{b}/{b} {c}/{c}/{c}\n")
