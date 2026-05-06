@@ -477,11 +477,15 @@ def extract_macro_bone_metrics(
         metrics["chin_projection_ratio"] = None
         metrics["gnathion_midline_deviation_ratio"] = None
 
-    # Mask unreliable canthal tilt on the occluded side for non-frontal views
-    if yaw_abs > 30.0:
+    # Mask unreliable canthal tilt & orbit depth on the occluded side for non-frontal views (yaw > 20.0)
+    if yaw_abs > 20.0:
         if angles[1] < 0:  # Left profile/threequarter: right side is occluded
             metrics["canthal_tilt_R"] = None
+            metrics["canthal_tilt_3d_R"] = None
+            metrics["orbit_depth_R_ratio"] = None
         else:              # Right profile/threequarter: left side is occluded
             metrics["canthal_tilt_L"] = None
+            metrics["canthal_tilt_3d_L"] = None
+            metrics["orbit_depth_L_ratio"] = None
     
     return metrics, reliability

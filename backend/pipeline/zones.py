@@ -30,7 +30,7 @@ EXCLUDED_ZONES = frozenset(
     }
 )
 
-THRESHOLD_JAW_OPEN = 0.12
+THRESHOLD_JAW_OPEN = 0.22
 THRESHOLD_SMILE = 0.08
 
 # Порядок должен совпадать с model['annotation'] в 3DDFA-V3 (core/3ddfa_v3/model/recon.py):
@@ -48,7 +48,7 @@ def apply_expression_exclusion_mask(
     BFM exp_params (коэффициенты базиса выражений) НЕ зависят от физического 
     масштаба сетки (face_scale). Они безразмерны. Умножать на scale — фатальная ошибка.
     """
-    THRESHOLD_JAW_OPEN = 0.12
+    THRESHOLD_JAW_OPEN = 0.22
     THRESHOLD_SMILE = 0.8
     
     if exp_params is None or exp_params.size < 3:

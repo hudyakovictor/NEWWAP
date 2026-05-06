@@ -13,7 +13,7 @@ from skimage.feature import canny
 from skimage import color as skcolor
 
 _YAW_FRONTAL     = 20.0  # лоб, поры носа
-_YAW_EYE_CORNERS = 30.0  # гусиные лапки, носогубные складки
+_YAW_EYE_CORNERS = 20.0  # гусиные лапки, носогубные складки
 _YAW_HALF        = 45.0  # щёки
 
 @dataclass
