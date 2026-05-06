@@ -814,7 +814,10 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
                 "quality": {
                     "sharpness_score": texture_preds.get("quality_sharpness_score") if texture_preds else None,
                     "noise_score":     texture_preds.get("quality_noise_score") if texture_preds else None,
-                    "quality_index":   texture_preds.get("quality_index") if texture_preds else None,
+                    "quality_index":   (
+                        texture_preds.get("quality_quality_index")
+                        or texture_preds.get("quality_index")
+                    ) if texture_preds else None,
                 },
                 "notes": texture_notes,
             },
