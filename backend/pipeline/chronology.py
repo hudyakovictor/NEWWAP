@@ -229,3 +229,61 @@ class ChronologyAnalyzer:
 
         return photos
 
+
+@dataclass
+class TimelineReport:
+    flags: List[Dict[str, Any]]
+
+
+def analyze_timeline_calibrated(
+    timeline_photos: List[Dict[str, Any]], 
+    pair_engine: Any, 
+    reference_date: str = "2001-12-31"
+) -> TimelineReport:
+    """
+    Проходит по временной шкале и оценивает откалиброванные SNR-скачки.
+    """
+    # Сортировка строго по datetime, а не строкам (Фикс бага CH-02)
+    photos = sorted(timeline_photos, key=lambda x: datetime.fromisoformat(x['date'].split('T')[0]))
+    
+    baseline_photos = [p for p in photos if p['date'] <= reference_date]
+    if not baseline_photos:
+        baseline_photos = [photos[0]]
+    primary_baseline = baseline_photos[0] # Можно заменить на медиану
+    
+    flags = []
+    
+    for i in range(1, len(photos)):
+        prev_photo = photos[i-1]
+        curr_photo = photos[i]
+        
+        # 1. Сравниваем с предыдущим годом (T_i vs T_{i-1})
+        res_to_prev = pair_engine.compare(prev_photo, curr_photo)
+        
+        # 2. Сравниваем с эталоном молодости (T_i vs 1999)
+        res_to_baseline = pair_engine.compare(primary_baseline, curr_photo)
+        
+        # 3. Логика Impossible Transition (Резкая подмена)
+        # Если SNR > 3.0 (сигнал превышает шум в 3 раза), и это не объясняется мимикой
+        if res_to_prev.snr > 3.0:
+            flags.append({
+                "type": "IMPOSSIBLE_TRANSITION",
+                "date": curr_photo['date'],
+                "snr": res_to_prev.snr,
+                "anomalous_zones": [
+                    z.get("zone", "") for z in res_to_prev.zone_details if z.get("snr", 0.0) > 3.0
+                ] if hasattr(res_to_prev, "zone_details") else []
+            })
+            
+        # 4. Логика Return To Reference (RTR)
+        # Если человек резко изменился по сравнению с прошлым годом (SNR_prev > 2.5), 
+        # НО при этом его лицо идеально совпадает с лицом 1999 года (SNR_baseline < 1.0)
+        if res_to_prev.snr > 2.5 and res_to_baseline.snr < 1.5:
+             flags.append({
+                "type": "RETURN_TO_REFERENCE",
+                "date": curr_photo['date'],
+                "evidence": f"Matched baseline {primary_baseline['date']} despite breaking continuity from {prev_photo['date']}"
+            })
+
+    return TimelineReport(flags=flags)
+

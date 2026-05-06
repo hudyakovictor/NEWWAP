@@ -150,12 +150,13 @@ class PairComparisonEngine:
             try:
                 lm_a = recon_a.landmarks_106
                 lm_b = recon_b.landmarks_106
-                le_a = lm_a[36:42].mean(0)
-                re_a = lm_a[42:48].mean(0)
+                # Индексы глаз для 3DDFA-V3 (106 points)
+                le_a = lm_a[66:74].mean(0)  # Левый глаз (8 точек контура)
+                re_a = lm_a[75:83].mean(0)  # Правый глаз (8 точек контура)
                 scale_a_ipd = float(np.linalg.norm(le_a - re_a))
                 
-                le_b = lm_b[36:42].mean(0)
-                re_b = lm_b[42:48].mean(0)
+                le_b = lm_b[66:74].mean(0)
+                re_b = lm_b[75:83].mean(0)
                 scale_b_ipd = float(np.linalg.norm(le_b - re_b))
                 
                 if scale_a_ipd > 1e-6 and scale_b_ipd > 1e-6:
@@ -180,7 +181,8 @@ class PairComparisonEngine:
         alignment, err, score, r_err, r_score, plane_normal = align_and_score(
             points_a_unit[shared_idx],
             points_b_unit[shared_idx],
-            weights=weights
+            weights=weights,
+            alignment_weights=weights
         )
         
         # 5. Zone Analysis

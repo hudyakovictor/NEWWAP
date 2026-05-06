@@ -176,11 +176,30 @@ def extract_one(photo_path_str, out_root_dir_str):
         import cv2
         from uv_module.hd_uv_generator import HDUVTextureGenerator, HDUVConfig
         
-        verts_3d = getattr(res, "vertices_camera", res.vertices_world).copy()
+        from backend.pipeline.alignment import canonicalize_vertices_for_bucket
+        
+        # 1. Получаем бакет
+        bucket_for_uv = pose_result.get("pose_classification", "frontal")
+
+        # 2. Берем сырые углы [pitch, yaw, roll]
+        raw_angles_for_uv = np.array([
+            pose_result.get("pitch", 0.0) or 0.0,
+            pose_result.get("yaw", 0.0) or 0.0,
+            pose_result.get("roll", 0.0) or 0.0
+        ])
+
+        # 3. КАНОНИЗИРУЕМ ПРОСТРАНСТВО
+        vertices_canon_for_uv = canonicalize_vertices_for_bucket(
+            np.array(res.vertices_world), 
+            raw_angles_for_uv, 
+            bucket_for_uv
+        )
+        
+        verts_3d = vertices_canon_for_uv.copy()
         verts_3d[:, 2] = -verts_3d[:, 2]  # Fix Z-buffer occlusion
         
         recon_dict_for_uv = {
-            "vertices": res.vertices_world,
+            "vertices": vertices_canon_for_uv, # ИСПОЛЬЗУЕМ КАНОН!
             "triangles": res.triangles,
             "uv_coords": res.uv_coords,
             "vertices_2d": v2d_mapped,
@@ -214,6 +233,12 @@ def extract_one(photo_path_str, out_root_dir_str):
             if mean_conf > 0:
                 cv2.fillConvexPoly(uv_mask, pts[:, :2], mean_conf)
         uv_confidence_mask = cv2.GaussianBlur(cv2.dilate(uv_mask, np.ones((3,3), np.uint8)), (5, 5), 0)
+        
+        # [FIX TX-03]: Сужение (эрод) маски уверенности.
+        # Края маски содержат черные пиксели фона, которые алгоритм считал за "родинки".
+        # Срезаем 3 пикселя с краев, чтобы анализировать только чистую кожу.
+        kernel = np.ones((5, 5), np.uint8)
+        uv_confidence_mask = cv2.erode(uv_confidence_mask, kernel, iterations=1)
         
         uv_mask_path = str(out_dir / "uv_confidence_mask.jpg")
         safe_imwrite(uv_mask_path, uv_confidence_mask, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
@@ -340,14 +365,72 @@ def extract_one(photo_path_str, out_root_dir_str):
         from backend.pipeline.scoring import extract_macro_bone_metrics
         from backend.pipeline.zones import MACRO_BONE_INDICES
         
-        vertices = np.array(res.vertices_world)
-        angles = np.array([
+        from backend.pipeline.alignment import canonicalize_vertices_for_bucket, _CANONICAL_YAW_BY_VIEW_GROUP
+
+        # 1. Получаем бакет
+        bucket = pose_result.get("pose_classification", "frontal")
+
+        # 2. Берем сырые углы [pitch, yaw, roll]
+        raw_angles = np.array([
             pose_result.get("pitch", 0.0) or 0.0,
             pose_result.get("yaw", 0.0) or 0.0,
             pose_result.get("roll", 0.0) or 0.0
         ])
-        
-        geo_metrics, reliability = extract_macro_bone_metrics(vertices, MACRO_BONE_INDICES, angles)
+
+        # 3. КАНОНИЗИРУЕМ ПРОСТРАНСТВО
+        vertices_canon = canonicalize_vertices_for_bucket(
+            np.array(res.vertices_world), 
+            raw_angles, 
+            bucket
+        )
+
+        # 4. Формируем "идеальные" углы, так как меш уже выровнен физически.
+        # Теперь pitch и roll равны 0.0, а yaw равен идеальному таргету.
+        target_angles = np.array([0.0, _CANONICAL_YAW_BY_VIEW_GROUP.get(bucket, 0.0), 0.0])
+
+        # 5. Извлекаем метрики из ИДЕАЛЬНОЙ 3D-модели
+        geo_metrics, reliability = extract_macro_bone_metrics(
+            vertices_canon, 
+            MACRO_BONE_INDICES, 
+            target_angles
+        )
+
+        from backend.pipeline.zones import apply_expression_exclusion_mask
+
+        # 1. Получаем реальные параметры экспрессии из нейросети
+        exp_params = res.payload.get("exp_params")
+        if exp_params is not None and len(exp_params) >= 3:
+            # 2. Проверяем мимику через исправленный модуль
+            _, excluded_flags = apply_expression_exclusion_mask(
+                base_mask=np.ones(len(vertices_canon), dtype=bool),
+                exp_params=exp_params,
+                bfm_indices=MACRO_BONE_INDICES
+            )
+            
+            # 3. ЖЕСТКОЕ ИСКЛЮЧЕНИЕ: Открытый рот смещает всю нижнюю челюсть
+            if excluded_flags.get("jaw_excluded"):
+                compromised_jaw_metrics = [
+                    'gonial_angle_L', 'gonial_angle_R', 
+                    'mandibular_ramus_length', 
+                    'jaw_width_ratio', 
+                    'chin_projection_ratio',
+                    'gnathion_midline_deviation_ratio' # Наша новая метрика из Итерации 1
+                ]
+                for metric_key in compromised_jaw_metrics:
+                    if metric_key in geo_metrics:
+                        geo_metrics[metric_key] = None # Ставим None, чтобы NoiseModel не сошел с ума
+                        
+            # 4. ЖЕСТКОЕ ИСКЛЮЧЕНИЕ: Улыбка смещает скулы, крылья носа и носогубные складки
+            if excluded_flags.get("smile_excluded"):
+                compromised_smile_metrics = [
+                    'nasofacial_angle_ratio', 
+                    'nose_width_ratio',
+                    # Текстурные метрики будут удалены ниже в блоке текстур
+                ]
+                for metric_key in compromised_smile_metrics:
+                    if metric_key in geo_metrics:
+                        geo_metrics[metric_key] = None
+
         geometric = geo_metrics
         
         parsed_year = None
@@ -464,8 +547,12 @@ def extract_one(photo_path_str, out_root_dir_str):
         )
 
         def recursive_round(obj, precision=4):
-            if isinstance(obj, float):
-                return round(obj, precision)
+            if isinstance(obj, (bool, np.bool_)):
+                return bool(obj)
+            elif isinstance(obj, (float, np.floating)):
+                return round(float(obj), precision)
+            elif isinstance(obj, (int, np.integer)):
+                return int(obj)
             elif isinstance(obj, dict):
                 return {k: recursive_round(v, precision) for k, v in obj.items()}
             elif isinstance(obj, (list, tuple)):

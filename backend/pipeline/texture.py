@@ -134,21 +134,16 @@ class SkinTextureAnalyzer:
             if uv_img is None:
                 return 0.0
             
-            # Apply Laplacian to detect high-frequency microtexture (pores)
-            laplacian = cv2.Laplacian(uv_img, cv2.CV_64F)
-            
             if uv_mask_path and Path(uv_mask_path).exists():
                 uv_mask = cv2.imread(str(uv_mask_path), cv2.IMREAD_GRAYSCALE)
                 if uv_mask is not None:
                     if uv_mask.shape != uv_img.shape:
                         uv_mask = cv2.resize(uv_mask, (uv_img.shape[1], uv_img.shape[0]), interpolation=cv2.INTER_NEAREST)
-                    valid_skin = uv_mask > 128
-                    if valid_skin.sum() > 100:
-                        pore_density = float(np.std(laplacian[valid_skin]) / 255.0)
-                        return pore_density
+                    return self._compute_pore_density(uv_img, uv_mask)
             
-            pore_density = float(np.std(laplacian) / 255.0)
-            return pore_density
+            # If no mask is available, use a non-zero mask of the image itself
+            uv_mask = (uv_img > 0).astype(np.uint8) * 255
+            return self._compute_pore_density(uv_img, uv_mask)
         except Exception:
             return 0.0
 
@@ -236,8 +231,7 @@ class SkinTextureAnalyzer:
 
             # Gloss and Reflectance (Evaluated on original photo to capture lighting conditions)
             hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-            v = hsv[:, :, 2][valid].astype(np.float32)
-            specular_gloss = float(np.percentile(v, 90) / 255.0) if v.size > 0 else 0.0
+            specular_gloss = self._compute_specular_gloss(hsv, mask)
             
             # Spatial Metrics
             ys, xs = np.where(valid)
@@ -374,27 +368,61 @@ class SkinTextureAnalyzer:
         """
         try:
             gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+            face_pixels = gray[mask_float > 0]
+            if len(face_pixels) == 0: return 0.0
             
-            # 1. Анализ теней - измеряем динамический диапазон
-            shadow_mask = (mask_float > 0.5).astype(np.uint8)
-            if shadow_mask.sum() < 100:
-                return 0.0
+            # Студийный свет (софтбоксы) убивает жесткие тени, делая дисперсию освещения минимальной.
+            # Естественный свет (солнце, лампа на потолке) дает жесткий градиент.
+            std_illumination = float(np.std(face_pixels))
             
-            face_pixels = gray[shadow_mask > 0]
-            if len(face_pixels) < 100:
-                return 0.0
+            # Нормализуем. Чем ниже std (равномернее свет), тем выше вероятность студии/вспышки.
+            # Если std < 30 (очень плоский свет) -> score 1.0. Если std > 70 (жесткие тени) -> score 0.0.
+            uniformity_score = np.clip(1.0 - ((std_illumination - 30.0) / 40.0), 0.0, 1.0)
             
-            p5, p50, p95 = np.percentile(face_pixels, [5, 50, 95])
-            shadow_area = float(np.sum(face_pixels < p50) / len(face_pixels))
-            highlight_spread = (p95 - p50) / 255.0
+            # Блики от вспышки (пересветы)
+            highlights = np.sum(face_pixels > 240) / len(face_pixels)
+            highlight_score = np.clip(highlights * 10.0, 0.0, 1.0)
             
-            # Студийный свет: мало теней и широкие блики
-            score = max(0.0, (0.35 - shadow_area) * 2.0) * min(1.0, highlight_spread * 3.0)
-            return float(np.clip(score, 0.0, 1.0))
-
-                
+            return float(np.clip((uniformity_score * 0.7) + (highlight_score * 0.3), 0.0, 1.0))
         except Exception:
             return 0.0
+
+    def _compute_specular_gloss(self, hsv_img: np.ndarray, skin_mask: np.ndarray) -> float:
+        # [FIX TX-01]: Извлекаем канал Яркости (V)
+        v_channel = hsv_img[:, :, 2]
+        
+        # КРИТИЧНО: Эродируем маску сильно (на 10-15 пикселей), чтобы гарантированно
+        # исключить глаза, зубы и блики на краях губ. Оставляем только щеки, лоб, нос.
+        kernel = np.ones((11, 11), np.uint8)
+        strict_skin_mask = cv2.erode(skin_mask, kernel, iterations=2)
+        
+        safe_pixels = v_channel[strict_skin_mask > 0]
+        if len(safe_pixels) < 100: return 0.0
+        
+        # Считаем 95-й перцентиль (самые яркие участки КОЖИ, а не зубов)
+        gloss_value = float(np.percentile(safe_pixels, 95))
+        
+        # Нормируем. Глянец обычно лежит в диапазоне 180-255.
+        return float(np.clip((gloss_value - 150.0) / 105.0, 0.0, 1.0))
+
+    def _compute_pore_density(self, gray: np.ndarray, skin_mask: np.ndarray) -> float:
+        # Оставляем только кожу
+        masked_gray = cv2.bitwise_and(gray, gray, mask=skin_mask)
+        
+        # Вычисляем Лапласиан (выделение высокочастотных деталей - пор, мелких текстур)
+        laplacian = cv2.Laplacian(masked_gray, cv2.CV_64F)
+        
+        # Считаем дисперсию только на валидных пикселях маски
+        valid_laplacian = laplacian[skin_mask > 0]
+        if len(valid_laplacian) == 0: return 0.0
+        
+        variance = np.var(valid_laplacian)
+        
+        # [FIX TX-05]: Правильная нормализация для CV_64F. 
+        # Дисперсия Лапласиана для кожи обычно лежит в пределах 100 - 1500.
+        normalized_density = float(np.clip(variance / 1000.0, 0.0, 1.0))
+        
+        return normalized_density
 
     def _detect_retouching(self, rgb: np.ndarray, mask_float: np.ndarray) -> float:
         """

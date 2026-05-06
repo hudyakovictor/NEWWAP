@@ -69,7 +69,7 @@ def compute_visibility(reconstruction: ReconstructionResult, angle_threshold_deg
     try:
         angles = getattr(reconstruction, "angles_deg", None)
         if angles is not None and len(angles) > 0:
-            yaw = float(angles[0])
+            yaw = float(angles[1])
             yaw_abs = abs(yaw)
             if 45.0 <= yaw_abs <= 60.0:
                 fade = float((60.0 - yaw_abs) / 15.0)

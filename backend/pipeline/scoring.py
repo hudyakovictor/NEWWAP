@@ -231,11 +231,49 @@ def extract_macro_bone_metrics(
     orbit_L_pts = vertices[orbit_L_idx] if orbit_L_idx.size > 0 else np.zeros((0, 3))
     orbit_R_pts = vertices[orbit_R_idx] if orbit_R_idx.size > 0 else np.zeros((0, 3))
     
-    def calc_tilt(p1, p2):
-        dx = p2[0] - p1[0]
-        dy = p2[1] - p1[1]
+    def calc_tilt_3d_coronal(p_inner, p_outer, face_normal):
+        """
+        Вычисляет наклон глазной щели строго в корональной плоскости лица.
+        Устойчиво к yaw-вращениям до 70 градусов.
+        """
         import math
-        return math.degrees(math.atan2(dy, abs(dx)))
+        # Вектор от внутреннего угла к внешнему
+        eye_vector = p_outer - p_inner
+        
+        # Проецируем вектор на плоскость лица (удаляем Z-компоненту относительно нормали лица)
+        eye_vector_proj = eye_vector - np.dot(eye_vector, face_normal) * face_normal
+        
+        # Нормализуем
+        eye_vector_proj = eye_vector_proj / (np.linalg.norm(eye_vector_proj) + 1e-8)
+        
+        # Определяем горизонтальную ось лица (cross product нормали и вектора "вверх" Y=[0,-1,0])
+        up_vector = np.array([0, -1, 0]) 
+        face_horizontal = np.cross(face_normal, up_vector)
+        face_horizontal = face_horizontal / (np.linalg.norm(face_horizontal) + 1e-8)
+        
+        # Считаем угол между спроецированным вектором глаза и горизонталью лица
+        sin_theta = np.linalg.norm(np.cross(face_horizontal, eye_vector_proj))
+        cos_theta = np.dot(face_horizontal, eye_vector_proj)
+        
+        return math.degrees(math.atan2(sin_theta, cos_theta))
+
+    def calc_3d_perimeter(points_array):
+        """Сумма 3D-расстояний между последовательными точками контура."""
+        if points_array.size == 0:
+            return 0.0
+        perimeter = 0.0
+        for i in range(len(points_array)):
+            p1 = points_array[i]
+            p2 = points_array[(i + 1) % len(points_array)] # замыкаем контур
+            perimeter += np.linalg.norm(p2 - p1)
+        return perimeter
+
+    def calc_point_to_line_distance(point, line_p1, line_p2):
+        """Кратчайшее 3D расстояние от точки до прямой, заданной двумя точками."""
+        line_vec = line_p2 - line_p1
+        point_vec = point - line_p1
+        cross_prod = np.cross(line_vec, point_vec)
+        return np.linalg.norm(cross_prod) / (np.linalg.norm(line_vec) + 1e-8)
 
     # Canthal tilt: use orbit bounding box edges as proxy when canthus landmarks are absent
     canthus_L_inner_idx = _idx('canthus_L_inner')
@@ -262,16 +300,33 @@ def extract_macro_bone_metrics(
     else:
         canthus_R_inner = canthus_R_outer = np.zeros(3)
 
-    metrics["canthal_tilt_L"] = calc_tilt(canthus_L_inner, canthus_L_outer)
-    metrics["canthal_tilt_R"] = calc_tilt(canthus_R_inner, canthus_R_outer)
+    # 1.3 Face Plane Overhaul: Собираем только стабильные лицевые вершины для расчета строгой нормали
+    face_mask_indices = np.concatenate([
+        _idx('nose_bridge_tip'), _idx('orbit_L'), _idx('orbit_R'),
+        _idx('cheekbone_L'), _idx('cheekbone_R'), _idx('forehead')
+    ])
+    if face_mask_indices.size > 0:
+        face_vertices_only = vertices[face_mask_indices]
+        _, face_plane_normal = fit_best_plane(face_vertices_only)
+    else:
+        _, face_plane_normal = fit_best_plane(vertices)
+
+    # Гарантируем, что нормаль лица смотрит "наружу" (в сторону камеры Z+ в 3DDFA)
+    if face_plane_normal[2] < 0:
+        face_plane_normal = -face_plane_normal
+
+    metrics["canthal_tilt_L"] = calc_tilt_3d_coronal(canthus_L_inner, canthus_L_outer, face_plane_normal)
+    metrics["canthal_tilt_R"] = calc_tilt_3d_coronal(canthus_R_inner, canthus_R_outer, face_plane_normal)
+    metrics["canthal_tilt_3d_L"] = metrics["canthal_tilt_L"]
+    metrics["canthal_tilt_3d_R"] = metrics["canthal_tilt_R"]
     metrics["interorbital_ratio"] = compute_interorbital_ratio(canthus_L_inner, canthus_R_inner, zygomatic_breadth)
     
-    # Orbit depth (NaN guard, using face plane projection FIX-09)
-    _, face_plane_normal = fit_best_plane(vertices)
-
     def depth_along_normal(point: np.ndarray, reference: np.ndarray, normal: np.ndarray) -> float:
-        """Проекция вектора (point - reference) на нормаль плоскости лица."""
-        return float(abs(np.dot(point - reference, normal)))
+        """
+        Сохраняем знак: положительное значение — точка выступает ВПЕРЕД от плоскости (normal).
+        Отрицательное — точка утоплена ВНУТРЬ (например, орбиты).
+        """
+        return float(np.dot(point - reference, normal))
 
     mid_cheek_pt = (cheek_L + cheek_R) / 2.0
 
@@ -296,8 +351,8 @@ def extract_macro_bone_metrics(
     ramus_R = get_zone_centroid('jaw_R')
     
     if jaw_L_pts.size > 0 and jaw_R_pts.size > 0:
-        gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
-        gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
+        gonion_L = jaw_L_pts[np.argmax(jaw_L_pts[:, 1])]
+        gonion_R = jaw_R_pts[np.argmax(jaw_R_pts[:, 1])]
         
         # If ramus centroid is not valid, fallback to gonion with an upward offset
         if np.allclose(ramus_L, 0):
@@ -308,14 +363,14 @@ def extract_macro_bone_metrics(
         metrics["gonial_angle_L"] = calc_3d_angle(ramus_L, gonion_L, chin_bottom)
         metrics["gonial_angle_R"] = calc_3d_angle(ramus_R, gonion_R, chin_bottom)
     elif jaw_R_pts.size > 0:
-        gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
+        gonion_R = jaw_R_pts[np.argmax(jaw_R_pts[:, 1])]
         if np.allclose(ramus_R, 0):
             ramus_R = gonion_R + np.array([0.0, 50.0, 0.0])
         angle_R = calc_3d_angle(ramus_R, gonion_R, chin_bottom)
         metrics["gonial_angle_R"] = angle_R
         metrics["gonial_angle_L"] = angle_R  # Symmetric fallback
     elif jaw_L_pts.size > 0:
-        gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
+        gonion_L = jaw_L_pts[np.argmax(jaw_L_pts[:, 1])]
         if np.allclose(ramus_L, 0):
             ramus_L = gonion_L + np.array([0.0, 50.0, 0.0])
         angle_L = calc_3d_angle(ramus_L, gonion_L, chin_bottom)
@@ -330,9 +385,9 @@ def extract_macro_bone_metrics(
     # Длина ветви от gonion до chin_bottom, нормированная на face_height
     _gonion_for_ramus = None
     if jaw_L_pts.size > 0:
-        _gonion_for_ramus = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
+        _gonion_for_ramus = jaw_L_pts[np.argmax(jaw_L_pts[:, 1])]
     elif jaw_R_pts.size > 0:
-        _gonion_for_ramus = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
+        _gonion_for_ramus = jaw_R_pts[np.argmax(jaw_R_pts[:, 1])]
 
     if _gonion_for_ramus is not None:
         metrics["mandibular_ramus_length"] = (
@@ -362,28 +417,44 @@ def extract_macro_bone_metrics(
     orbit_R_c = get_zone_centroid('orbit_R')
     metrics["orbit_centroid_ratio"] = float(np.linalg.norm(orbit_L_c - orbit_R_c)) / zygomatic_breadth
 
-    # 9. Forehead slope index (forehead tilt relative to brow ridge instead of nose bridge to avoid duplication)
+    # 9. Forehead slope index (forehead tilt relative to brow ridge) & Glabella-Nasion angle
     forehead_c = get_zone_centroid('forehead')
     brow_L = get_zone_centroid('brow_ridge_L')
     brow_R = get_zone_centroid('brow_ridge_R')
     brow_c = (brow_L + brow_R) / 2.0
-    metrics["forehead_slope_index"] = depth_along_normal(forehead_c, brow_c, face_plane_normal) / face_height
+    
+    glabella_pt = brow_c
+    nasion_pt = get_zone_centroid('nose_bridge_tip')
+    forehead_vec = glabella_pt - nasion_pt
+    forehead_vec = forehead_vec / (np.linalg.norm(forehead_vec) + 1e-8)
+    
+    import math
+    metrics["glabella_nasion_projection_angle"] = math.degrees(math.acos(
+        np.clip(np.dot(forehead_vec, face_plane_normal), -1.0, 1.0)
+    ))
+    metrics["forehead_slope_index"] = float(metrics["glabella_nasion_projection_angle"] / 90.0)
 
     # 10. Nasofacial angle ratio (nose protrusion vs face height)
     nose_bridge_c = get_zone_centroid('nose_bridge_tip')
     metrics["nasofacial_angle_ratio"] = depth_along_normal(nose_bridge_c, mid_cheek_pt, face_plane_normal) / face_height
 
-    # 11. Orbital asymmetry index (L vs R orbit depth difference)
-    od_L = metrics.get("orbit_depth_L_ratio", 0.0)
-    od_R = metrics.get("orbit_depth_R_ratio", 0.0)
-    metrics["orbital_asymmetry_index"] = float(abs(od_L - od_R))
+    # 11. Orbital asymmetry index & 3D Perimeter symmetry (3D perimeter ratio based)
+    perimeter_L = calc_3d_perimeter(orbit_L_pts)
+    perimeter_R = calc_3d_perimeter(orbit_R_pts)
+    metrics["orbital_perimeter_symmetry"] = min(perimeter_L, perimeter_R) / (max(perimeter_L, perimeter_R) + 1e-8)
+    metrics["orbital_asymmetry_index"] = float(1.0 - metrics["orbital_perimeter_symmetry"])
 
-    # 12. Chin offset asymmetry (chin lateral offset from midline)
-    if chin_pts.size > 0:
-        midline_x = (cheek_L[0] + cheek_R[0]) / 2.0
-        metrics["chin_offset_asymmetry"] = float(abs(chin_centroid[0] - midline_x) / zygomatic_breadth)
-    else:
-        metrics["chin_offset_asymmetry"] = 0.0
+    # 12. Chin offset asymmetry & Gnathion midline deviation
+    nasion_pt = get_zone_centroid('nose_bridge_tip')
+    subnasale_pt = (get_zone_centroid('nose_wing_L') + get_zone_centroid('nose_wing_R')) / 2.0
+    gnathion_pt = get_zone_centroid('chin')
+    if np.allclose(gnathion_pt, 0):
+        gnathion_pt = chin_bottom
+        
+    metrics["gnathion_midline_deviation_ratio"] = calc_point_to_line_distance(
+        gnathion_pt, nasion_pt, subnasale_pt
+    ) / zygomatic_breadth
+    metrics["chin_offset_asymmetry"] = float(metrics["gnathion_midline_deviation_ratio"])
 
     # 13. Reliability
     yaw_abs = abs(angles[1])

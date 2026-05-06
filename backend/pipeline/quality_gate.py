@@ -20,37 +20,69 @@ class QualityGate:
         self.blur_threshold = float(blur_threshold)
         self.noise_threshold = float(noise_threshold)
 
-    def evaluate(self, image_path: Union[str, Path]) -> Dict[str, Union[float, Dict[str, bool]]]:
+    def _estimate_noise(self, gray: np.ndarray) -> float:
+        median = cv2.medianBlur(gray, 3)
+        return float(np.mean(np.abs(gray.astype(np.float32) - median.astype(np.float32))))
+
+    def evaluate(self, image_path: Union[str, Path], bbox: dict = None) -> Dict[str, Union[float, Dict[str, bool], str, bool]]:
         """
-        Calculates Laplacian variance (sharpness) and median absolute deviation (noise).
+        Оценивает качество фото. Защищает пайплайн от падений и отсеивает 
+        нерелевантные (слишком мелкие или шумные) лица.
         """
-        img = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+        img = cv2.imread(str(image_path))
         if img is None:
-            raise ValueError(f"CRITICAL: Failed to read image for quality analysis: {image_path}")
+            # [FIX QG-01]: Вместо обрушения всего пайплайна возвращаем статус мягкого отказа
+            return {
+                "success": False,
+                "is_rejected": True, 
+                "reason": "INSUFFICIENT_DATA_UNREADABLE",
+                "overall_score": 0.0,
+                "overall_quality": 0.0,
+                "sharpness_variance": 0.0,
+                "blur_value": 0.0,
+                "noise_level": 0.0,
+            }
 
-        # Sharpness: variance of Laplacian
-        blur_score = float(cv2.Laplacian(img, cv2.CV_64F).var())
+        h, w = img.shape[:2]
         
-        # Noise: deviation from median filtered version
-        median = cv2.medianBlur(img, 3)
-        noise_score = float(np.mean(np.abs(img.astype(np.float32) - median.astype(np.float32))))
+        # [FIX QG-04]: Проверка минимального разрешения лица. 
+        # Форензика текстуры невозможна, если лицо меньше 150x150 пикселей.
+        if bbox is not None:
+            face_h = bbox.get("h", h)
+            if face_h < 150:
+                return {
+                    "success": True,
+                    "is_rejected": True,
+                    "reason": f"FACE_TOO_SMALL_{int(face_h)}px",
+                    "overall_score": 0.1,
+                    "overall_quality": 0.1,
+                    "sharpness_variance": 0.0,
+                    "blur_value": 0.0,
+                    "noise_level": 0.0,
+                }
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
-        is_texture_rejected = blur_score < self.blur_threshold or noise_score > self.noise_threshold
-
-        # [FIX-QG1] overall_score: normalized composite [0,1] for downstream status_detail.
-        # sharpness_score: Laplacian variance mapped to [0,1] (saturates at 500).
-        # noise_score: inverse mapping (0 noise → 1, high noise → 0).
-        sharpness_score = min(1.0, blur_score / 500.0)
-        noise_quality = max(0.0, 1.0 - noise_score / 10.0)
-        overall_score = float(sharpness_score * 0.6 + noise_quality * 0.4)
-
+        # Оценка размытия (Лапласиан)
+        blur_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        
+        # [FIX QG-02]: Порог резкости должен быть динамическим или более реалистичным.
+        # Для соцсетей Laplacian variance > 65 уже считается приемлемым.
+        sharpness_score = float(np.clip(blur_score / 150.0, 0.0, 1.0))
+        
+        # [FIX QG-03]: Оценка шума. Шум не должен уводить quality в минус.
+        noise_score = self._estimate_noise(gray)
+        noise_quality = float(np.clip(1.0 - (noise_score / 25.0), 0.0, 1.0))
+        
+        # Итоговый скор. Шумное, но резкое фото получит сбалансированную оценку
+        overall_score = float((sharpness_score * 0.7) + (noise_quality * 0.3))
+        
         return {
+            "success": True,
+            "is_rejected": overall_score < 0.45, # Строгий форензик-порог
+            "blur_value": blur_score,
             "sharpness_variance": blur_score,
             "noise_level": noise_score,
             "overall_score": overall_score,
-            "is_rejected": is_texture_rejected,
-            "flags": {
-                "REJECTED_BLUR": blur_score < self.blur_threshold,
-                "REJECTED_NOISE": noise_score > self.noise_threshold,
-            }
+            "overall_quality": overall_score,
         }

@@ -201,7 +201,18 @@ class CalibrationAnalyzer:
         """
         Decomposes raw error into signal, expected noise, and linear SNR.
         """
-        avg_base_noise = float(np.mean([p.mean for p in self.model.zone_profiles.values()])) if self.model.zone_profiles else 0.015
+        # [FIX C2-01]: Если профили существуют, мы используем медиану или взвешенное среднее
+        # более надежных зон (например, глазницы и нос), чтобы не размывать шум из-за челюсти.
+        if self.model.zone_profiles:
+            stable_zones = ["orbit_L", "orbit_R", "nose_bridge_tip", "forehead"]
+            stable_means = [self.model.zone_profiles[z].mean for z in stable_zones if z in self.model.zone_profiles]
+            if stable_means:
+                avg_base_noise = float(np.mean(stable_means))
+            else:
+                avg_base_noise = float(np.median([p.mean for p in self.model.zone_profiles.values()]))
+        else:
+            avg_base_noise = 0.015
+
         expected_noise = avg_base_noise * (1.0 + 0.02 * pose_delta)
         
         signal = max(raw_error - expected_noise, 0.0)

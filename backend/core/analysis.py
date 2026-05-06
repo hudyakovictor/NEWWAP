@@ -921,16 +921,30 @@ def calculate_bayesian_evidence(
     l_h0_combined = l_h0_geom * (0.7 + 0.3 * chron_likelihood)
     l_h2_combined = l_h2_geom * (0.9 + 0.1 * chron_likelihood)  # H2 меньше зависит от хронологии
     
-    # 6. Байесовское обновление
-    ev_h0 = priors["H0"] * l_h0_combined * (1.0 - l_h1_tex)
-    ev_h1 = priors["H1"] * l_h1_tex
-    ev_h2 = priors["H2"] * l_h2_combined * (1.0 - l_h1_tex)
+    # 6. [FIX I-37]: Байесовское обновление в лог-домене для защиты от Underflow
+    log_priors = {
+        "H0": math.log(priors.get("H0", 0.33) + 1e-9),
+        "H1": math.log(priors.get("H1", 0.33) + 1e-9),
+        "H2": math.log(priors.get("H2", 0.33) + 1e-9),
+    }
     
-    z = ev_h0 + ev_h1 + ev_h2 + 1e-9
+    log_likelihoods = {
+        "H0": math.log(l_h0_combined * (1.0 - l_h1_tex) + 1e-9),
+        "H1": math.log(l_h1_tex + 1e-9),
+        "H2": math.log(l_h2_combined * (1.0 - l_h1_tex) + 1e-9),
+    }
+    
+    log_posteriors = {k: log_priors[k] + log_likelihoods[k] for k in ["H0", "H1", "H2"]}
+    
+    # Log-Sum-Exp trick
+    max_log = max(log_posteriors.values())
+    raw_exps = {k: math.exp(v - max_log) for k, v in log_posteriors.items()}
+    total_exp = sum(raw_exps.values())
+    
     posteriors = {
-        "H0": round(ev_h0 / z, 4),
-        "H1": round(ev_h1 / z, 4),
-        "H2": round(ev_h2 / z, 4),
+        "H0": round(raw_exps["H0"] / total_exp, 4),
+        "H1": round(raw_exps["H1"] / total_exp, 4),
+        "H2": round(raw_exps["H2"] / total_exp, 4),
     }
     
     # 7. Хронология и поза (year_a, year_b уже определены выше [FIX-34])

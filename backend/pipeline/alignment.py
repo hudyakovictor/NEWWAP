@@ -169,3 +169,33 @@ def gpa_unit_scale(points: np.ndarray) -> tuple[np.ndarray, float, np.ndarray]:
     if scale < 1e-8:
         return centered, 1.0, centroid
     return centered / scale, scale, centroid
+
+def canonicalize_vertices_for_bucket(vertices: np.ndarray, angles_deg: np.ndarray, view_group: str) -> np.ndarray:
+    """
+    Приводит 3D-меш к канонической системе координат бакета.
+    Нейтрализует наклон (pitch), крен (roll) и доводит поворот (yaw) до идеала.
+    
+    :param vertices: Сырые вершины из 3DDFA (N, 3)
+    :param angles_deg: Углы из 3DDFA строго в формате [pitch, yaw, roll]
+    :param view_group: Название бакета (например, 'frontal')
+    """
+    from scipy.spatial.transform import Rotation
+    pitch, yaw, roll = angles_deg
+    target_yaw = _CANONICAL_YAW_BY_VIEW_GROUP.get(view_group, 0.0)
+    
+    # 1. Строим матрицу ТЕКУЩЕГО поворота. 
+    # Внимание: 3DDFA использует порядок вращения X(pitch), Y(yaw), Z(roll).
+    # Знак минус используется для инверсии осей 3DDFA к стандартной правой СК.
+    R_current = Rotation.from_euler('xyz', [-pitch, -yaw, -roll], degrees=True).as_matrix()
+    
+    # 2. Строим матрицу ЦЕЛЕВОГО поворота (Pitch и Roll жестко равны нулю!)
+    R_target = Rotation.from_euler('xyz', [0.0, -target_yaw, 0.0], degrees=True).as_matrix()
+    
+    # 3. Вычисляем компенсирующую дельта-матрицу
+    R_align = R_current.T @ R_target
+    
+    # 4. Вращаем меш строго вокруг его центроида, чтобы избежать смещения в космос
+    centroid = vertices.mean(axis=0)
+    aligned_vertices = (vertices - centroid) @ R_align + centroid
+    
+    return aligned_vertices

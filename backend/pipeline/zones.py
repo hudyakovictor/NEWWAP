@@ -45,39 +45,36 @@ def apply_expression_exclusion_mask(
     face_scale: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, bool]]:
     """
-    Динамически исключает зоны мимики из маски расчета.
+    BFM exp_params (коэффициенты базиса выражений) НЕ зависят от физического 
+    масштаба сетки (face_scale). Они безразмерны. Умножать на scale — фатальная ошибка.
     """
-    active_mask = np.array(base_mask, dtype=bool, copy=True)
+    THRESHOLD_JAW_OPEN = 0.12
+    THRESHOLD_SMILE = 0.8
+    
     if exp_params is None or exp_params.size < 3:
-        return active_mask, {
+        return base_mask, {
+            "jaw_excluded": False,
             "jaw_excluded_due_to_open_mouth": False,
+            "smile_excluded": False,
             "cheeks_excluded_due_to_smile": False,
         }
 
-    jaw_open_intensity = float(abs(exp_params[0]))
-    smile_intensity = float(max(abs(exp_params[1]), abs(exp_params[2])))
+    # 0-й параметр 3DDFA отвечает за открытие челюсти
+    jaw_open_intensity = abs(exp_params[0]) 
+    jaw_excluded = jaw_open_intensity > THRESHOLD_JAW_OPEN
+    
+    # 1-й и 2-й параметры отвечают за улыбку (растяжение губ)
+    smile_intensity = max(abs(exp_params[1]), abs(exp_params[2]))
+    smile_excluded = smile_intensity > THRESHOLD_SMILE
 
-    # Z-03: Normalize jaw opening threshold using face_scale
-    jaw_excluded = jaw_open_intensity > (THRESHOLD_JAW_OPEN * face_scale)
-    cheeks_excluded = smile_intensity > THRESHOLD_SMILE
-
-    if jaw_excluded:
-        jawline_idx = np.asarray(bfm_indices.get("jawline", np.array([], dtype=np.int64)), dtype=np.int64)
-        lower_lip_idx = np.asarray(bfm_indices.get("lower_lip", np.array([], dtype=np.int64)), dtype=np.int64)
-        jawline_idx = jawline_idx[(jawline_idx >= 0) & (jawline_idx < active_mask.shape[0])]
-        lower_lip_idx = lower_lip_idx[(lower_lip_idx >= 0) & (lower_lip_idx < active_mask.shape[0])]
-        active_mask[jawline_idx] = False
-        active_mask[lower_lip_idx] = False
-
-    if cheeks_excluded:
-        cheek_idx = np.asarray(bfm_indices.get("lower_cheeks", np.array([], dtype=np.int64)), dtype=np.int64)
-        cheek_idx = cheek_idx[(cheek_idx >= 0) & (cheek_idx < active_mask.shape[0])]
-        active_mask[cheek_idx] = False
-
-    return active_mask, {
+    excluded_flags = {
+        "jaw_excluded": bool(jaw_excluded),
         "jaw_excluded_due_to_open_mouth": bool(jaw_excluded),
-        "cheeks_excluded_due_to_smile": bool(cheeks_excluded),
+        "smile_excluded": bool(smile_excluded),
+        "cheeks_excluded_due_to_smile": bool(smile_excluded),
     }
+    
+    return base_mask, excluded_flags
 
 
 ZONE_CONFIG = {
