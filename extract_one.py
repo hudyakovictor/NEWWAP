@@ -965,11 +965,13 @@ def run_report_mode(test_photos, out_dir, calib_df):
     def load_reconstruction(result_data) -> ReconstructionResult:
         files = result_data.get("files", {})
         storage_dir = Path(files["_storage_dir"])
-        N = 22856  # число вершин FLAME
-        
-        v_world = np.load(storage_dir / "vertices_world_raw.npy") \
-            if (storage_dir / "vertices_world_raw.npy").exists() \
-            else np.zeros((N, 3), dtype=np.float32)
+        v_world_path = storage_dir / "vertices_world_raw.npy"
+        if v_world_path.exists():
+            v_world = np.load(v_world_path)
+        else:
+            v_world = np.zeros((22856, 3), dtype=np.float32)
+            
+        N = len(v_world)
 
         v_canon = np.load(storage_dir / "vertices.npy") \
             if (storage_dir / "vertices.npy").exists() \
@@ -1035,6 +1037,8 @@ def run_report_mode(test_photos, out_dir, calib_df):
             try:
                 cmp_result = pair_engine.compare(ra, rb)
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 print(f"Error comparing {pa['source']['filename']} with {pb['source']['filename']}: {e}")
                 continue
                 
