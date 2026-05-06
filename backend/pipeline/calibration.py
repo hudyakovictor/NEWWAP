@@ -52,17 +52,27 @@ class NoiseObservation:
             self.timestamp = iso_now()
 
 @dataclass
+class NuisanceDeltas:
+    """[FIX C2-01] Факторы нюисанса для динамического расчёта ожидаемого шума."""
+    pose_delta_mag: float = 0.0       # Суммарный угловой дельта между ракурсами (градусы)
+    quality_degradation: float = 0.0  # Деградация качества [0..1], 0 = идеально
+
+@dataclass
 class ZoneNoiseProfile:
     zone_name: str
     mean: float
     std: float
     count: int
     reliability: float
-    
+    pose_weight: float = 0.02     # Влияние позы на шум данной зоны
+    quality_weight: float = 0.01  # Влияние качества на шум данной зоны
+
+    @property
+    def base_mad(self) -> float:
+        return self.mean
+
     def predict_noise(self, pose_delta_mag: float) -> float:
-        # Simple linear model for now: base_noise + slope * delta
-        # In a real scenario, this would be more complex
-        return self.mean * (1.0 + 0.02 * pose_delta_mag)
+        return self.base_mad + pose_delta_mag * self.pose_weight
 
 class NoiseModel:
     """
@@ -197,30 +207,48 @@ class CalibrationAnalyzer:
             zone_details=zone_details
         )
 
-    def decompose(self, raw_error: float, pose_delta: float) -> CalibrationDecomposition:
+    def decompose(
+        self,
+        raw_error: float,
+        pose_delta: float,
+        zone: Optional[str] = None,
+        nuisance: Optional["NuisanceDeltas"] = None,
+    ) -> CalibrationDecomposition:
         """
-        Decomposes raw error into signal, expected noise, and linear SNR.
+        [FIX C2-01] Декомпозиция с учётом конкретной зоны и нюисанс-факторов.
+        Заменяет глобальное avg_base_noise на per-zone динамический шум.
         """
-        # [FIX C2-01]: Если профили существуют, мы используем медиану или взвешенное среднее
-        # более надежных зон (например, глазницы и нос), чтобы не размывать шум из-за челюсти.
-        if self.model.zone_profiles:
-            stable_zones = ["orbit_L", "orbit_R", "nose_bridge_tip", "forehead"]
-            stable_means = [self.model.zone_profiles[z].mean for z in stable_zones if z in self.model.zone_profiles]
-            if stable_means:
-                avg_base_noise = float(np.mean(stable_means))
-            else:
-                avg_base_noise = float(np.median([p.mean for p in self.model.zone_profiles.values()]))
-        else:
-            avg_base_noise = 0.015
+        if nuisance is None:
+            nuisance = NuisanceDeltas(pose_delta_mag=pose_delta)
 
-        expected_noise = avg_base_noise * (1.0 + 0.02 * pose_delta)
-        
+        if zone and zone in self.model.zone_profiles:
+            profile = self.model.zone_profiles[zone]
+            expected_noise = (
+                profile.base_mad
+                + nuisance.pose_delta_mag * profile.pose_weight
+                + nuisance.quality_degradation * profile.quality_weight
+            )
+        elif self.model.zone_profiles:
+            # Fallback: медиана стабильных зон (не глобальное среднее!)
+            stable_priority = ["orbit_L", "orbit_R", "nose_bridge_tip", "forehead"]
+            candidates = [
+                self.model.zone_profiles[z].base_mad
+                for z in stable_priority
+                if z in self.model.zone_profiles
+            ]
+            if not candidates:
+                candidates = [p.base_mad for p in self.model.zone_profiles.values()]
+            base = float(np.median(candidates))
+            expected_noise = base + nuisance.pose_delta_mag * 0.02 + nuisance.quality_degradation * 0.01
+        else:
+            expected_noise = 0.015 + nuisance.pose_delta_mag * 0.001
+
         signal = max(raw_error - expected_noise, 0.0)
         snr = _compute_linear_snr(raw_error, expected_noise)
-        
+
         return CalibrationDecomposition(
             signal=float(signal),
             noise=float(expected_noise),
-            snr=float(snr)
+            snr=float(snr),
         )
 

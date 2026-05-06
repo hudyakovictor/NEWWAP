@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from .types import ComparisonResult, ReconstructionResult, VisibilityResult, AlignmentResult
-from .alignment import rigid_umeyama, gpa_unit_scale
+from .alignment import rigid_umeyama, gpa_unit_scale, canonicalize_vertices_for_bucket
 from .scoring import align_and_score, extract_macro_bone_metrics
 from .visibility import compute_visibility
 from .calibration import CalibrationAnalyzer, CalibrationProtocol, CalibrationDecomposition
@@ -137,42 +137,52 @@ class PairComparisonEngine:
                 diagnostics=diagnostics,
             )
 
-        # 3. Unit Scale Procrustes (GPA) or Landmark IPD (G-02)
-        # Normalize both to unit scale based on shared vertices or IPD
-        _, scale_a_gpa, centroid_a = gpa_unit_scale(recon_a.vertices_world[shared_idx])
-        _, scale_b_gpa, centroid_b = gpa_unit_scale(recon_b.vertices_world[shared_idx])
-        
+        # 3. [ITER-2] Канонизируем вершины к позе бакета ДО масштабирования.
+        # Нейтрализует pitch, roll и нормализует yaw — сравнение становится инвариантным к позе.
+        view_group_a = getattr(recon_a, 'pose_bucket', 'frontal') or 'frontal'
+        try:
+            verts_a_canon = canonicalize_vertices_for_bucket(
+                recon_a.vertices_world, recon_a.angles_deg, view_group_a
+            )
+            verts_b_canon = canonicalize_vertices_for_bucket(
+                recon_b.vertices_world, recon_b.angles_deg, view_group_a  # b выравнивается к бакету a
+            )
+        except Exception:
+            verts_a_canon = recon_a.vertices_world
+            verts_b_canon = recon_b.vertices_world
+
+        _, scale_a_gpa, centroid_a = gpa_unit_scale(verts_a_canon[shared_idx])
+        _, scale_b_gpa, centroid_b = gpa_unit_scale(verts_b_canon[shared_idx])
+
         landmarks_available = False
         geometry_evidence_mode = "calibrated"
-        
-        if (recon_a.landmarks_106 is not None and len(recon_a.landmarks_106) >= 48 and 
+
+        if (recon_a.landmarks_106 is not None and len(recon_a.landmarks_106) >= 48 and
             recon_b.landmarks_106 is not None and len(recon_b.landmarks_106) >= 48):
             try:
                 lm_a = recon_a.landmarks_106
                 lm_b = recon_b.landmarks_106
-                # Индексы глаз для 3DDFA-V3 (106 points)
-                le_a = lm_a[66:74].mean(0)  # Левый глаз (8 точек контура)
-                re_a = lm_a[75:83].mean(0)  # Правый глаз (8 точек контура)
+                le_a = lm_a[66:74].mean(0)
+                re_a = lm_a[75:83].mean(0)
                 scale_a_ipd = float(np.linalg.norm(le_a - re_a))
-                
                 le_b = lm_b[66:74].mean(0)
                 re_b = lm_b[75:83].mean(0)
                 scale_b_ipd = float(np.linalg.norm(le_b - re_b))
-                
                 if scale_a_ipd > 1e-6 and scale_b_ipd > 1e-6:
                     landmarks_available = True
                     scale_a = scale_a_ipd
                     scale_b = scale_b_ipd
             except Exception:
                 pass
-                
+
         if not landmarks_available:
             scale_a = scale_a_gpa
             scale_b = scale_b_gpa
             geometry_evidence_mode = "fallback"
-            
-        points_a_unit = (recon_a.vertices_world - centroid_a) / (scale_a + 1e-8)
-        points_b_unit = (recon_b.vertices_world - centroid_b) / (scale_b + 1e-8)
+
+        # [ITER-2] Используем канонические вершины вместо сырых world vertices
+        points_a_unit = (verts_a_canon - centroid_a) / (scale_a + 1e-8)
+        points_b_unit = (verts_b_canon - centroid_b) / (scale_b + 1e-8)
         
         # 4. Alignment & Scoring
         # Weights: combine visibility cosines

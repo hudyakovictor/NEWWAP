@@ -584,42 +584,128 @@ def extract_one(photo_path_str, out_root_dir_str):
             print(f"Failed to write error result: {write_err}")
 
 if __name__ == "__main__":
+    import argparse
     import glob
-    calibration_dir = Path("/Volumes/SDCARD/photo/calibration")
-    test_photos = sorted(glob.glob(str(calibration_dir / "*.jpg")) + glob.glob(str(calibration_dir / "*.png")))
+    import csv
+
+    parser = argparse.ArgumentParser(description="Extract facial metrics from photos")
+    parser.add_argument(
+        "--mode",
+        choices=["calibration", "main"],
+        default="calibration",
+        help=(
+            "calibration — запуск на калибровочном датасете для построения noise model; "
+            "main — запуск на основном датасете с учётом калибровочных данных"
+        ),
+    )
+    parser.add_argument("--photos-dir", type=str, default=None, help="Папка с фото")
+    parser.add_argument("--out-dir",    type=str, default=None, help="Папка для результатов")
+    parser.add_argument(
+        "--calib-csv",
+        type=str,
+        default=str(Path(__file__).parent / "calibration_data.csv"),
+        help="Путь к calibration_data.csv (используется только в режиме main)",
+    )
+    args = parser.parse_args()
+
+    # ── Пути по умолчанию ────────────────────────────────────────────────────
+    if args.mode == "calibration":
+        photos_dir = Path(args.photos_dir or "/Volumes/SDCARD/photo/calibration")
+        out_dir    = args.out_dir or "/Volumes/SDCARD/storage/calibration"
+    else:
+        photos_dir = Path(args.photos_dir or "/Volumes/SDCARD/photo/main")
+        out_dir    = args.out_dir or "/Volumes/SDCARD/storage/main"
+
+    # ── Загрузка калибровочных норм (только для режима main) ─────────────────
+    calibration_norms: dict = {}
+    if args.mode == "main":
+        calib_csv = Path(args.calib_csv)
+        if calib_csv.exists():
+            with open(calib_csv, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    metric = row.get("metric") or row.get("zone")
+                    if metric:
+                        calibration_norms[metric] = {
+                            "mean":        float(row.get("mean", 0.0)),
+                            "std":         float(row.get("std",  0.015)),
+                            "pose_bucket": row.get("pose_bucket", "frontal"),
+                        }
+            print(f"[main mode] Loaded {len(calibration_norms)} calibration norms from {calib_csv}")
+        else:
+            print(f"[main mode] WARNING: calibration_data.csv not found at {calib_csv}. "
+                  f"Run '--mode calibration' first and approve the results.")
+
+    # ── Сбор списка фото ─────────────────────────────────────────────────────
+    test_photos = sorted(
+        glob.glob(str(photos_dir / "*.jpg")) +
+        glob.glob(str(photos_dir / "*.jpeg")) +
+        glob.glob(str(photos_dir / "*.png"))
+    )
     if not test_photos:
-        test_photos = [
-            "/Volumes/SDCARD/photo/calibration/calibration_y0p1r9.jpg",          # 1. Frontal (yaw ~0)
-            "/Volumes/SDCARD/photo/calibration/calibration_y-15p4r5.jpg",        # 2. Three-Quarter Left Light (yaw ~-15)
-            "/Volumes/SDCARD/photo/calibration/calibration_y-36p12r2.jpg",       # 3. Three-Quarter Left Mid (yaw ~-36)
-            "/Volumes/SDCARD/photo/calibration/calibration_y-54p0r8.jpg",        # 4. Three-Quarter Left Deep (yaw ~-54)
-            "/Volumes/SDCARD/photo/calibration/calibration_y-78p-7r-1.jpg",      # 5. Profile Left (yaw ~-78)
-            "/Volumes/SDCARD/photo/calibration/calibration_y15p2r6.jpg",         # 6. Three-Quarter Right Light (yaw ~15)
-            "/Volumes/SDCARD/photo/calibration/calibration_y35p-9r1.jpg",        # 7. Three-Quarter Right Mid (yaw ~35)
-            "/Volumes/SDCARD/photo/calibration/calibration_y55p-6r0.jpg",         # 8. Three-Quarter Right Deep (yaw ~55)
-            "/Volumes/SDCARD/photo/calibration/calibration_y81p-16r1.jpg",        # 9. Profile Right (yaw ~81)
-        ]
-    print(f"Found {len(test_photos)} calibration photos to process.")
+        print(f"No photos found in {photos_dir}")
+        sys.exit(1)
+
+    print(f"[{args.mode.upper()} MODE] Found {len(test_photos)} photos → {out_dir}")
+
+    # ── Обработка ────────────────────────────────────────────────────────────
     for photo in test_photos:
         try:
-            # Delete old result if any to force recalculation
-            out_path = Path("/Volumes/SDCARD/storage/calibration") / Path(photo).stem / "result.json"
+            # Удаляем старый результат для пересчёта
+            out_path = Path(out_dir) / Path(photo).stem / "result.json"
             if out_path.exists():
                 out_path.unlink()
-            
-            extract_one(photo, "/Volumes/SDCARD/storage/calibration")
-            
-            # Read and print result fields
-            with open(out_path, 'r') as f:
-                res_data = json.load(f)
-                print(f"--- VERIFICATION FOR {Path(photo).name} ---")
-                print(f"Status: {res_data.get('status')}")
-                print(f"Pose Bucket: {res_data.get('pose_bucket')}")
-                print(f"Reliability Weight: {res_data.get('reliability_weight')}")
-                print(f"Bucket Metrics Coverage: {res_data.get('bucket_metrics_coverage')}")
-                metrics = res_data.get('metrics', {})
-                print(f"Metrics count: {len(metrics)}")
-                print(f"Null metrics: {[k for k, v in metrics.items() if v is None]}")
-                print(f"---" + "-" * 30 + "---\n")
+
+            result = extract_one(photo, out_dir)
+
+            # В режиме main — обогащаем результат калибровочными нормами
+            if args.mode == "main" and calibration_norms and out_path.exists():
+                with open(out_path, "r") as f:
+                    res_data = json.load(f)
+
+                metrics = res_data.get("metrics", {})
+                pose_bucket = res_data.get("pose_bucket", "frontal")
+                calibrated_flags = {}
+
+                for metric, value in metrics.items():
+                    if value is None:
+                        continue
+                    norm_key = f"{pose_bucket}_{metric}"
+                    norm = calibration_norms.get(norm_key) or calibration_norms.get(metric)
+                    if norm:
+                        deviation = abs(value - norm["mean"]) / (norm["std"] + 1e-9)
+                        calibrated_flags[metric] = {
+                            "value":     value,
+                            "norm_mean": norm["mean"],
+                            "norm_std":  norm["std"],
+                            "z_score":   round(deviation, 3),
+                            "flagged":   deviation > 2.5,
+                        }
+
+                res_data["calibrated_flags"] = calibrated_flags
+                res_data["calibration_mode"] = "main"
+                res_data["calib_norms_loaded"] = len(calibration_norms)
+
+                with open(out_path, "w") as f:
+                    json.dump(res_data, f, ensure_ascii=False, indent=2)
+
+            # Верификация
+            if out_path.exists():
+                with open(out_path, "r") as f:
+                    res_data = json.load(f)
+                metrics   = res_data.get("metrics", {})
+                null_keys = [k for k, v in metrics.items() if v is None]
+                flagged   = []
+                if args.mode == "main":
+                    flagged = [
+                        k for k, v in res_data.get("calibrated_flags", {}).items()
+                        if isinstance(v, dict) and v.get("flagged")
+                    ]
+                print(
+                    f"✅ {Path(photo).name} | bucket={res_data.get('pose_bucket')} "
+                    f"| metrics={len(metrics)} | nulls={len(null_keys)}"
+                    + (f" | flagged={len(flagged)}" if args.mode == "main" else "")
+                )
+
         except Exception as err:
-            print(f"Verification failed for {photo}: {err}")
+            print(f"❌ {Path(photo).name}: {err}")
