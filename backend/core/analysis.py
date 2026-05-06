@@ -25,10 +25,7 @@ from backend.core.calibration import (
     compute_calibration_informed_likelihood,
     find_calibration_match,
 )
-from backend.core.longitudinal import (
-    LongitudinalAnalyzer,
-    build_longitudinal_model,
-)
+from backend.core.longitudinal import LongitudinalModel
 try:
     from uv_module.hd_uv_generator import HDUVConfig, HDUVTextureGenerator
     _UV_AVAILABLE = True
@@ -930,11 +927,6 @@ def _recon_dict(reconstruction: Any, bucket: str | None = None, image_shape: tup
                 raw_angles,
                 bucket
             )
-            # Project back to 2D canon
-            v2d_orig = vertices[:, :2].copy()
-            h_dim, w_dim = (image_shape[0], image_shape[1]) if image_shape else (224, 224)
-            v2d_orig[:, 0] += w_dim / 2
-            v2d_orig[:, 1] += h_dim / 2
         except Exception as e:
             print(f"Warning in _recon_dict canonicalization: {e}")
             vertices = reconstruction.vertices_world
@@ -943,7 +935,7 @@ def _recon_dict(reconstruction: Any, bucket: str | None = None, image_shape: tup
         "triangles": reconstruction.triangles,
         "uv_coords": reconstruction.uv_coords,
         "vertices": vertices,  # СТРОГО КАНОН!
-        "vertices_2d": v2d_orig,  # СТРОГО КАНОН В 2D!
+        "vertices_2d": v2d_orig,  # СТРОГО ОРИГИНАЛЬНЫЕ ПИКСЕЛИ ИЗОБРАЖЕНИЯ (чтобы сэмплировать черты лица)!
         "vertices_3d": vertices,
         "visible_idx_renderer": reconstruction.visible_idx_renderer,
         "angles_deg": reconstruction.angles_deg,
