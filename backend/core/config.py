@@ -44,14 +44,14 @@ class Settings:
 def build_settings() -> Settings:
     repo_root = Path(__file__).resolve().parents[3]
     newapp_root = repo_root / "newapp"
-    storage_root = newapp_root / "storage"
+    storage_root = Path("/Volumes/SDCARD/storage")
     localxpose_env = repo_root / "localxpose.env"
     return Settings(
         repo_root=repo_root,
         newapp_root=newapp_root,
         storage_root=storage_root,
-        main_photos_dir=storage_root / "main_photos",
-        calibration_dir=storage_root / "calibration_photos",
+        main_photos_dir=Path("/Volumes/SDCARD/photo/main"),
+        calibration_dir=Path("/Volumes/SDCARD/photo/calibration"),
         localxpose_env=localxpose_env,
         localxpose_token=_read_localxpose_token(localxpose_env),
     )
