@@ -50,7 +50,160 @@ def safe_imwrite(path, img_np, params=None):
                 raise e
             time.sleep(0.5)
 
-def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibration_norms=None):
+def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_result, jaw_open_val, smile_val, pose_class, calib_df):
+    from backend.pipeline.calibration import find_calibration_match, _compute_linear_snr
+    import pandas as pd
+    import numpy as np
+    from itertools import combinations
+
+    calibrated_metrics = {}
+    matched_photos = []
+    
+    if calib_df is None or len(calib_df) == 0:
+        return {
+            "mode": "pair_aware",
+            "calib_photos_matched": 0,
+            "matched_photos": [],
+            "global_noise_baseline": 0.015,
+            "pair_specific_noise_baseline": 0.015,
+            "noise_reduction_pct": 0.0,
+            "metrics": {}
+        }
+        
+    try:
+        # Нормализуем calib_df — нужна колонка "bucket" (а в CSV — "pose_bucket")
+        _calib_for_match = calib_df.rename(columns={"pose_bucket": "bucket"})
+
+        top_k = find_calibration_match(
+            calib_df=_calib_for_match,
+            target_yaw=float(pose_result["yaw"]),
+            target_pitch=float(pose_result["pitch"]),
+            target_quality=float(texture_preds.get("quality_index", 0.7)) if texture_preds else 0.7,
+            target_expr_mouth=float(jaw_open_val),
+            target_expr_smile=float(smile_val),
+            bucket=pose_class,
+            k=5
+        )
+        
+        # Build matched_photos metadata
+        for idx, row in top_k.iterrows():
+            # Calculate delta pose
+            yaw_delta = abs(row.get("pose_yaw", 0.0) - float(pose_result["yaw"]))
+            pitch_delta = abs(row.get("pose_pitch", 0.0) - float(pose_result["pitch"]))
+            pose_delta = float(np.sqrt(yaw_delta**2 + pitch_delta**2))
+            
+            matched_photos.append({
+                "filename": str(row.get("filename")),
+                "pose_delta": round(pose_delta, 3),
+                "quality_delta": round(abs(row.get("quality_overall", 0.7) - (float(texture_preds.get("quality_index", 0.7)) if texture_preds else 0.7)), 3),
+                "match_rank": len(matched_photos) + 1
+            })
+            
+        geo_prefix_cols = [c for c in calib_df.columns if c.startswith("geo_") and "3d" not in c]
+        pair_noise = {}  # {metric_name: noise_baseline}
+
+        top_k_records = [top_k.iloc[i] for i in range(len(top_k))]
+        for col in geo_prefix_cols:
+            metric = col[4:]  # strip "geo_"
+            vals = []
+            for ra, rb in combinations(top_k_records, 2):
+                a, b = ra.get(col), rb.get(col)
+                if pd.notna(a) and pd.notna(b):
+                    vals.append(abs(float(a) - float(b)))
+            if vals:
+                pair_noise[metric] = float(np.mean(vals))
+
+        tex_prefix_cols = [c for c in calib_df.columns if c.startswith("tex_")
+                           and "quality" not in c and "notes" not in c and "3d" not in c]
+        for col in tex_prefix_cols:
+            metric = col[4:]
+            vals = []
+            for ra, rb in combinations(top_k_records, 2):
+                a, b = ra.get(col), rb.get(col)
+                if pd.notna(a) and pd.notna(b):
+                    vals.append(abs(float(a) - float(b)))
+            if vals:
+                pair_noise[metric] = float(np.mean(vals))
+
+        all_metrics = {}
+        all_metrics.update({k: v for k, v in geo_metrics.items() if v is not None})
+        if texture_preds:
+            tex_map = {
+                "lbp_entropy": texture_preds.get("lbp_entropy"),
+                "glcm_contrast": texture_preds.get("glcm_contrast"),
+                "spot_density": texture_preds.get("spot_density"),
+                "specular_gloss": texture_preds.get("specular_gloss"),
+                "wrinkle_forehead": texture_preds.get("wrinkle_forehead"),
+                "nasolabial_depth": texture_preds.get("nasolabial_depth"),
+                "uv_silicone_flatness": texture_preds.get("uv_silicone_flatness"),
+            }
+            all_metrics.update({k: v for k, v in tex_map.items() if v is not None})
+
+        bucket_calib = calib_df[calib_df["pose_bucket"] == pose_class]
+        
+        global_baselines = []
+        pair_baselines = []
+
+        for metric, value in all_metrics.items():
+            col_geo = f"geo_{metric}"
+            col_tex = f"tex_{metric}"
+            col = col_geo if col_geo in calib_df.columns else (col_tex if col_tex in calib_df.columns else None)
+            if col is None:
+                continue
+            
+            global_vals = pd.to_numeric(bucket_calib[col], errors="coerce").dropna()
+            if len(global_vals) < 3:
+                continue
+            
+            global_mean = float(global_vals.mean())
+            global_std = float(global_vals.std()) or 0.015
+            z_score = abs(float(value) - global_mean) / (global_std + 1e-9)
+            
+            noise_bl = pair_noise.get(metric, global_std)
+            snr = _compute_linear_snr(abs(float(value) - global_mean), noise_bl)
+            
+            global_baselines.append(global_std)
+            pair_baselines.append(noise_bl)
+            
+            calibrated_metrics[metric] = {
+                "value": round(float(value), 4),
+                "global_mean": round(global_mean, 4),
+                "global_std": round(global_std, 4),
+                "z_score": round(z_score, 3),
+                "noise_baseline": round(noise_bl, 4),
+                "snr": round(snr, 3),
+                "flagged": bool(z_score > 2.5),
+                "metric_type": "geo" if col.startswith("geo_") else "tex",
+            }
+            
+        g_baseline = float(np.mean(global_baselines)) if global_baselines else 0.015
+        p_baseline = float(np.mean(pair_baselines)) if pair_baselines else 0.015
+        reduction_pct = round(((g_baseline - p_baseline) / g_baseline) * 100.0, 1) if g_baseline > 0 else 0.0
+        
+        return {
+            "mode": "pair_aware",
+            "calib_photos_matched": len(top_k),
+            "matched_photos": matched_photos,
+            "global_noise_baseline": round(g_baseline, 4),
+            "pair_specific_noise_baseline": round(p_baseline, 4),
+            "noise_reduction_pct": reduction_pct,
+            "metrics": calibrated_metrics
+        }
+    except Exception as err:
+        import traceback
+        print(f"Error computing pair calibration for {photo_path.name}: {err}")
+        traceback.print_exc()
+        return {
+            "mode": "pair_aware",
+            "calib_photos_matched": 0,
+            "matched_photos": [],
+            "global_noise_baseline": 0.015,
+            "pair_specific_noise_baseline": 0.015,
+            "noise_reduction_pct": 0.0,
+            "metrics": {}
+        }
+
+def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=None, chrono_index=None):
     import time
     _t_start = time.time()
     photo_path = Path(photo_path_str)
@@ -412,6 +565,7 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
 
         from backend.pipeline.zones import apply_expression_exclusion_mask
 
+        excluded_flags = {}
         # 1. Получаем реальные параметры экспрессии из нейросети
         exp_params = res.payload.get("exp_params")
         if exp_params is not None and len(exp_params) >= 3:
@@ -440,20 +594,32 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
                 compromised_smile_metrics = [
                     'nasofacial_angle_ratio', 
                     'nose_width_ratio',
-                    # Текстурные метрики будут удалены ниже в блоке текстур
                 ]
                 for metric_key in compromised_smile_metrics:
                     if metric_key in geo_metrics:
                         geo_metrics[metric_key] = None
 
+            # 5. Текстурные исключения при улыбке / открытом рте
+            if excluded_flags.get("smile_excluded") and texture_preds:
+                for tex_key in ['nasolabial_depth', 'crow_feet_score']:
+                    if tex_key in texture_preds:
+                        texture_preds[tex_key] = None
+
+            if excluded_flags.get("jaw_excluded") and texture_preds:
+                for tex_key in ['nasolabial_depth']:
+                    if tex_key in texture_preds:
+                        texture_preds[tex_key] = None
+
         geometric = geo_metrics
         
         parsed_year = None
+        parsed_date_iso = None
+        date_obj = None
         try:
             from backend.core.utils import parse_date_from_name
-            parsed_date = parse_date_from_name(photo_path.name)
-            if parsed_date:
-                parsed_year = int(parsed_date.split("-")[0])
+            date_iso, date_obj = parse_date_from_name(photo_path.name)
+            parsed_date_iso = date_iso or None
+            parsed_year = date_obj.year if date_obj else None
         except Exception:
             pass
 
@@ -476,29 +642,68 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
 
         recon_a_landmarks_available = res.landmarks_106 is not None and len(res.landmarks_106) >= 48
 
-        calibrated_flags = {}
-        if mode == "main" and calibration_norms:
-            all_metrics = {}
-            if isinstance(geo_metrics, dict):
-                all_metrics.update(geo_metrics)
+        # --- Pair-Aware Calibration ---
+        calibration_results = {}
+        if mode == "main":
+            calibration_results = _compute_pair_calibration(
+                photo_path=photo_path,
+                geo_metrics=geo_metrics,
+                texture_preds=texture_preds,
+                pose_result={"yaw": float(res.angles_deg[1]), "pitch": float(res.angles_deg[0])},
+                jaw_open_val=jaw_open_val,
+                smile_val=smile_val,
+                pose_class=pose_class,
+                calib_df=calib_df
+            )
+        else:
+            calibration_results = {"mode": "calibration"}
 
-            for metric, value in all_metrics.items():
-                if value is None:
-                    continue
-                norm_key = f"{pose_class}_{metric}"
-                norm = calibration_norms.get(norm_key) or calibration_norms.get(metric)
-                if norm:
-                    deviation = abs(value - norm["mean"]) / (norm["std"] + 1e-9)
-                    calibrated_flags[metric] = {
-                        "value":     value,
-                        "norm_mean": norm["mean"],
-                        "norm_std":  norm["std"],
-                        "z_score":   round(deviation, 3),
-                        "flagged":   deviation > 2.5,
-                    }
+        # --- Chronological Context ---
+        chrono_ctx = {
+            "bucket_position": None,
+            "bucket_total": 0,
+            "prev_photo": None,
+            "prev_date": None,
+            "days_since_prev": None,
+            "next_photo": None,
+            "next_date": None,
+            "days_until_next": None,
+        }
+        if chrono_index and pose_class in chrono_index:
+            bucket_chrono = chrono_index[pose_class]
+            chrono_ctx["bucket_total"] = len(bucket_chrono)
+            current_stem = photo_path.stem
+            if current_stem in bucket_chrono:
+                idx = bucket_chrono.index(current_stem)
+                chrono_ctx["bucket_position"] = idx + 1
+                if idx > 0:
+                    prev_stem = bucket_chrono[idx - 1]
+                    chrono_ctx["prev_photo"] = prev_stem
+                    prev_iso, prev_obj = parse_date_from_name(prev_stem)
+                    chrono_ctx["prev_date"] = prev_iso
+                    if date_obj and prev_obj:
+                        chrono_ctx["days_since_prev"] = int((date_obj - prev_obj).days)
+                if idx < len(bucket_chrono) - 1:
+                    next_stem = bucket_chrono[idx + 1]
+                    chrono_ctx["next_photo"] = next_stem
+                    next_iso, next_obj = parse_date_from_name(next_stem)
+                    chrono_ctx["next_date"] = next_iso
+                    if date_obj and next_obj:
+                        chrono_ctx["days_until_next"] = int((next_obj - date_obj).days)
+
+        # --- Excluded Zones ---
+        geometry_excluded = []
+        texture_excluded = []
+        if excluded_flags.get("jaw_excluded"):
+            geometry_excluded += ["gonial_angle_L", "gonial_angle_R", "mandibular_ramus_length", "jaw_width_ratio", "chin_projection_ratio", "gnathion_midline_deviation_ratio"]
+            texture_excluded += ["nasolabial_depth"]
+        if excluded_flags.get("smile_excluded"):
+            geometry_excluded += ["nasofacial_angle_ratio", "nose_width_ratio"]
+            texture_excluded += ["nasolabial_depth", "crow_feet_score"]
 
         result_dict = {
-            "schema_version": "2.0",
+            "schema_version": "3.0",
+            "analysis_type": "main_single" if mode == "main" else "calibration_single",
             "status": "ready",
             "pipeline": {
                 "mode": mode,
@@ -510,6 +715,7 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
             "source": {
                 "photo_path": str(photo_path),
                 "filename": photo_path.name,
+                "parsed_date": parsed_date_iso,
                 "parsed_year": parsed_year,
                 "image": {
                     "width": img_info["width"],
@@ -521,7 +727,6 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
             "pose": {
                 "bucket": pose_class,
                 "bucket_ui": bucket_ui,
-                "source": "3ddfa",
                 "yaw":   round(float(res.angles_deg[1]), 4),
                 "pitch": round(float(res.angles_deg[0]), 4),
                 "roll":  round(float(res.angles_deg[2]), 4),
@@ -560,9 +765,11 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
                 "ipd_available":  recon_a_landmarks_available,
             },
             "geometry": {
-                k: v for k, v in geo_metrics.items()
+                "excluded_zones": geometry_excluded,
+                **{k: v for k, v in geo_metrics.items()}
             },
             "texture": {
+                "excluded_zones": texture_excluded,
                 # Universal
                 "lbp_uniformity":     texture_preds.get("lbp_uniformity") if texture_preds else None,
                 "lbp_entropy":        texture_preds.get("lbp_entropy") if texture_preds else None,
@@ -599,11 +806,8 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
                 },
                 "notes": texture_notes,
             },
-            "calibration": {
-                "mode": mode,
-                "norms_loaded": len(calibration_norms) if calibration_norms else 0,
-                "flags": calibrated_flags,
-            } if mode == "main" else {"mode": "calibration"},
+            "calibration": calibration_results,
+            "chronological_context": chrono_ctx,
             "files": {
                 "original":         str(out_dir / "original.jpg"),
                 "thumbnail":        str(out_dir / "thumbnail.jpg"),
@@ -628,8 +832,6 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
                 return {k: recursive_round(v, precision) for k, v in obj.items()}
             elif isinstance(obj, (list, tuple)):
                 return [recursive_round(x, precision) for x in obj]
-            return obj
-
         rounded_dict = recursive_round(result_dict)
 
         with open(out_dir / "result.json", 'w') as f:
@@ -688,71 +890,19 @@ if __name__ == "__main__":
         photos_dir = Path(args.photos_dir or "/Volumes/SDCARD/photo/main")
         out_dir    = args.out_dir or "/Volumes/SDCARD/storage/main"
 
-    # ── Загрузка калибровочных норм (только для режима main) ─────────────────
-    calibration_norms: dict = {}
+    # ── Загрузка калибровочного датафрейма (только для режима main) ─────────
+    calib_df = None
     if args.mode == "main":
         calib_csv = Path(args.calib_csv)
         if calib_csv.exists():
             try:
                 import pandas as pd
-                df_calib = pd.read_csv(calib_csv)
-                # Проверим, это плоская таблица фото или готовые нормы
-                if "pose_bucket" in df_calib.columns and any(col.startswith("geo_") for col in df_calib.columns):
-                    print("[main mode] Detected flat photo calibration_data.csv. Dynamically computing norms...")
-                    # Группируем по pose_bucket и считаем mean и std для каждого числового столбца
-                    for bucket, group in df_calib.groupby("pose_bucket"):
-                        for col in group.columns:
-                            # Нам нужны только числовые столбцы геометрии и текстур
-                            if not (col.startswith("geo_") or col.startswith("tex_")):
-                                continue
-                            try:
-                                # Убираем префиксы geo_ и tex_ для совместимости с именами метрик
-                                metric_name = col
-                                if col.startswith("geo_"):
-                                    metric_name = col[4:]
-                                elif col.startswith("tex_"):
-                                    metric_name = col[4:]
-                                    
-                                values = pd.to_numeric(group[col], errors='coerce').dropna()
-                                if len(values) == 0:
-                                    continue
-                                    
-                                mean_val = float(values.mean())
-                                std_val = float(values.std())
-                                if pd.isna(std_val) or std_val < 1e-9:
-                                    std_val = 0.015 # fallback std
-                                    
-                                # Сохраняем как с бакетом, так и без для универсальности
-                                calibration_norms[f"{bucket}_{metric_name}"] = {
-                                    "mean": mean_val,
-                                    "std": std_val,
-                                    "pose_bucket": bucket
-                                }
-                                calibration_norms[metric_name] = {
-                                    "mean": mean_val,
-                                    "std": std_val,
-                                    "pose_bucket": bucket
-                                }
-                            except Exception as col_err:
-                                continue
-                else:
-                    # Стандартный импорт готовых норм
-                    with open(calib_csv, newline="", encoding="utf-8") as f:
-                        reader = csv.DictReader(f)
-                        for row in reader:
-                            metric = row.get("metric") or row.get("zone")
-                            if metric:
-                                calibration_norms[metric] = {
-                                    "mean":        float(row.get("mean", 0.0)),
-                                    "std":         float(row.get("std",  0.015)),
-                                    "pose_bucket": row.get("pose_bucket", "frontal"),
-                                }
-                print(f"[main mode] Loaded {len(calibration_norms)} calibration norms from {calib_csv}")
+                calib_df = pd.read_csv(calib_csv)
+                print(f"[main mode] Loaded calib_df with {len(calib_df)} records from {calib_csv}")
             except Exception as e:
-                print(f"Error loading calibration norms from {calib_csv}: {e}")
+                print(f"Error loading calibration dataframe from {calib_csv}: {e}")
         else:
-            print(f"[main mode] WARNING: calibration_data.csv not found at {calib_csv}. "
-                  f"Run '--mode calibration' first and approve the results.")
+            print(f"[main mode] WARNING: calibration_data.csv not found at {calib_csv}.")
 
     # ── Сбор списка фото ─────────────────────────────────────────────────────
     test_photos = sorted(
@@ -765,6 +915,33 @@ if __name__ == "__main__":
 
     print(f"[{args.mode.upper()} MODE] Found {len(test_photos)} photos → {out_dir}")
 
+    # ── Предварительная сборка хронологического индекса ─────────────────────
+    from collections import defaultdict
+    from backend.core.utils import parse_date_from_name
+    chrono_index = defaultdict(list)
+    temp_chrono = defaultdict(list)
+    for photo in test_photos:
+        photo_stem = Path(photo).stem
+        bucket = "frontal"
+        res_json_path = Path(out_dir) / photo_stem / "result.json"
+        if res_json_path.exists():
+            try:
+                with open(res_json_path, "r") as f:
+                    data = json.load(f)
+                    bucket = data.get("pose", {}).get("bucket", "frontal")
+            except Exception:
+                pass
+        
+        _, date_obj = parse_date_from_name(Path(photo).name)
+        if date_obj is None:
+            import datetime
+            date_obj = datetime.datetime(1900, 1, 1)
+        temp_chrono[bucket].append((date_obj, photo_stem))
+        
+    for bucket, lst in temp_chrono.items():
+        sorted_lst = sorted(lst, key=lambda x: x[0])
+        chrono_index[bucket] = [x[1] for x in sorted_lst]
+
     # ── Обработка ────────────────────────────────────────────────────────────
     for photo in test_photos:
         try:
@@ -773,7 +950,7 @@ if __name__ == "__main__":
             if out_path.exists():
                 out_path.unlink()
 
-            result = extract_one(photo, out_dir, mode=args.mode, calibration_norms=calibration_norms)
+            result = extract_one(photo, out_dir, mode=args.mode, calib_df=calib_df, chrono_index=chrono_index)
 
             # Верификация
             if out_path.exists():
@@ -783,13 +960,15 @@ if __name__ == "__main__":
                 pose_bucket = res_data.get("pose", {}).get("bucket", "unknown")
                 geo_metrics = res_data.get("geometry", {}) or {}
                 tex_metrics = res_data.get("texture", {}) or {}
-                metrics = {**geo_metrics, **tex_metrics}
+                metrics = {**{k: v for k, v in geo_metrics.items() if k != "excluded_zones"},
+                           **{k: v for k, v in tex_metrics.items() if k != "excluded_zones"}}
                 null_keys = [k for k, v in metrics.items() if v is None]
                 
                 flagged = []
                 if args.mode == "main":
+                    calib_flags = res_data.get("calibration", {}).get("metrics", {}) or {}
                     flagged = [
-                        k for k, v in res_data.get("calibration", {}).get("flags", {}).items()
+                        k for k, v in calib_flags.items()
                         if isinstance(v, dict) and v.get("flagged")
                     ]
                 
@@ -798,7 +977,6 @@ if __name__ == "__main__":
                     f"| metrics={len(metrics)} | nulls={len(null_keys)}"
                     + (f" | flagged={len(flagged)}" if args.mode == "main" else "")
                 )
-
         except Exception as err:
             print(f"❌ {Path(photo).name}: {err}")
 
@@ -820,7 +998,6 @@ if __name__ == "__main__":
                     source = data.get("source", {}) or {}
                     pose = data.get("pose", {}) or {}
                     qual = data.get("quality", {}) or {}
-                    expr = data.get("expression", {}) or {}
                     calib_records.append({
                         "filename": source.get("filename") or data.get("filename"),
                         "bucket": pose.get("bucket", "frontal"),
@@ -876,8 +1053,11 @@ if __name__ == "__main__":
                     "mesh_path": str(Path(out_dir) / Path(photo).stem),
                 }
                 for k, v in geo.items():
-                    flat_row[f"geo_{k}"] = v
+                    if k != "excluded_zones":
+                        flat_row[f"geo_{k}"] = v
                 for k, v in tex.items():
+                    if k == "excluded_zones":
+                        continue
                     if k != "quality":
                         flat_row[f"tex_{k}"] = v
                     else:
