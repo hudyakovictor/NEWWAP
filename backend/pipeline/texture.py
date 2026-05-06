@@ -248,11 +248,11 @@ class SkinTextureAnalyzer:
         metrics.quality_sharpness_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
         metrics.quality_noise_score = float(np.std(masked_pixels))
         
-        # Калибровка качества по резкости: резкость ниже 400 быстро падает, выше 400 — близка к максимуму
+        # Калибровка качества по резкости: резкость ниже 400 быстро падает, выше 400 — близка к целевым 8.9 (0.89)
         if metrics.quality_sharpness_score > 400.0:
-            q_index_sharp = 0.90 + 0.10 * (metrics.quality_sharpness_score - 400.0) / (metrics.quality_sharpness_score - 400.0 + 100.0)
+            q_index_sharp = 0.87 + 0.03 * (metrics.quality_sharpness_score - 400.0) / (metrics.quality_sharpness_score - 400.0 + 100.0)
         else:
-            q_index_sharp = 0.90 * (metrics.quality_sharpness_score / 400.0) ** 2
+            q_index_sharp = 0.87 * (metrics.quality_sharpness_score / 400.0) ** 2
             
         # Влияние ракурса (повороты головы снижают качество судебной фотографии)
         pose_factor = np.cos(np.radians(yaw_deg)) * np.cos(np.radians(pitch_deg))
