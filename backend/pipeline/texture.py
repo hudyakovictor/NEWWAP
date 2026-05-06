@@ -245,7 +245,7 @@ class SkinTextureAnalyzer:
                         metrics.uv_retouch_score = float(np.sum(hist_lbp_uv**2))
 
         # 4. QUALITY Group
-        metrics.quality_sharpness_score = float(np.var(laplace(gray)))
+        metrics.quality_sharpness_score = float(cv2.Laplacian(gray, cv2.CV_64F).var())
         metrics.quality_noise_score = float(np.std(masked_pixels))
         q_index_sharp = metrics.quality_sharpness_score / (metrics.quality_sharpness_score + 500.0 + 1e-9)
         q_index_gloss = 1.0 - (metrics.specular_gloss or 0.0) * 10.0
