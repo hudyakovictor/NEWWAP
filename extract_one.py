@@ -72,13 +72,20 @@ def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_resul
         
     try:
         # Нормализуем calib_df — нужна колонка "bucket" (а в CSV — "pose_bucket")
-        _calib_for_match = calib_df.rename(columns={"pose_bucket": "bucket"})
+        _calib_for_match = calib_df.copy().rename(columns={"pose_bucket": "bucket"})
+
+        target_quality = float(
+            texture_preds.get("quality_quality_index")
+            or texture_preds.get("quality_index")
+            or (texture_preds.get("quality", {}) or {}).get("quality_index")
+            or 0.7
+        ) if texture_preds else 0.7
 
         top_k = find_calibration_match(
             calib_df=_calib_for_match,
             target_yaw=float(pose_result["yaw"]),
             target_pitch=float(pose_result["pitch"]),
-            target_quality=float(texture_preds.get("quality_index", 0.7)) if texture_preds else 0.7,
+            target_quality=target_quality,
             target_expr_mouth=float(jaw_open_val),
             target_expr_smile=float(smile_val),
             bucket=pose_class,
@@ -95,7 +102,7 @@ def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_resul
             matched_photos.append({
                 "filename": str(row.get("filename")),
                 "pose_delta": round(pose_delta, 3),
-                "quality_delta": round(abs(row.get("quality_overall", 0.7) - (float(texture_preds.get("quality_index", 0.7)) if texture_preds else 0.7)), 3),
+                "quality_delta": round(abs(row.get("quality_overall", 0.7) - target_quality), 3),
                 "match_rank": len(matched_photos) + 1
             })
             
@@ -126,17 +133,22 @@ def _compute_pair_calibration(photo_path, geo_metrics, texture_preds, pose_resul
                 pair_noise[metric] = float(np.mean(vals))
 
         all_metrics = {}
-        all_metrics.update({k: v for k, v in geo_metrics.items() if v is not None})
+        GEO_SKIP_KEYS = {"canthal_tilt_3d_L", "canthal_tilt_3d_R"}
+        all_metrics.update({
+            k: v for k, v in geo_metrics.items()
+            if v is not None and k not in GEO_SKIP_KEYS
+        })
         if texture_preds:
-            tex_map = {
-                "lbp_entropy": texture_preds.get("lbp_entropy"),
-                "glcm_contrast": texture_preds.get("glcm_contrast"),
-                "spot_density": texture_preds.get("spot_density"),
-                "specular_gloss": texture_preds.get("specular_gloss"),
-                "wrinkle_forehead": texture_preds.get("wrinkle_forehead"),
-                "nasolabial_depth": texture_preds.get("nasolabial_depth"),
-                "uv_silicone_flatness": texture_preds.get("uv_silicone_flatness"),
-            }
+            TEX_METRIC_KEYS = [
+                "lbp_uniformity", "lbp_entropy", "glcm_contrast", "glcm_energy",
+                "glcm_homogeneity", "glcm_correlation", "gabor_mean", "gabor_std",
+                "laplacian_energy", "spot_density", "specular_gloss", "skin_tone_std",
+                "pigmentation_index", "wrinkle_forehead", "nasolabial_depth",
+                "crow_feet_score", "nose_pore_density", "uv_spot_density",
+                "uv_wrinkle_energy", "uv_texture_entropy", "uv_silicone_flatness",
+                "uv_retouch_score",
+            ]
+            tex_map = {k: texture_preds.get(k) for k in TEX_METRIC_KEYS}
             all_metrics.update({k: v for k, v in tex_map.items() if v is not None})
 
         bucket_calib = calib_df[calib_df["pose_bucket"] == pose_class]
@@ -809,14 +821,15 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
             "calibration": calibration_results,
             "chronological_context": chrono_ctx,
             "files": {
-                "original":         str(out_dir / "original.jpg"),
-                "thumbnail":        str(out_dir / "thumbnail.jpg"),
-                "face_crop":        str(out_dir / "face_crop.png"),
-                "mesh_obj":         str(out_dir / "face_mesh.obj"),
-                "vertices_canon":   str(out_dir / "vertices.npy"),
-                "vertices_raw":     str(out_dir / "vertices_world_raw.npy"),
-                "uv_texture":       str(out_dir / "uv_texture_hd.jpg"),
-                "uv_mask":          str(out_dir / "uv_confidence_mask.jpg"),
+                "_storage_dir":     str(out_dir),
+                "original":         "original.jpg",
+                "thumbnail":        "thumbnail.jpg",
+                "face_crop":        "face_crop.png",
+                "mesh_obj":         "face_mesh.obj",
+                "vertices_canon":   "vertices.npy",
+                "vertices_raw":     "vertices_world_raw.npy",
+                "uv_texture":       "uv_texture_hd.jpg",
+                "uv_mask":          "uv_confidence_mask.jpg",
             },
             "errors": errors,
         }
@@ -832,6 +845,7 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calib_df=N
                 return {k: recursive_round(v, precision) for k, v in obj.items()}
             elif isinstance(obj, (list, tuple)):
                 return [recursive_round(x, precision) for x in obj]
+            return obj
         rounded_dict = recursive_round(result_dict)
 
         with open(out_dir / "result.json", 'w') as f:
@@ -918,20 +932,43 @@ if __name__ == "__main__":
     # ── Предварительная сборка хронологического индекса ─────────────────────
     from collections import defaultdict
     from backend.core.utils import parse_date_from_name
+    import re
+
+    def bucket_from_filename(name):
+        m = re.search(r'y([-\d\.]+)', name)
+        if not m:
+            return "frontal"
+        try:
+            yaw = float(m.group(1))
+        except Exception:
+            return "frontal"
+        ayaw = abs(yaw)
+        if ayaw < 15.0:
+            return "frontal"
+        elif yaw < -70.0:
+            return "left_profile"
+        elif yaw > 70.0:
+            return "right_profile"
+        elif yaw < -45.0:
+            return "left_threequarter_deep"
+        elif yaw < -25.0:
+            return "left_threequarter_mid"
+        elif yaw < -10.0:
+            return "left_threequarter_light"
+        elif yaw > 45.0:
+            return "right_threequarter_deep"
+        elif yaw > 25.0:
+            return "right_threequarter_mid"
+        elif yaw > 10.0:
+            return "right_threequarter_light"
+        else:
+            return "unclassified"
+
     chrono_index = defaultdict(list)
     temp_chrono = defaultdict(list)
     for photo in test_photos:
         photo_stem = Path(photo).stem
-        bucket = "frontal"
-        res_json_path = Path(out_dir) / photo_stem / "result.json"
-        if res_json_path.exists():
-            try:
-                with open(res_json_path, "r") as f:
-                    data = json.load(f)
-                    bucket = data.get("pose", {}).get("bucket", "frontal")
-            except Exception:
-                pass
-        
+        bucket = bucket_from_filename(photo_stem)
         _, date_obj = parse_date_from_name(Path(photo).name)
         if date_obj is None:
             import datetime
