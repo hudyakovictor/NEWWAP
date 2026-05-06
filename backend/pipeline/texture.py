@@ -144,7 +144,7 @@ class SkinTextureAnalyzer:
         gabor_stack = np.mean(gabor_responses, axis=0)
         # Нормализуем в [0,255] для корректной работы _apply_mask с uint8 маской
         gabor_norm = ((gabor_stack - gabor_stack.min()) /
-                      (gabor_stack.ptp() + 1e-8) * 255).astype(np.float32)
+                      ((np.max(gabor_stack) - np.min(gabor_stack)) + 1e-8) * 255).astype(np.float32)
         gabor_masked = _apply_mask(gabor_norm, skin_mask)
         if gabor_masked.size > 0:
             metrics.gabor_mean = float(np.mean(gabor_masked))
