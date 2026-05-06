@@ -1127,14 +1127,24 @@ def run_report_mode(test_photos, out_dir, calib_df):
             # R3-B: Format comparison zones correctly
             zone_details_out = []
             for z in cmp_result.zones:
-                zone_details_out.append({
-                    "zone": z.name,
-                    "raw_error": round(float(z.raw_error or 0), 4),
-                    "bounded_score": round(float(z.bounded_score or 0), 4),
-                    "delta_mm": round(float(z.delta_mm or 0), 3),
-                    "bone_priority": z.bone_priority_class,
-                    "status": z.status,
-                })
+                if z.status == "insufficient_support":
+                    zone_details_out.append({
+                        "zone": z.name,
+                        "raw_error": None,
+                        "bounded_score": None,
+                        "delta_mm": None,
+                        "bone_priority": z.bone_priority_class,
+                        "status": z.status,
+                    })
+                else:
+                    zone_details_out.append({
+                        "zone": z.name,
+                        "raw_error": round(float(z.raw_error), 4) if z.raw_error is not None else None,
+                        "bounded_score": round(float(z.bounded_score), 4) if z.bounded_score is not None else None,
+                        "delta_mm": round(float(z.delta_mm), 3) if z.delta_mm is not None else None,
+                        "bone_priority": z.bone_priority_class,
+                        "status": z.status,
+                    })
             
             # Build delta days
             da = datetime.fromisoformat(pa["source"]["parsed_date"]) if pa["source"].get("parsed_date") else None
@@ -1368,8 +1378,8 @@ def run_report_mode(test_photos, out_dir, calib_df):
 
     # Save to out_dir / report.json
     report_path = Path(out_dir) / "report.json"
-    with open(report_path, "w") as f:
-        json.dump(report_json, f, indent=2, default=str)
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report_json, f, indent=2, default=str, ensure_ascii=False)
         
     print(f"🎉 Successfully built complete Report Mode analysis! Saved to: {report_path}")
 
