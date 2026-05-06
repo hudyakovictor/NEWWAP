@@ -43,61 +43,72 @@ BUCKET_LABELS = {
 BUCKET_METRIC_KEYS = {
     "frontal": [
         "cranial_face_index", "jaw_width_ratio", "canthal_tilt_L", "canthal_tilt_R",
-        "chin_offset_asymmetry", "nose_width_ratio",
-        "texture_silicone_prob", "texture_pore_density",
-        "texture_wrinkle_forehead", "texture_global_smoothness"
+        "chin_offset_asymmetry", "nose_width_ratio", "gonial_angle_L", "gonial_angle_R",
+        "orbital_asymmetry_index", "interorbital_ratio", "forehead_slope_index",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "left_threequarter_light": [
         "cranial_face_index", "orbit_depth_L_ratio", "canthal_tilt_L", "nose_projection_ratio",
-        "jaw_width_ratio", "nasal_frontal_index",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead",
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "jaw_width_ratio", "nasal_frontal_index", "gonial_angle_L",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "right_threequarter_light": [
         "cranial_face_index", "orbit_depth_R_ratio", "canthal_tilt_R", "nose_projection_ratio",
-        "jaw_width_ratio", "nasal_frontal_index",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead",
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "jaw_width_ratio", "nasal_frontal_index", "gonial_angle_R",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "left_threequarter_mid": [
         "orbit_depth_L_ratio", "chin_projection_ratio", "nose_projection_ratio", 
-        "jaw_width_ratio", "nasofacial_angle_ratio", "forehead_slope_index",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "jaw_width_ratio", "nasofacial_angle_ratio", "forehead_slope_index", "gonial_angle_L",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "right_threequarter_mid": [
         "orbit_depth_R_ratio", "chin_projection_ratio", "nose_projection_ratio", 
-        "jaw_width_ratio", "nasofacial_angle_ratio", "forehead_slope_index",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "jaw_width_ratio", "nasofacial_angle_ratio", "forehead_slope_index", "gonial_angle_R",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "left_threequarter_deep": [
         "orbit_depth_L_ratio", "chin_projection_ratio", "nasofacial_angle_ratio", 
-        "forehead_slope_index", "jaw_width_ratio", "nose_projection_ratio",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "forehead_slope_index", "jaw_width_ratio", "nose_projection_ratio", "gonial_angle_L",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "right_threequarter_deep": [
         "orbit_depth_R_ratio", "chin_projection_ratio", "nasofacial_angle_ratio", 
-        "forehead_slope_index", "jaw_width_ratio", "nose_projection_ratio",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "forehead_slope_index", "jaw_width_ratio", "nose_projection_ratio", "gonial_angle_R",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "left_profile": [
         "nose_projection_ratio", "chin_projection_ratio", "nasofacial_angle_ratio", 
-        "forehead_slope_index", "orbit_depth_L_ratio", "cranial_face_index",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "forehead_slope_index", "orbit_depth_L_ratio", "cranial_face_index", "gonial_angle_L",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "right_profile": [
         "nose_projection_ratio", "chin_projection_ratio", "nasofacial_angle_ratio", 
-        "forehead_slope_index", "orbit_depth_R_ratio", "cranial_face_index",
-        "texture_silicone_prob", "texture_pore_density", "texture_wrinkle_forehead", 
-        "texture_wrinkle_nasolabial", "texture_global_smoothness"
+        "forehead_slope_index", "orbit_depth_R_ratio", "cranial_face_index", "gonial_angle_R",
+        "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness",
+        "texture_specular_gloss", "texture_lbp_complexity"
     ],
     "unclassified": [
-        "cranial_face_index", "jaw_width_ratio", "interorbital_ratio", 
-        "texture_silicone_prob", "texture_pore_density", "texture_global_smoothness"
+        "cranial_face_index", "jaw_width_ratio", "interorbital_ratio", "gonial_angle_L", "gonial_angle_R",
+        "orbital_asymmetry_index", "texture_silicone_prob", "texture_pore_density", "texture_spot_density",
+        "texture_global_smoothness", "texture_specular_gloss", "texture_lbp_complexity"
     ],
 }
 

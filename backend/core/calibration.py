@@ -47,6 +47,12 @@ def build_calibration_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
 
         values_by_metric: dict[str, list[float]] = defaultdict(list)
         for record in bucket_records:
+            # Фильтруем некачественные записи перед накоплением статистики
+            quality = record.get("quality", {})
+            if quality.get("overall_score", 1.0) < 0.35:
+                continue
+            if quality.get("flags", {}).get("QUALITY_REJECTED_TEXTURE"):
+                continue
             for key, value in (record.get("metrics") or {}).items():
                 if isinstance(value, (int, float)):
                     values_by_metric[key].append(float(value))
@@ -102,7 +108,7 @@ def allowed_metric_delta(
     metric_info = bucket_info.get("metrics", {}).get(metric_key, {})
     spread = float(metric_info.get("mad", 0.0))
     status = metric_info.get("status", "marginal")
-    base = max(spread * 3.0, 0.012)
+    base = max(spread * 3.0, 0.018)
     if metric_key.startswith("texture_"):
         base = max(spread * 3.0, 0.04)
     if status == "replace":
@@ -136,7 +142,9 @@ def bucket_metric_health(calibration_summary: dict[str, Any], bucket: str) -> li
 def confidence_from_ratio(ratio: float) -> str:
     if ratio >= 2.8:
         return "impossible"
-    if ratio >= 1.6:
+    if ratio >= 2.0:
+        return "suspicious"
+    if ratio >= 1.4:
         return "unlikely"
     return "acceptable"
 

@@ -22,6 +22,17 @@ def extract_one(photo_path_str, out_root_dir_str):
     out_dir = Path(out_root_dir_str) / photo_name
     out_dir.mkdir(parents=True, exist_ok=True)
     
+    result_path = out_dir / "result.json"
+    if result_path.exists():
+        try:
+            with open(result_path, 'r') as f:
+                existing = json.load(f)
+                if existing.get("status") == "ready":
+                    print(f"SKIP (already processed): {photo_path.name}")
+                    return
+        except Exception:
+            pass
+
     psp.INPUT_PHOTO = str(photo_path)
     psp.OUTPUT_DIR = out_dir
     psp.SKIP_RAW_SUBDIR = True
@@ -232,6 +243,23 @@ def extract_one(photo_path_str, out_root_dir_str):
         result_dict = asdict(result)
         result_dict["bucket"] = bucket
         result_dict["bucket_ui"] = bucket_ui
+        result_dict["status"] = "ready"
+        
+        # Ensure metrics dictionary exists and is populated with geometric and texture metrics
+        if "metrics" not in result_dict or not isinstance(result_dict["metrics"], dict):
+            result_dict["metrics"] = {}
+            
+        if isinstance(geometric, dict):
+            result_dict["metrics"].update(geometric)
+            
+        if isinstance(texture_preds, dict):
+            result_dict["metrics"].update({
+                "texture_studio_lighting": texture_preds.get("studio_lighting_score", 0.0),
+                "texture_retouch":         texture_preds.get("retouch_score", 0.0),
+                "texture_lbp_complexity":  texture_preds.get("lbp_complexity", 0.0),
+                "texture_specular_gloss":  texture_preds.get("specular_gloss", 0.0),
+                "texture_spot_density":    texture_preds.get("spot_density", 0.0),
+            })
 
         if "texture_predictions" in result_dict:
             with open(out_dir / "texture_raw.json", 'w') as f_raw:
@@ -246,6 +274,19 @@ def extract_one(photo_path_str, out_root_dir_str):
     except Exception as e:
         print(f"Error processing {photo_name}: {e}")
         traceback.print_exc()
+        error_result = {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "photo_path": str(photo_path),
+            "timestamp": datetime.now().isoformat(),
+            "artifact_version": "1.0",
+        }
+        try:
+            with open(out_dir / "result.json", 'w') as f:
+                json.dump(error_result, f, indent=4)
+        except Exception as write_err:
+            print(f"Failed to write error result: {write_err}")
 
 if __name__ == "__main__":
     # Test on a single frontal image exactly as requested

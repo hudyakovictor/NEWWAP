@@ -5,7 +5,7 @@ from copy import deepcopy
 from datetime import date
 from typing import Any, List, Dict
 
-from .calibration import allowed_metric_delta, confidence_from_ratio
+from .calibration import allowed_metric_delta, confidence_from_ratio, get_epoch_noise_model
 from .config import SETTINGS
 from .utils import ALL_BUCKETS, BUCKET_METRIC_KEYS, median
 
@@ -19,7 +19,11 @@ def _reference_medians(records: list[dict[str, Any]], metric_keys: list[str]) ->
            int(record.get("year") or record.get("parsed_year") or 0) <= SETTINGS.reference_year_end
     ]
     if not ref_records:
-        ref_records = records[: min(5, len(records))]
+        ref_records = sorted(
+            records,
+            key=lambda r: r.get("quality", {}).get("overall_score", 0.0),
+            reverse=True
+        )[:5]
     result: dict[str, float] = {}
     for key in metric_keys:
         values = [
@@ -83,9 +87,9 @@ def build_timeline(records: list[dict[str, Any]], calibration_summary: dict[str,
             
             # --- Forensic clustering and detailed analysis ---
             metric_clusters = {
-                "geometry": ["cranial_face_index", "jaw_width_ratio", "interorbital_ratio", "orbital_asymmetry_index"],
+                "geometry": ["cranial_face_index", "jaw_width_ratio", "interorbital_ratio", "orbital_asymmetry_index", "gonial_angle_L", "gonial_angle_R", "orbit_centroid_ratio"],
                 "projection": ["nose_projection_ratio", "chin_projection_ratio", "orbit_depth_L_ratio", "orbit_depth_R_ratio", "forehead_slope_index"],
-                "texture": ["texture_silicone_prob", "texture_pore_density", "texture_spot_density", "texture_wrinkle_forehead", "texture_global_smoothness"]
+                "texture": ["texture_silicone_prob", "texture_pore_density", "texture_spot_density", "texture_wrinkle_forehead", "texture_wrinkle_nasolabial", "texture_global_smoothness", "texture_specular_gloss", "texture_lbp_complexity"]
             }
             
             exceeded_clusters = defaultdict(list)
@@ -112,7 +116,11 @@ def build_timeline(records: list[dict[str, Any]], calibration_summary: dict[str,
                     elif yaw_abs > 20: rel_weight *= 0.5
                     if pitch_abs > 20: rel_weight *= 0.5
                 
+                year = int(record.get("year") or record.get("parsed_year") or 2010)
+                epoch = get_epoch_noise_model(year)
                 allowed = allowed_metric_delta(calibration_summary, bucket, key, days_delta)
+                # Apply compensation for photo epoch/camera noise
+                allowed *= epoch.get("geometric_sigma_multiplier", 1.0)
                 
                 # Применяем вес к дельте
                 effective_delta = abs(delta) * float(rel_weight)

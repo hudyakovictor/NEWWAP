@@ -32,9 +32,25 @@ def cluster_personas(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         # Векторизуем метрики
         vectors = []
         valid_records = []
+        TEXTURE_WEIGHT = 0.35  # текстура весит меньше геометрии, но участвует
+        TEXTURE_KEYS_INCLUDE = {
+            "texture_silicone_prob",
+            "texture_pore_density",
+            "texture_specular_gloss",
+            "texture_lbp_complexity",
+        }
+
         for r in bucket_records:
             m = r.get("metrics", {})
-            vec = [m.get(k, 0.0) for k in keys if not k.startswith("texture_")]
+            vec = []
+            for k in keys:
+                v = m.get(k, 0.0)
+                if k.startswith("texture_"):
+                    if k in TEXTURE_KEYS_INCLUDE:
+                        vec.append(v * TEXTURE_WEIGHT)
+                    # остальные texture_ — пропускаем (studio_lighting, retouch — не идентификаторы)
+                else:
+                    vec.append(v)
             if vec:
                 vectors.append(vec)
                 valid_records.append(r)

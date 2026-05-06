@@ -147,6 +147,22 @@ def align_and_score(
         plane_normal,
     )
 
+def calc_3d_angle(v1, vertex, v2):
+    """Вычисляет истинный 3D-угол между тремя точками"""
+    a = np.array(v1) - np.array(vertex)
+    b = np.array(v2) - np.array(vertex)
+    
+    # Защита от деления на ноль
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+        
+    cos_a = np.dot(a, b) / (norm_a * norm_b)
+    # Защита от выхода за пределы [-1, 1] из-за погрешностей float
+    return float(np.degrees(np.arccos(np.clip(cos_a, -1.0, 1.0))))
+
+
 def extract_macro_bone_metrics(
     vertices: np.ndarray, 
     bone_indices: dict[str, list[int]],
@@ -191,15 +207,16 @@ def extract_macro_bone_metrics(
     
     # 2. Face Height
     forehead_idx = _idx('forehead')
-    # chin not available in MACRO_BONE_INDICES — use jaw_angle as proxy
-    chin_proxy_idx = _idx('jaw_angle_L')
-    if chin_proxy_idx.size == 0:
-        chin_proxy_idx = _idx('jaw_angle_R')
-    if forehead_idx.size == 0 or chin_proxy_idx.size == 0:
+    chin_idx = _idx('chin')
+    if chin_idx.size == 0:
+        chin_idx = _idx('jaw_angle_L')
+    if chin_idx.size == 0:
+        chin_idx = _idx('jaw_angle_R')
+    if forehead_idx.size == 0 or chin_idx.size == 0:
         return {}, 0.0
         
     forehead_top = np.max(vertices[forehead_idx], axis=0)
-    chin_bottom = np.min(vertices[chin_proxy_idx], axis=0)
+    chin_bottom = np.min(vertices[chin_idx], axis=0)
     face_height = float(np.linalg.norm(forehead_top - chin_bottom)) or 1.0
     
     # 3. Indices
@@ -249,13 +266,25 @@ def extract_macro_bone_metrics(
     metrics["canthal_tilt_R"] = calc_tilt(canthus_R_inner, canthus_R_outer)
     metrics["interorbital_ratio"] = compute_interorbital_ratio(canthus_L_inner, canthus_R_inner, zygomatic_breadth)
     
-    # Orbit depth (NaN guard)
+    # Orbit depth (NaN guard, using face plane projection FIX-09)
+    _, face_plane_normal = fit_best_plane(vertices)
+
+    def depth_along_normal(point: np.ndarray, reference: np.ndarray, normal: np.ndarray) -> float:
+        """Проекция вектора (point - reference) на нормаль плоскости лица."""
+        return float(abs(np.dot(point - reference, normal)))
+
+    mid_cheek_pt = (cheek_L + cheek_R) / 2.0
+
     if orbit_L_pts.size > 0:
         orbit_L_centroid = np.mean(orbit_L_pts, axis=0)
-        metrics["orbit_depth_L_ratio"] = abs(orbit_L_centroid[2] - mid_cheek_z) / zygomatic_breadth
+        metrics["orbit_depth_L_ratio"] = depth_along_normal(
+            orbit_L_centroid, mid_cheek_pt, face_plane_normal
+        ) / zygomatic_breadth
     if orbit_R_pts.size > 0:
         orbit_R_centroid = np.mean(orbit_R_pts, axis=0)
-        metrics["orbit_depth_R_ratio"] = abs(orbit_R_centroid[2] - mid_cheek_z) / zygomatic_breadth
+        metrics["orbit_depth_R_ratio"] = depth_along_normal(
+            orbit_R_centroid, mid_cheek_pt, face_plane_normal
+        ) / zygomatic_breadth
     
     # 5. Jaw/Gonial Angle — use jaw_angle_L/R (point landmarks)
     jaw_L_idx = _idx('jaw_angle_L')
@@ -263,21 +292,33 @@ def extract_macro_bone_metrics(
     jaw_L_pts = vertices[jaw_L_idx] if jaw_L_idx.size > 0 else np.zeros((0, 3))
     jaw_R_pts = vertices[jaw_R_idx] if jaw_R_idx.size > 0 else np.zeros((0, 3))
     
+    ramus_L = get_zone_centroid('jaw_L')
+    ramus_R = get_zone_centroid('jaw_R')
+    
     if jaw_L_pts.size > 0 and jaw_R_pts.size > 0:
         gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
         gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
-        metrics["gonial_angle_L"] = calc_tilt(chin_bottom, gonion_L)
-        metrics["gonial_angle_R"] = calc_tilt(chin_bottom, gonion_R)
+        
+        # If ramus centroid is not valid, fallback to gonion with an upward offset
+        if np.allclose(ramus_L, 0):
+            ramus_L = gonion_L + np.array([0.0, 50.0, 0.0])
+        if np.allclose(ramus_R, 0):
+            ramus_R = gonion_R + np.array([0.0, 50.0, 0.0])
+            
+        metrics["gonial_angle_L"] = calc_3d_angle(ramus_L, gonion_L, chin_bottom)
+        metrics["gonial_angle_R"] = calc_3d_angle(ramus_R, gonion_R, chin_bottom)
     elif jaw_R_pts.size > 0:
-        # Fallback: if only right side available, use symmetric assumption
         gonion_R = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
-        angle_R = calc_tilt(chin_bottom, gonion_R)
+        if np.allclose(ramus_R, 0):
+            ramus_R = gonion_R + np.array([0.0, 50.0, 0.0])
+        angle_R = calc_3d_angle(ramus_R, gonion_R, chin_bottom)
         metrics["gonial_angle_R"] = angle_R
         metrics["gonial_angle_L"] = angle_R  # Symmetric fallback
     elif jaw_L_pts.size > 0:
-        # Fallback: if only left side available, use symmetric assumption
         gonion_L = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
-        angle_L = calc_tilt(chin_bottom, gonion_L)
+        if np.allclose(ramus_L, 0):
+            ramus_L = gonion_L + np.array([0.0, 50.0, 0.0])
+        angle_L = calc_3d_angle(ramus_L, gonion_L, chin_bottom)
         metrics["gonial_angle_L"] = angle_L
         metrics["gonial_angle_R"] = angle_L  # Symmetric fallback
     else:
@@ -301,10 +342,10 @@ def extract_macro_bone_metrics(
     chin_centroid = np.mean(chin_pts, axis=0) if chin_pts.size > 0 else chin_bottom
     metrics["chin_projection_ratio"] = abs(chin_centroid[2] - mid_cheek_z) / zygomatic_breadth
     
-    # 8. Interorbital ratio
+    # 8. Orbit Centroid Ratio (to prevent overwriting step 4 interorbital_ratio)
     orbit_L_c = get_zone_centroid('orbit_L')
     orbit_R_c = get_zone_centroid('orbit_R')
-    metrics["interorbital_ratio"] = float(np.linalg.norm(orbit_L_c - orbit_R_c)) / zygomatic_breadth
+    metrics["orbit_centroid_ratio"] = float(np.linalg.norm(orbit_L_c - orbit_R_c)) / zygomatic_breadth
 
     # 9. Forehead slope index (forehead tilt relative to face plane)
     forehead_c = get_zone_centroid('forehead')

@@ -232,6 +232,25 @@ class SkinTextureAnalyzer:
                 patch_gray = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
                 pore_density = (float(cv2.Laplacian(patch_gray, cv2.CV_64F).var()) / norm_factor) if patch_gray.size > 0 else 0.0
             
+            # FIX-10: Spot density (Плотность пятен/дефектов)
+            if uv_path and Path(uv_path).exists():
+                uv_bgr = cv2.imread(str(uv_path))
+                if uv_bgr is not None:
+                    uv_lab = cv2.cvtColor(uv_bgr, cv2.COLOR_BGR2Lab)
+                    l_channel = uv_lab[:, :, 0]
+                    # Адаптивный порог для поиска темных пятен
+                    blurred = cv2.GaussianBlur(l_channel, (21, 21), 0)
+                    diff = blurred.astype(np.int16) - l_channel.astype(np.int16)
+                    spot_mask = (diff > 15).astype(np.uint8)
+                    
+                    face_area = max(float((l_channel > 0).sum()), 1.0)
+                    spot_density = float(spot_mask.sum()) / face_area
+                else:
+                    spot_density = 0.0
+            else:
+                spot_density = 0.0
+
+            
             # Forehead Wrinkles
             forehead_patch = gray[max(0, cy-80):min(h, cy-10), max(0, cx-100):min(w, cx+100)]
             wrinkle_forehead = (float(np.mean(cv2.Sobel(forehead_patch, cv2.CV_64F, 0, 1, ksize=5)**2)) / norm_factor) if forehead_patch.size > 0 else 0.0
@@ -273,6 +292,7 @@ class SkinTextureAnalyzer:
                 "raw_silicone_probability": silicone_probability,  # До корректировки
                 "reliability_weight": reliability_weight,
                 "pore_density": pore_density,
+                "spot_density": spot_density,
                 "wrinkle_forehead": wrinkle_forehead,
                 "wrinkle_nasolabial": wrinkle_nasolabial,
                 "albedo_uniformity": albedo_uniformity,
@@ -301,11 +321,12 @@ class SkinTextureAnalyzer:
             if len(face_pixels) < 100:
                 return 0.0
             
-            p10, p90 = np.percentile(face_pixels, [10, 90])
-            dynamic_range = (p90 - p10) / 255.0
+            p5, p50, p95 = np.percentile(face_pixels, [5, 50, 95])
+            shadow_area = float(np.sum(face_pixels < p50) / len(face_pixels))
+            highlight_spread = (p95 - p50) / 255.0
             
-            # T-07: Formula based studio lighting estimation
-            score = 0.5 - abs(dynamic_range - 0.475) * 1.5
+            # Студийный свет: мало теней и широкие блики
+            score = max(0.0, (0.35 - shadow_area) * 2.0) * min(1.0, highlight_spread * 3.0)
             return float(np.clip(score, 0.0, 1.0))
 
                 
