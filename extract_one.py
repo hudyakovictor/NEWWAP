@@ -367,9 +367,11 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
         from backend.pipeline.texture import SkinTextureAnalyzer
         analyzer = SkinTextureAnalyzer()
         texture_preds = analyzer.analyze_image(
-            out_dir / "face_crop.png",
+            face_crop_path=out_dir / "face_crop.png",
             uv_path=Path(uv_path),
-            uv_mask_path=Path(uv_mask_path)
+            uv_mask_path=Path(uv_mask_path),
+            yaw_deg=float(pose_result.get("yaw", 0.0)),
+            pitch_deg=float(pose_result.get("pitch", 0.0)),
         )
         texture_actual = {}
         texture_notes = []
@@ -465,13 +467,6 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
             jaw_open_val = float(abs(exp_params[0]))
             smile_val = float(max(abs(exp_params[1]), abs(exp_params[2])))
 
-        # Mask forehead wrinkles when head yaw exceeds 30 degrees to avoid pose bias
-        forehead_wrinkle_val = texture_preds.get("wrinkle_forehead", 0.0)
-        if abs(yaw) > 30.0:
-            forehead_wrinkle_val = None
-            if isinstance(texture_preds, dict):
-                texture_preds["wrinkle_forehead"] = None
-
         from backend.core.utils import BUCKET_METRIC_KEYS as _BMK
         _expected = _BMK.get(pose_class, [])
         _present = [k for k in _expected if geo_metrics.get(k) is not None]
@@ -486,15 +481,6 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
             all_metrics = {}
             if isinstance(geo_metrics, dict):
                 all_metrics.update(geo_metrics)
-            
-            all_metrics.update({
-                "texture_studio_lighting": texture_preds.get("studio_lighting_score", 0.0) if texture_preds else 0.0,
-                "texture_retouch":         texture_preds.get("retouch_score", 0.0) if texture_preds else 0.0,
-                "texture_lbp_complexity":  texture_preds.get("lbp_complexity", 0.0) if texture_preds else 0.0,
-                "texture_specular_gloss":  texture_preds.get("specular_gloss", 0.0) if texture_preds else 0.0,
-                "texture_spot_density":    texture_preds.get("spot_density", 0.0) if texture_preds else 0.0,
-                "texture_wrinkle_forehead": forehead_wrinkle_val,
-            })
 
             for metric, value in all_metrics.items():
                 if value is None:
@@ -577,19 +563,39 @@ def extract_one(photo_path_str, out_root_dir_str, mode="calibration", calibratio
                 k: v for k, v in geo_metrics.items()
             },
             "texture": {
-                "studio_lighting":  texture_preds.get("studio_lighting_score") if texture_preds else None,
-                "retouch":          texture_preds.get("retouch_score") if texture_preds else None,
-                "lbp_complexity":   texture_preds.get("lbp_complexity") if texture_preds else None,
-                "specular_gloss":   texture_preds.get("specular_gloss") if texture_preds else None,
-                "spot_density":     texture_preds.get("spot_density") if texture_preds else None,
-                "wrinkle_forehead": forehead_wrinkle_val,
-                "silicone_prob":    texture_preds.get("silicone_probability") if texture_preds else None,
+                # Universal
+                "lbp_uniformity":     texture_preds.get("lbp_uniformity") if texture_preds else None,
+                "lbp_entropy":        texture_preds.get("lbp_entropy") if texture_preds else None,
+                "glcm_contrast":      texture_preds.get("glcm_contrast") if texture_preds else None,
+                "glcm_energy":        texture_preds.get("glcm_energy") if texture_preds else None,
+                "glcm_homogeneity":   texture_preds.get("glcm_homogeneity") if texture_preds else None,
+                "glcm_correlation":   texture_preds.get("glcm_correlation") if texture_preds else None,
+                "gabor_mean":         texture_preds.get("gabor_mean") if texture_preds else None,
+                "gabor_std":          texture_preds.get("gabor_std") if texture_preds else None,
+                "laplacian_energy":   texture_preds.get("laplacian_energy") if texture_preds else None,
+                "spot_density":       texture_preds.get("spot_density") if texture_preds else None,
+                "specular_gloss":     texture_preds.get("specular_gloss") if texture_preds else None,
+                "skin_tone_std":      texture_preds.get("skin_tone_std") if texture_preds else None,
+                "pigmentation_index": texture_preds.get("pigmentation_index") if texture_preds else None,
+
+                # Conditional (None если ракурс не тот)
+                "wrinkle_forehead":   texture_preds.get("wrinkle_forehead") if texture_preds else None,
+                "nasolabial_depth":   texture_preds.get("nasolabial_depth") if texture_preds else None,
+                "crow_feet_score":    texture_preds.get("crow_feet_score") if texture_preds else None,
+                "nose_pore_density":  texture_preds.get("nose_pore_density") if texture_preds else None,
+
+                # UV zone
+                "uv_spot_density":      texture_preds.get("uv_spot_density") if texture_preds else None,
+                "uv_wrinkle_energy":    texture_preds.get("uv_wrinkle_energy") if texture_preds else None,
+                "uv_texture_entropy":   texture_preds.get("uv_texture_entropy") if texture_preds else None,
+                "uv_silicone_flatness": texture_preds.get("uv_silicone_flatness") if texture_preds else None,
+                "uv_retouch_score":     texture_preds.get("uv_retouch_score") if texture_preds else None,
+
+                # Quality
                 "quality": {
-                    "laplacian_var":   texture_preds.get("quality_laplacian_var") if texture_preds else None,
                     "sharpness_score": texture_preds.get("quality_sharpness_score") if texture_preds else None,
                     "noise_score":     texture_preds.get("quality_noise_score") if texture_preds else None,
-                    "jpeg_score":      texture_preds.get("quality_jpeg_score") if texture_preds else None,
-                    "quality_index":   texture_preds.get("quality_quality_index") if texture_preds else None,
+                    "quality_index":   texture_preds.get("quality_index") if texture_preds else None,
                 },
                 "notes": texture_notes,
             },
@@ -671,6 +677,7 @@ if __name__ == "__main__":
         default=str(Path(__file__).parent / "calibration_data.csv"),
         help="Путь к calibration_data.csv (используется только в режиме main)",
     )
+    parser.add_argument("--limit", type=int, default=None, help="Ограничение на количество обрабатываемых фото")
     args = parser.parse_args()
 
     # ── Пути по умолчанию ────────────────────────────────────────────────────
@@ -707,9 +714,8 @@ if __name__ == "__main__":
         glob.glob(str(photos_dir / "*.jpeg")) +
         glob.glob(str(photos_dir / "*.png"))
     )
-    if not test_photos:
-        print(f"No photos found in {photos_dir}")
-        sys.exit(1)
+    if args.limit is not None:
+        test_photos = test_photos[:args.limit]
 
     print(f"[{args.mode.upper()} MODE] Found {len(test_photos)} photos → {out_dir}")
 
@@ -790,3 +796,56 @@ if __name__ == "__main__":
                 print(f"✅ Successful calibration run! Saved {len(calib_df)} photos and built calibration pairs CSV at {pairs_csv_path}")
             except Exception as e:
                 print(f"Error building calibration pairs: {e}")
+
+            # --- Сборка единой flat CSV со всеми метриками ---
+            print("[calibration mode] Building consolidated calibration_data.csv with all metrics...")
+            flat_records = []
+            for photo in test_photos:
+                res_json_path = Path(out_dir) / Path(photo).stem / "result.json"
+                if res_json_path.exists():
+                    try:
+                        with open(res_json_path, "r") as f:
+                            data = json.load(f)
+                        
+                        source = data.get("source", {}) or {}
+                        pose = data.get("pose", {}) or {}
+                        qual = data.get("quality", {}) or {}
+                        expr = data.get("expression", {}) or {}
+                        geo = data.get("geometry", {}) or {}
+                        tex = data.get("texture", {}) or {}
+                        
+                        flat_row = {
+                            "filename": source.get("filename") or data.get("filename"),
+                            "pose_bucket": pose.get("bucket", "frontal"),
+                            "pose_yaw": pose.get("yaw", 0.0),
+                            "pose_pitch": pose.get("pitch", 0.0),
+                            "pose_roll": pose.get("roll", 0.0),
+                            "quality_overall": qual.get("overall", 0.7),
+                            "quality_sharpness": qual.get("sharpness", 0.0),
+                            "quality_blur": qual.get("blur", 0.0),
+                            "quality_jpeg_noise": qual.get("jpeg_noise", 0.0),
+                            "expression_mouth_open_intensity": expr.get("mouth_open_intensity", 0.0),
+                            "expression_smile_intensity": expr.get("smile_intensity", 0.0),
+                            "mesh_path": str(Path(out_dir) / Path(photo).stem),
+                        }
+                        for k, v in geo.items():
+                            flat_row[f"geo_{k}"] = v
+                        for k, v in tex.items():
+                            if k != "quality":
+                                flat_row[f"tex_{k}"] = v
+                            else:
+                                for qk, qv in (v or {}).items():
+                                    flat_row[f"tex_quality_{qk}"] = qv
+                                    
+                        flat_records.append(flat_row)
+                    except Exception as e:
+                        print(f"Error flattening result for {Path(photo).name}: {e}")
+                        
+            if flat_records:
+                flat_df = pd.DataFrame(flat_records)
+                flat_csv_path = Path(out_dir) / "calibration_data.csv"
+                try:
+                    flat_df.to_csv(flat_csv_path, index=False)
+                    print(f"✅ Created consolidated flat CSV with all metrics at: {flat_csv_path}")
+                except Exception as e:
+                    print(f"Error saving consolidated flat CSV: {e}")

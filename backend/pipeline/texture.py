@@ -2,510 +2,283 @@ from __future__ import annotations
 
 import cv2
 import numpy as np
-import scipy.fftpack as fft
 from pathlib import Path
-from typing import Any
-from skimage.feature import local_binary_pattern
+from dataclasses import dataclass, field, asdict
+from typing import Optional, Dict, Any
 
-from .utils import weighted_mean_abs
-from core.constants import SILICONE_SIGMOID_BIAS
+from skimage.feature import local_binary_pattern, graycomatrix, graycoprops
+from skimage.filters import gabor, laplace
+from skimage.measure import shannon_entropy
+from skimage.feature import canny
+from skimage import color as skcolor
 
-def _sigmoid(x: float, bias: float = SILICONE_SIGMOID_BIAS) -> float:
-    return float(1.0 / (1.0 + np.exp(-(x + bias))))
+_YAW_FRONTAL     = 20.0  # лоб, поры носа
+_YAW_EYE_CORNERS = 30.0  # гусиные лапки, носогубные складки
+_YAW_HALF        = 45.0  # щёки
 
-def _ensure_mask(mask: np.ndarray | None, shape_hw: tuple[int, int]) -> np.ndarray:
-    if mask is None:
-        return np.ones(shape_hw, dtype=np.uint8) * 255
-    if mask.ndim == 3:
-        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-    if mask.shape[:2] != shape_hw:
-        mask = cv2.resize(mask, (shape_hw[1], shape_hw[0]), interpolation=cv2.INTER_NEAREST)
-    return np.asarray(mask, dtype=np.uint8)
+@dataclass
+class TextureMetrics:
+    # UNIVERSAL group
+    lbp_uniformity: Optional[float] = None
+    lbp_entropy: Optional[float] = None
+    glcm_contrast: Optional[float] = None
+    glcm_energy: Optional[float] = None
+    glcm_homogeneity: Optional[float] = None
+    glcm_correlation: Optional[float] = None
+    gabor_mean: Optional[float] = None
+    gabor_std: Optional[float] = None
+    laplacian_energy: Optional[float] = None
+    spot_density: Optional[float] = None
+    specular_gloss: Optional[float] = None
+    skin_tone_std: Optional[float] = None
+    pigmentation_index: Optional[float] = None
 
-class AlbedoColorAnalyzer:
-    def __init__(self):
-        self.living_skin_h_range = (0, 35)
-        self.silicone_s_threshold = 40
+    # CONDITIONAL group
+    wrinkle_forehead: Optional[float] = None
+    nasolabial_depth: Optional[float] = None
+    crow_feet_score: Optional[float] = None
+    nose_pore_density: Optional[float] = None
 
-    def analyze_skin_vitality(self, rgb_uv: np.ndarray, skin_mask: np.ndarray) -> dict[str, float | bool | str]:
-        if rgb_uv is None or rgb_uv.size == 0:
-            return {"vitality_score": 0.0, "status": "unavailable", "synthetic_color_ratio": 0.0}
-        hsv = cv2.cvtColor(rgb_uv, cv2.COLOR_RGB2HSV)
-        valid = hsv[skin_mask > 0]
-        if valid.size == 0:
-            return {"vitality_score": 0.0, "status": "unavailable", "synthetic_color_ratio": 0.0}
-        h, s = valid[:, 0], valid[:, 1]
-        dead_h = (h > self.living_skin_h_range[1]) & (h < 90)
-        dead_s = s < self.silicone_s_threshold
-        synthetic_ratio = float(np.sum(dead_h & dead_s) / max(len(valid), 1))
-        return {
-            "vitality_score": float(max(0.0, 1.0 - synthetic_ratio)),
-            "status": "ok",
-            "synthetic_color_ratio": synthetic_ratio,
-        }
+    # UV ZONE group
+    uv_spot_density: Optional[float] = None
+    uv_wrinkle_energy: Optional[float] = None
+    uv_texture_entropy: Optional[float] = None
+    uv_silicone_flatness: Optional[float] = None
+    uv_retouch_score: Optional[float] = None
 
-class TextureFrequencyAnalyzer:
-    def __init__(self, patch_size: int = 64):
-        self.patch_size = patch_size
+    # QUALITY group
+    quality_sharpness_score: Optional[float] = None
+    quality_noise_score: Optional[float] = None
+    quality_index: Optional[float] = None
 
-    def analyze_periodicity(self, grayscale: np.ndarray, cx: int, cy: int) -> dict[str, float | bool | str]:
-        half = self.patch_size // 2
-        patch = grayscale[max(0, cy-half):min(grayscale.shape[0], cy+half), 
-                          max(0, cx-half):min(grayscale.shape[1], cx+half)]
-        if patch.shape != (self.patch_size, self.patch_size):
-            return {"periodicity_index": 0.0, "status": "patch_error"}
-        f_transform = fft.fft2(patch)
-        f_shift = fft.fftshift(f_transform)
-        magnitude = 20 * np.log(np.abs(f_shift) + 1e-8)
-        y, x = np.ogrid[-half:half, -half:half]
-        center_mask = (x**2 + y**2) <= 8**2
-        high = magnitude.copy()
-        high[center_mask] = 0
-        non_zero = high[high > 0]
-        if non_zero.size == 0:
-            return {"periodicity_index": 0.0, "status": "ok"}
-        hf_mean = float(np.mean(non_zero))
-        hf_max = float(np.max(non_zero))
-        return {"periodicity_index": float(hf_max / (hf_mean + 1e-8)), "status": "ok"}
+    def as_dict(self) -> dict:
+        return asdict(self)
 
-class ImageQualityAnalyzer:
-    """
-    [QUAL-02] Advanced Image Quality Analysis.
-    Estimates JPEG artifacts, noise, and sharpness to adjust forensic weights.
-    """
-    def analyze(self, image: np.ndarray) -> dict[str, float]:
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY) if image.ndim == 3 else image
-        h, w = gray.shape
-        
-        # 1. Laplacian variance (Sharpness)
-        laplacian_var = float(np.var(cv2.Laplacian(gray, cv2.CV_64F)))
-        
-        # 2. JPEG Blockiness (8x8 grid detection)
-        if h > 16 and w > 16:
-            h_a, h_b = gray[8::8, :], gray[7::8, :]
-            n_h = min(h_a.shape[0], h_b.shape[0])
-            h_diff = np.abs(h_a[:n_h] - h_b[:n_h]).mean()
-            
-            v_a, v_b = gray[:, 8::8], gray[:, 7::8]
-            n_v = min(v_a.shape[1], v_b.shape[1])
-            v_diff = np.abs(v_a[:, :n_v] - v_b[:, :n_v]).mean()
-            blockiness = float((h_diff + v_diff) / 2.0)
+def _load_gray_masked(img_path: Path, mask_path: Optional[Path] = None):
+    """Load image in grayscale + RGB, apply mask if passed. Returns (gray, rgb, mask)."""
+    img_rgba = cv2.imread(str(img_path), cv2.IMREAD_UNCHANGED)
+    if img_rgba is None:
+        return None, None, None
+    
+    skin_mask = None
+    if img_rgba.ndim == 3 and img_rgba.shape[2] == 4:
+        alpha = img_rgba[:, :, 3]
+        skin_mask = (alpha > 30).astype(np.uint8)
+        bgr = img_rgba[:, :, :3]
+    else:
+        if img_rgba.ndim == 3:
+            bgr = img_rgba
         else:
-            blockiness = 0.0
+            bgr = cv2.cvtColor(img_rgba, cv2.COLOR_GRAY2BGR)
             
-        # 3. Noise level (Median Absolute Deviation)
-        median = cv2.medianBlur(gray, 3)
-        noise_level = float(np.mean(np.abs(gray.astype(np.float32) - median.astype(np.float32))))
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    
+    if mask_path and Path(mask_path).exists():
+        raw_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+        if raw_mask is not None:
+            if raw_mask.shape != gray.shape:
+                raw_mask = cv2.resize(raw_mask, (gray.shape[1], gray.shape[0]), interpolation=cv2.INTER_NEAREST)
+            skin_mask = (raw_mask > 0).astype(np.uint8)
+            
+    if skin_mask is None:
+        skin_mask = (gray > 0).astype(np.uint8)
         
-        # Normalized scores (0..1)
-        sharpness_score = min(1.0, laplacian_var / 500.0)
-        jpeg_score = max(0.0, 1.0 - blockiness / 40.0)
-        noise_score = max(0.0, 1.0 - noise_level / 10.0)
-        
-        quality_index = (sharpness_score * 0.4 + jpeg_score * 0.3 + noise_score * 0.3)
-        
-        return {
-            "quality_index": float(quality_index),
-            "sharpness_score": sharpness_score,
-            "jpeg_score": jpeg_score,
-            "noise_score": noise_score,
-            "laplacian_var": laplacian_var,
-            "blockiness": blockiness,
-            "noise_level": noise_level
-        }
+    return gray, rgb, skin_mask
+
+def _apply_mask(arr: np.ndarray, mask: Optional[np.ndarray]) -> np.ndarray:
+    if mask is not None and mask.size == arr.size:
+        return arr[mask > 0].flatten()
+    return arr.flatten()
+
+def _roi_by_fraction(gray: np.ndarray, y0f: float, y1f: float, x0f: float, x1f: float) -> np.ndarray:
+    h, w = gray.shape[:2]
+    y0, y1 = int(y0f * h), int(y1f * h)
+    x0, x1 = int(x0f * w), int(x1f * w)
+    return gray[y0:y1, x0:x1]
 
 class SkinTextureAnalyzer:
     def __init__(self):
-        self.lbp_points = 16
-        self.lbp_radius = 2
-        self.albedo_analyzer = AlbedoColorAnalyzer()
-        self.fft_analyzer = TextureFrequencyAnalyzer(patch_size=64)
-        self.quality_analyzer = ImageQualityAnalyzer()
+        pass
 
-    def analyze_uv_metrics(self, uv_path: Path | None, uv_mask_path: Path | None) -> float:
-        """
-        [T-03] High-precision pore density estimation using UV unwrapped HD texture.
-        Applies a Laplacian (or LoG) filter on the skin mask of uv_texture_hd.jpg.
-        """
-        if not uv_path or not Path(uv_path).exists():
-            return 0.0
-        try:
-            uv_img = cv2.imread(str(uv_path), cv2.IMREAD_GRAYSCALE)
-            if uv_img is None:
-                return 0.0
-            
-            if uv_mask_path and Path(uv_mask_path).exists():
-                uv_mask = cv2.imread(str(uv_mask_path), cv2.IMREAD_GRAYSCALE)
-                if uv_mask is not None:
-                    if uv_mask.shape != uv_img.shape:
-                        uv_mask = cv2.resize(uv_mask, (uv_img.shape[1], uv_img.shape[0]), interpolation=cv2.INTER_NEAREST)
-                    return self._compute_pore_density(uv_img, uv_mask)
-            
-            # If no mask is available, use a non-zero mask of the image itself
-            uv_mask = (uv_img > 0).astype(np.uint8) * 255
-            return self._compute_pore_density(uv_img, uv_mask)
-        except Exception:
-            return 0.0
+    def analyze(
+        self,
+        face_crop_path: Path,
+        uv_path: Optional[Path] = None,
+        uv_mask_path: Optional[Path] = None,
+        yaw_deg: float = 0.0,
+        pitch_deg: float = 0.0,
+    ) -> TextureMetrics:
+        metrics = TextureMetrics()
+        
+        gray, rgb, skin_mask = _load_gray_masked(face_crop_path)
+        if gray is None:
+            return metrics
+
+        masked_pixels = _apply_mask(gray, skin_mask)
+        if masked_pixels.size == 0:
+            return metrics
+
+        # 1. UNIVERSAL Group
+        # LBP Uniformity & Entropy
+        lbp = local_binary_pattern(gray, P=8, R=1, method="uniform")
+        lbp_masked = _apply_mask(lbp, skin_mask)
+        if lbp_masked.size > 0:
+            hist, _ = np.histogram(lbp_masked, bins=10, range=(0, 10), density=True)
+            metrics.lbp_uniformity = float(np.sum(hist**2))
+            metrics.lbp_entropy = float(-np.sum(hist * np.log(hist + 1e-9)))
+
+        # GLCM
+        gray_32 = (gray // 8).astype(np.uint8)
+        glcm = graycomatrix(gray_32, distances=[1], angles=[0, np.pi/4], levels=32, symmetric=True, normed=True)
+        metrics.glcm_contrast = float(np.mean(graycoprops(glcm, 'contrast')))
+        metrics.glcm_energy = float(np.mean(graycoprops(glcm, 'energy')))
+        metrics.glcm_homogeneity = float(np.mean(graycoprops(glcm, 'homogeneity')))
+        metrics.glcm_correlation = float(np.mean(graycoprops(glcm, 'correlation')))
+
+        # Gabor responses
+        gabor_responses = []
+        for freq in [0.1, 0.2, 0.3]:
+            filt_real, filt_imag = gabor(gray, frequency=freq)
+            gabor_responses.append(np.sqrt(filt_real**2 + filt_imag**2))
+        gabor_stack = np.mean(gabor_responses, axis=0)
+        gabor_masked = _apply_mask(gabor_stack, skin_mask)
+        if gabor_masked.size > 0:
+            metrics.gabor_mean = float(np.mean(gabor_masked))
+            metrics.gabor_std = float(np.std(gabor_masked))
+
+        # Laplacian energy
+        lap = laplace(gray)
+        lap_masked = _apply_mask(lap, skin_mask)
+        if lap_masked.size > 0:
+            metrics.laplacian_energy = float(np.mean(lap_masked**2))
+
+        # Spot density
+        mean_val = np.mean(masked_pixels)
+        std_val = np.std(masked_pixels)
+        metrics.spot_density = float(np.sum(masked_pixels < (mean_val - 1.5 * std_val)) / masked_pixels.size)
+
+        # Specular gloss
+        metrics.specular_gloss = float(np.sum(masked_pixels > 240) / masked_pixels.size)
+
+        # Lab color features
+        lab = skcolor.rgb2lab(rgb)
+        l_chan = lab[:, :, 0]
+        a_chan = lab[:, :, 1]
+        l_masked = _apply_mask(l_chan, skin_mask)
+        a_masked = _apply_mask(a_chan, skin_mask)
+        if l_masked.size > 0:
+            metrics.skin_tone_std = float(np.std(l_masked))
+        if a_masked.size > 0:
+            metrics.pigmentation_index = float(np.std(a_masked))
+
+        # 2. CONDITIONAL Group
+        # Forehead wrinkles
+        if abs(yaw_deg) < _YAW_FRONTAL:
+            roi_forehead = _roi_by_fraction(gray, 0.0, 0.30, 0.15, 0.85)
+            if roi_forehead.size > 0:
+                metrics.wrinkle_forehead = float(np.var(laplace(roi_forehead)))
+
+        # Nasolabial depth
+        if abs(yaw_deg) < _YAW_EYE_CORNERS:
+            roi_nasolabial = _roi_by_fraction(gray, 0.50, 0.85, 0.20, 0.80)
+            if roi_nasolabial.size > 0:
+                metrics.nasolabial_depth = float(np.mean(canny(roi_nasolabial).astype(np.float32)))
+
+        # Crow feet score
+        if abs(yaw_deg) < _YAW_EYE_CORNERS:
+            roi_eye_l = _roi_by_fraction(gray, 0.15, 0.45, 0.0, 0.20)
+            roi_eye_r = _roi_by_fraction(gray, 0.15, 0.45, 0.80, 1.0)
+            v_l = np.var(laplace(roi_eye_l)) if roi_eye_l.size > 0 else 0.0
+            v_r = np.var(laplace(roi_eye_r)) if roi_eye_r.size > 0 else 0.0
+            metrics.crow_feet_score = float((v_l + v_r) / 2.0)
+
+        # Nose pore density
+        if abs(yaw_deg) < _YAW_FRONTAL:
+            roi_nose = _roi_by_fraction(gray, 0.35, 0.65, 0.30, 0.70)
+            if roi_nose.size > 0:
+                mean_n = np.mean(roi_nose)
+                std_n = np.std(roi_nose)
+                metrics.nose_pore_density = float(np.sum(roi_nose < (mean_n - 1.5 * std_n)) / roi_nose.size)
+
+        # 3. UV ZONE Group
+        if uv_path and Path(uv_path).exists():
+            uv_gray = cv2.imread(str(uv_path), cv2.IMREAD_GRAYSCALE)
+            if uv_gray is not None:
+                uv_mask = None
+                if uv_mask_path and Path(uv_mask_path).exists():
+                    uv_mask = cv2.imread(str(uv_mask_path), cv2.IMREAD_GRAYSCALE)
+                    if uv_mask is not None and uv_mask.shape != uv_gray.shape:
+                        uv_mask = cv2.resize(uv_mask, (uv_gray.shape[1], uv_gray.shape[0]), interpolation=cv2.INTER_NEAREST)
+                if uv_mask is None:
+                    uv_mask = (uv_gray > 0).astype(np.uint8) * 255
+                
+                uv_pixels = _apply_mask(uv_gray, uv_mask)
+                if uv_pixels.size > 0:
+                    mean_uv = np.mean(uv_pixels)
+                    std_uv = np.std(uv_pixels)
+                    metrics.uv_spot_density = float(np.sum(uv_pixels < (mean_uv - 1.5 * std_uv)) / uv_pixels.size)
+                    
+                    uv_lap = laplace(uv_gray)
+                    uv_lap_masked = _apply_mask(uv_lap, uv_mask)
+                    metrics.uv_wrinkle_energy = float(np.mean(uv_lap_masked**2))
+                    
+                    hist_uv, _ = np.histogram(uv_pixels, bins=64, range=(0, 256), density=True)
+                    metrics.uv_texture_entropy = float(-np.sum(hist_uv * np.log(hist_uv + 1e-9)))
+                    
+                    uv_gray_32 = (uv_gray // 8).astype(np.uint8)
+                    glcm_uv = graycomatrix(uv_gray_32, distances=[1], angles=[0], levels=32, symmetric=True, normed=True)
+                    glcm_contrast_uv = float(np.mean(graycoprops(glcm_uv, 'contrast')))
+                    metrics.uv_silicone_flatness = float(1.0 / (1.0 + glcm_contrast_uv))
+                    
+                    lbp_uv = local_binary_pattern(uv_gray, P=8, R=1, method="uniform")
+                    lbp_uv_masked = _apply_mask(lbp_uv, uv_mask)
+                    if lbp_uv_masked.size > 0:
+                        hist_lbp_uv, _ = np.histogram(lbp_uv_masked, bins=10, range=(0, 10), density=True)
+                        metrics.uv_retouch_score = float(np.sum(hist_lbp_uv**2))
+
+        # 4. QUALITY Group
+        metrics.quality_sharpness_score = float(np.var(laplace(gray)))
+        metrics.quality_noise_score = float(np.std(masked_pixels))
+        q_index_sharp = metrics.quality_sharpness_score / (metrics.quality_sharpness_score + 500.0 + 1e-9)
+        q_index_gloss = 1.0 - (metrics.specular_gloss or 0.0) * 10.0
+        metrics.quality_index = float(np.clip(q_index_sharp * q_index_gloss, 0.0, 1.0))
+
+        return metrics
 
     def analyze_image(
-        self, 
-        image_path: Path, 
-        mask_path: Path | None = None,
-        uv_path: Path | None = None,
-        uv_mask_path: Path | None = None
-    ) -> dict[str, Any]:
-        try:
-            # [FIX-14] Читаем RGBA если доступно (для face_crop.png с альфа-каналом)
-            bgra = cv2.imread(str(image_path), cv2.IMREAD_UNCHANGED)
-            if bgra is None:
-                return {"error": "image_read_failed"}
-            
-            # Если RGBA (4 канала) - используем альфа как веса маски
-            if bgra.ndim == 3 and bgra.shape[2] == 4:
-                alpha = bgra[:, :, 3].astype(np.float32) / 255.0
-                bgr = bgra[:, :, :3]
-                has_alpha_mask = True
-            else:
-                bgr = bgra
-                alpha = None
-                has_alpha_mask = False
-            
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-            h, w = gray.shape
-            
-            # Analyze Quality first
-            quality = self.quality_analyzer.analyze(rgb)
-            
-            raw_mask = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path and Path(mask_path).exists() else None
-            if raw_mask is not None:
-                mask = _ensure_mask(raw_mask, (h, w))
-                mask_float = mask.astype(np.float32) / 255.0
-            elif has_alpha_mask:
-                # [FIX-14] Используем альфа-канал как взвешенную маску
-                mask = (alpha > 0.1).astype(np.uint8) * 255  # Бинарная для совместимости
-                mask_float = alpha
-            else:
-                # Auto-detect face pixels from non-black regions (for masked crops like face_crop.jpg)
-                mask = np.any(rgb > 0, axis=2).astype(np.uint8) * 255
-                if mask.sum() == 0:
-                    mask = _ensure_mask(None, (h, w))
-                mask_float = mask.astype(np.float32) / 255.0
-            
-            valid = mask > 0
-            
-            # [FIX-15] Детекция признаков студийного света и ретуши
-            studio_lighting_score = self._detect_studio_lighting(rgb, mask_float)
-            retouch_score = self._detect_retouching(rgb, mask_float)
-            
-            # Laplacian variance for sharpness/noise estimation
-            laplacian_var = quality["laplacian_var"]
-            
-            # Load UV grayscale and mask if available for pose-invariant analysis
-            has_uv = False
-            if uv_path and Path(uv_path).exists() and uv_mask_path and Path(uv_mask_path).exists():
-                uv_gray = cv2.imread(str(uv_path), cv2.IMREAD_GRAYSCALE)
-                uv_mask = cv2.imread(str(uv_mask_path), cv2.IMREAD_GRAYSCALE)
-                if uv_gray is not None and uv_mask is not None:
-                    if uv_mask.shape != uv_gray.shape:
-                        uv_mask = cv2.resize(uv_mask, (uv_gray.shape[1], uv_gray.shape[0]), interpolation=cv2.INTER_NEAREST)
-                    has_uv = True
-
-            # LBP Analysis (Migrated to UV space if available)
-            if has_uv:
-                lbp_img = uv_gray
-                lbp_valid = uv_mask > 128
-            else:
-                lbp_img = gray
-                lbp_valid = valid
-
-            lbp = local_binary_pattern(lbp_img, self.lbp_points, self.lbp_radius, method="uniform")
-            lbp_values = lbp[lbp_valid]
-            if lbp_values.size > 0:
-                hist, _ = np.histogram(lbp_values, bins=32, range=(0, self.lbp_points + 2), density=True)
-                lbp_complexity = float(-np.sum(hist * np.log(hist + 1e-8)))
-                lbp_uniformity = float(np.max(hist))
-            else:
-                lbp_complexity = 0.0
-                lbp_uniformity = 0.0
-
-            # Gloss and Reflectance (Evaluated on original photo to capture lighting conditions)
-            hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
-            specular_gloss = self._compute_specular_gloss(hsv, mask)
-            
-            # Spatial Metrics
-            ys, xs = np.where(valid)
-            cx, cy = (int(np.median(xs)), int(np.percentile(ys, 25))) if xs.size > 0 else (w // 2, h // 4)
-            
-            # [ITER-1.3] Normalization by Laplacian variance to avoid sharpness bias
-            norm_factor = laplacian_var + 1.0
-            
-            # Pore Density (T-03)
-            pore_density = self.analyze_uv_metrics(uv_path, uv_mask_path)
-            if pore_density == 0.0:
-                # Fallback to local patch if UV is not available
-                patch_gray = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
-                pore_density = (float(cv2.Laplacian(patch_gray, cv2.CV_64F).var()) / norm_factor) if patch_gray.size > 0 else 0.0
-            
-            # FIX-10: Spot density (Плотность пятен/дефектов)
-            if uv_path and Path(uv_path).exists():
-                uv_bgr = cv2.imread(str(uv_path))
-                if uv_bgr is not None:
-                    uv_lab = cv2.cvtColor(uv_bgr, cv2.COLOR_BGR2Lab)
-                    l_channel = uv_lab[:, :, 0]
-                    # Адаптивный порог для поиска темных пятен
-                    blurred = cv2.GaussianBlur(l_channel, (21, 21), 0)
-                    diff = blurred.astype(np.int16) - l_channel.astype(np.int16)
-                    spot_mask = (diff > 15).astype(np.uint8)
-                    
-                    face_area = max(float((l_channel > 0).sum()), 1.0)
-                    spot_density = float(spot_mask.sum()) / face_area
-                else:
-                    spot_density = 0.0
-            else:
-                spot_density = 0.0
-
-            # Wrinkles (Forehead & Nasolabial) migrated to UV space to guarantee pose-invariance
-            if has_uv:
-                scale_y = uv_gray.shape[0] / 1024.0
-                scale_x = uv_gray.shape[1] / 1024.0
-                
-                # 1. Forehead wrinkles patch (y: 50..220, x: 350..650)
-                y1, y2 = int(50 * scale_y), int(220 * scale_y)
-                x1, x2 = int(350 * scale_x), int(650 * scale_x)
-                uv_forehead = uv_gray[y1:y2, x1:x2]
-                uv_forehead_mask = uv_mask[y1:y2, x1:x2]
-                sobel_forehead = cv2.Sobel(uv_forehead, cv2.CV_64F, 0, 1, ksize=5)
-                valid_forehead = sobel_forehead[uv_forehead_mask > 128]
-                wrinkle_forehead = (float(np.mean(valid_forehead**2)) / norm_factor) if valid_forehead.size > 0 else 0.0
-                
-                # 2. Nasolabial wrinkles patches (Left y: 500..750, x: 280..420; Right y: 500..750, x: 600..740)
-                ly1, ly2 = int(500 * scale_y), int(750 * scale_y)
-                lx1, lx2 = int(280 * scale_x), int(420 * scale_x)
-                uv_l_patch = uv_gray[ly1:ly2, lx1:lx2]
-                uv_l_mask = uv_mask[ly1:ly2, lx1:lx2]
-                sobel_l = cv2.Sobel(uv_l_patch, cv2.CV_64F, 1, 0, ksize=3)
-                valid_l = sobel_l[uv_l_mask > 128]
-                
-                ry1, ry2 = int(500 * scale_y), int(750 * scale_y)
-                rx1, rx2 = int(600 * scale_x), int(740 * scale_x)
-                uv_r_patch = uv_gray[ry1:ry2, rx1:rx2]
-                uv_r_mask = uv_mask[ry1:ry2, rx1:rx2]
-                sobel_r = cv2.Sobel(uv_r_patch, cv2.CV_64F, 1, 0, ksize=3)
-                valid_r = sobel_r[uv_r_mask > 128]
-                
-                if valid_l.size > 0 and valid_r.size > 0:
-                    valid_naso = np.concatenate([valid_l, valid_r])
-                elif valid_l.size > 0:
-                    valid_naso = valid_l
-                else:
-                    valid_naso = valid_r
-                wrinkle_nasolabial = (float(np.mean(valid_naso**2)) / norm_factor) if valid_naso.size > 0 else 0.0
-            else:
-                # Fallback to local patches of face_crop.png
-                forehead_patch = gray[max(0, cy-80):min(h, cy-10), max(0, cx-100):min(w, cx+100)]
-                wrinkle_forehead = (float(np.mean(cv2.Sobel(forehead_patch, cv2.CV_64F, 0, 1, ksize=5)**2)) / norm_factor) if forehead_patch.size > 0 else 0.0
-                
-                nasolabial_cy = int(h * 0.6)
-                nasolabial_patch = gray[max(0, nasolabial_cy-40):min(h, nasolabial_cy+40), max(0, cx-80):min(w, cx+80)]
-                wrinkle_nasolabial = (float(np.mean(cv2.Sobel(nasolabial_patch, cv2.CV_64F, 1, 0, ksize=3)**2)) / norm_factor) if nasolabial_patch.size > 0 else 0.0
-
-            # Albedo Uniformity (Migrated to UV space if available)
-            if has_uv:
-                uv_skin_pixels = uv_gray[uv_mask > 128]
-                albedo_uniformity = (1.0 - float(np.std(uv_skin_pixels)) / 255.0) if uv_skin_pixels.size > 0 else 1.0
-            else:
-                albedo_patch = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
-                albedo_uniformity = (1.0 - float(np.std(albedo_patch)) / 255.0) if albedo_patch.size > 0 else 1.0
-
-            # Reliability Weight (Combined with Quality Index)
-            res_score = min(w, h) / 1024.0
-            reliability_weight = float(np.clip(res_score * quality["quality_index"], 0.1, 1.0))
-
-            # Silicone Probability
-            # High lbp_uniformity = uniform texture = likely synthetic/mask
-            score = (specular_gloss * 2.1 + lbp_uniformity * 0.8) 
-            silicone_probability = _sigmoid(score, bias=SILICONE_SIGMOID_BIAS)
-
-            # [FIX-15] Корректировка silicone_probability на основе студийного света/ретуши
-            synthetic_adj = (1.0 - studio_lighting_score * 0.3) * (1.0 - retouch_score * 0.4)
-            adjusted_silicone_prob = silicone_probability * synthetic_adj
-            
-            # Global Smoothness (Migrated to UV space if available)
-            if has_uv:
-                fft_res = self.fft_analyzer.analyze_periodicity(uv_gray, 512, 512)
-            else:
-                fft_res = self.fft_analyzer.analyze_periodicity(gray, cx, cy)
-            periodicity = fft_res.get("periodicity_index", 0.0) if fft_res.get("status") == "ok" else 0.0
-            FFT = float(np.clip(1.0 - periodicity / 10.0, 0.0, 1.0))
-            LBP = float(np.clip(1.0 - lbp_complexity / 5.0, 0.0, 1.0))
-            global_smoothness = LBP * 0.5 + FFT * 0.5
-
-            return {
-                "lbp_complexity": lbp_complexity,
-                "lbp_uniformity": lbp_uniformity,
-                "specular_gloss": specular_gloss,
-                "silicone_probability": adjusted_silicone_prob,
-                "raw_silicone_probability": silicone_probability,  # До корректировки
-                "reliability_weight": reliability_weight,
-                "pore_density": pore_density,
-                "spot_density": spot_density,
-                "wrinkle_forehead": wrinkle_forehead,
-                "wrinkle_nasolabial": wrinkle_nasolabial,
-                "albedo_uniformity": albedo_uniformity,
-                "global_smoothness": global_smoothness,
-                "studio_lighting_score": studio_lighting_score,  # [FIX-15]
-                "retouch_score": retouch_score,  # [FIX-15]
-                "quality": quality
-            }
-        except Exception as exc:
-            return {"error": str(exc)}
-
-    def _detect_studio_lighting(self, rgb: np.ndarray, mask_float: np.ndarray) -> float:
-        """
-        [FIX-15] Детекция признаков студийного освещения.
-        Возвращает score [0, 1], где 1 = высокая вероятность студийного света.
-        """
-        try:
-            gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-            face_pixels = gray[mask_float > 0]
-            if len(face_pixels) == 0: return 0.0
-            
-            # Студийный свет (софтбоксы) убивает жесткие тени, делая дисперсию освещения минимальной.
-            # Естественный свет (солнце, лампа на потолке) дает жесткий градиент.
-            std_illumination = float(np.std(face_pixels))
-            
-            # Нормализуем. Чем ниже std (равномернее свет), тем выше вероятность студии/вспышки.
-            # Если std < 30 (очень плоский свет) -> score 1.0. Если std > 70 (жесткие тени) -> score 0.0.
-            uniformity_score = np.clip(1.0 - ((std_illumination - 30.0) / 40.0), 0.0, 1.0)
-            
-            # Блики от вспышки (пересветы)
-            highlights = np.sum(face_pixels > 240) / len(face_pixels)
-            highlight_score = np.clip(highlights * 10.0, 0.0, 1.0)
-            
-            return float(np.clip((uniformity_score * 0.7) + (highlight_score * 0.3), 0.0, 1.0))
-        except Exception:
-            return 0.0
-
-    def _compute_specular_gloss(self, hsv_img: np.ndarray, skin_mask: np.ndarray) -> float:
-        # [FIX TX-01]: Извлекаем канал Яркости (V)
-        v_channel = hsv_img[:, :, 2]
-        
-        # КРИТИЧНО: Эродируем маску сильно (на 10-15 пикселей), чтобы гарантированно
-        # исключить глаза, зубы и блики на краях губ. Оставляем только щеки, лоб, нос.
-        kernel = np.ones((11, 11), np.uint8)
-        strict_skin_mask = cv2.erode(skin_mask, kernel, iterations=2)
-        
-        safe_pixels = v_channel[strict_skin_mask > 0]
-        if len(safe_pixels) < 100: return 0.0
-        
-        # Считаем 95-й перцентиль (самые яркие участки КОЖИ, а не зубов)
-        gloss_value = float(np.percentile(safe_pixels, 95))
-        
-        # Нормируем. Глянец обычно лежит в диапазоне 180-255.
-        return float(np.clip((gloss_value - 150.0) / 105.0, 0.0, 1.0))
-
-    def _compute_pore_density(self, gray: np.ndarray, skin_mask: np.ndarray) -> float:
-        # Оставляем только кожу
-        masked_gray = cv2.bitwise_and(gray, gray, mask=skin_mask)
-        
-        # Вычисляем Лапласиан (выделение высокочастотных деталей - пор, мелких текстур)
-        laplacian = cv2.Laplacian(masked_gray, cv2.CV_64F)
-        
-        # Считаем дисперсию только на валидных пикселях маски
-        valid_laplacian = laplacian[skin_mask > 0]
-        if len(valid_laplacian) == 0: return 0.0
-        
-        variance = np.var(valid_laplacian)
-        
-        # [FIX TX-05]: Правильная нормализация для CV_64F. 
-        # Дисперсия Лапласиана для кожи обычно лежит в пределах 100 - 1500.
-        normalized_density = float(np.clip(variance / 1000.0, 0.0, 1.0))
-        
-        return normalized_density
-
-    def _detect_retouching(self, rgb: np.ndarray, mask_float: np.ndarray) -> float:
-        """
-        [FIX-15] Детекция признаков ретуши/сглаживания.
-        Возвращает score [0, 1], где 1 = высокая вероятность ретуши.
-        
-        Признаки:
-        - Слишком равномерная текстура (низкая локальная вариация)
-        - Отсутствие мелких деталей в определённых диапазонах
-        - Паттерны сглаживания (smoothing artifacts)
-        """
-        try:
-            gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-            
-            # 1. Анализ локальной вариации текстуры
-            # Разбиваем на патчи и измеряем стандартное отклонение
-            patch_size = 16
-            h, w = gray.shape
-            local_vars = []
-            
-            for y in range(0, h - patch_size, patch_size):
-                for x in range(0, w - patch_size, patch_size):
-                    patch_mask = mask_float[y:y+patch_size, x:x+patch_size]
-                    if patch_mask.mean() > 0.5:  # Достаточно кожи в патче
-                        patch = gray[y:y+patch_size, x:x+patch_size]
-                        local_vars.append(np.std(patch))
-            
-            if len(local_vars) < 5:
-                return 0.0
-            
-            # Ретушированные изображения имеют низкую вариацию между патчами
-            var_of_vars = np.std(local_vars)
-            
-            # 2. Анализ границ - ретушь часто размывает края
-            edges = cv2.Canny(gray, 50, 150)
-            edge_density = (edges > 0).sum() / edges.size
-            
-            # 3. Комбинированный score
-            # Низкая var_of_vars (< 3.0) + низкая edge_density (< 0.02) = ретушь
-            if var_of_vars < 3.0 and edge_density < 0.02:
-                return 0.75
-            elif var_of_vars < 5.0 and edge_density < 0.03:
-                return 0.55
-            else:
-                return 0.25
-                
-        except Exception:
-            return 0.0
-
+        self,
+        face_crop_path: Path,
+        uv_path: Optional[Path] = None,
+        uv_mask_path: Optional[Path] = None,
+        yaw_deg: float = 0.0,
+        pitch_deg: float = 0.0,
+    ) -> Dict[str, Any]:
+        metrics = self.analyze(
+            face_crop_path=face_crop_path,
+            uv_path=uv_path,
+            uv_mask_path=uv_mask_path,
+            yaw_deg=yaw_deg,
+            pitch_deg=pitch_deg,
+        )
+        return metrics.as_dict()
 
 def analyze_texture_synthetic_prob(face_crop_path: str) -> float:
-    """
-    Принимает путь к обрезанному изображению лица (face_crop.jpg).
-    Вычисляет вероятность того, что материал синтетический (от 0.0 до 1.0).
-    Использует упрощенную оценку высокочастотных деталей (FFT-подобный подход).
-    """
     try:
-        # Загружаем изображение в градациях серого
         img = cv2.imread(face_crop_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
-            return 0.5 # Неизвестно
-            
-        # Применяем фильтр Лапласа для выделения краев/пор (микрорельефа)
+            return 0.5
         laplacian = cv2.Laplacian(img, cv2.CV_64F)
         variance = laplacian.var()
-        
-        # Естественная кожа имеет высокую дисперсию Лапласиана из-за пор и морщин (высокий микрорельеф)
-        # Синтетика/дипфейки часто сглажены (низкая дисперсия)
-        
-        # Пороги (требуют тонкой настройки на реальных данных)
         NATURAL_VAR_THRESHOLD = 500.0
         SYNTHETIC_VAR_THRESHOLD = 100.0
-        
         if variance > NATURAL_VAR_THRESHOLD:
-            synthetic_prob = 0.05 # Очень вероятно натуральная кожа
+            synthetic_prob = 0.05
         elif variance < SYNTHETIC_VAR_THRESHOLD:
-            synthetic_prob = 0.95 # Очень вероятно синтетика/блюр
+            synthetic_prob = 0.95
         else:
-            # Линейная интерполяция между порогами
             synthetic_prob = 1.0 - ((variance - SYNTHETIC_VAR_THRESHOLD) / (NATURAL_VAR_THRESHOLD - SYNTHETIC_VAR_THRESHOLD))
-            
         return round(synthetic_prob, 3)
-        
     except Exception as e:
         print(f"Ошибка анализа текстуры {face_crop_path}: {e}")
         return 0.5
