@@ -206,14 +206,35 @@ class SkinTextureAnalyzer:
             # Laplacian variance for sharpness/noise estimation
             laplacian_var = quality["laplacian_var"]
             
-            # LBP Analysis
-            lbp = local_binary_pattern(gray, self.lbp_points, self.lbp_radius, method="uniform")
-            lbp_values = lbp[valid]
-            hist, _ = np.histogram(lbp_values, bins=32, range=(0, self.lbp_points + 2), density=True)
-            lbp_complexity = float(-np.sum(hist * np.log(hist + 1e-8)))
-            lbp_uniformity = float(np.max(hist))
+            # Load UV grayscale and mask if available for pose-invariant analysis
+            has_uv = False
+            if uv_path and Path(uv_path).exists() and uv_mask_path and Path(uv_mask_path).exists():
+                uv_gray = cv2.imread(str(uv_path), cv2.IMREAD_GRAYSCALE)
+                uv_mask = cv2.imread(str(uv_mask_path), cv2.IMREAD_GRAYSCALE)
+                if uv_gray is not None and uv_mask is not None:
+                    if uv_mask.shape != uv_gray.shape:
+                        uv_mask = cv2.resize(uv_mask, (uv_gray.shape[1], uv_gray.shape[0]), interpolation=cv2.INTER_NEAREST)
+                    has_uv = True
 
-            # Gloss and Reflectance
+            # LBP Analysis (Migrated to UV space if available)
+            if has_uv:
+                lbp_img = uv_gray
+                lbp_valid = uv_mask > 128
+            else:
+                lbp_img = gray
+                lbp_valid = valid
+
+            lbp = local_binary_pattern(lbp_img, self.lbp_points, self.lbp_radius, method="uniform")
+            lbp_values = lbp[lbp_valid]
+            if lbp_values.size > 0:
+                hist, _ = np.histogram(lbp_values, bins=32, range=(0, self.lbp_points + 2), density=True)
+                lbp_complexity = float(-np.sum(hist * np.log(hist + 1e-8)))
+                lbp_uniformity = float(np.max(hist))
+            else:
+                lbp_complexity = 0.0
+                lbp_uniformity = 0.0
+
+            # Gloss and Reflectance (Evaluated on original photo to capture lighting conditions)
             hsv = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)
             v = hsv[:, :, 2][valid].astype(np.float32)
             specular_gloss = float(np.percentile(v, 90) / 255.0) if v.size > 0 else 0.0
@@ -250,19 +271,58 @@ class SkinTextureAnalyzer:
             else:
                 spot_density = 0.0
 
-            
-            # Forehead Wrinkles
-            forehead_patch = gray[max(0, cy-80):min(h, cy-10), max(0, cx-100):min(w, cx+100)]
-            wrinkle_forehead = (float(np.mean(cv2.Sobel(forehead_patch, cv2.CV_64F, 0, 1, ksize=5)**2)) / norm_factor) if forehead_patch.size > 0 else 0.0
-            
-            # [ITER-1.3] Nasolabial Wrinkles - FIX: Use dx=1 for vertical folds and norm_factor (T-02)
-            nasolabial_cy = int(h * 0.6)
-            nasolabial_patch = gray[max(0, nasolabial_cy-40):min(h, nasolabial_cy+40), max(0, cx-80):min(w, cx+80)]
-            wrinkle_nasolabial = (float(np.mean(cv2.Sobel(nasolabial_patch, cv2.CV_64F, 1, 0, ksize=3)**2)) / norm_factor) if nasolabial_patch.size > 0 else 0.0
+            # Wrinkles (Forehead & Nasolabial) migrated to UV space to guarantee pose-invariance
+            if has_uv:
+                scale_y = uv_gray.shape[0] / 1024.0
+                scale_x = uv_gray.shape[1] / 1024.0
+                
+                # 1. Forehead wrinkles patch (y: 50..220, x: 350..650)
+                y1, y2 = int(50 * scale_y), int(220 * scale_y)
+                x1, x2 = int(350 * scale_x), int(650 * scale_x)
+                uv_forehead = uv_gray[y1:y2, x1:x2]
+                uv_forehead_mask = uv_mask[y1:y2, x1:x2]
+                sobel_forehead = cv2.Sobel(uv_forehead, cv2.CV_64F, 0, 1, ksize=5)
+                valid_forehead = sobel_forehead[uv_forehead_mask > 128]
+                wrinkle_forehead = (float(np.mean(valid_forehead**2)) / norm_factor) if valid_forehead.size > 0 else 0.0
+                
+                # 2. Nasolabial wrinkles patches (Left y: 500..750, x: 280..420; Right y: 500..750, x: 600..740)
+                ly1, ly2 = int(500 * scale_y), int(750 * scale_y)
+                lx1, lx2 = int(280 * scale_x), int(420 * scale_x)
+                uv_l_patch = uv_gray[ly1:ly2, lx1:lx2]
+                uv_l_mask = uv_mask[ly1:ly2, lx1:lx2]
+                sobel_l = cv2.Sobel(uv_l_patch, cv2.CV_64F, 1, 0, ksize=3)
+                valid_l = sobel_l[uv_l_mask > 128]
+                
+                ry1, ry2 = int(500 * scale_y), int(750 * scale_y)
+                rx1, rx2 = int(600 * scale_x), int(740 * scale_x)
+                uv_r_patch = uv_gray[ry1:ry2, rx1:rx2]
+                uv_r_mask = uv_mask[ry1:ry2, rx1:rx2]
+                sobel_r = cv2.Sobel(uv_r_patch, cv2.CV_64F, 1, 0, ksize=3)
+                valid_r = sobel_r[uv_r_mask > 128]
+                
+                if valid_l.size > 0 and valid_r.size > 0:
+                    valid_naso = np.concatenate([valid_l, valid_r])
+                elif valid_l.size > 0:
+                    valid_naso = valid_l
+                else:
+                    valid_naso = valid_r
+                wrinkle_nasolabial = (float(np.mean(valid_naso**2)) / norm_factor) if valid_naso.size > 0 else 0.0
+            else:
+                # Fallback to local patches of face_crop.png
+                forehead_patch = gray[max(0, cy-80):min(h, cy-10), max(0, cx-100):min(w, cx+100)]
+                wrinkle_forehead = (float(np.mean(cv2.Sobel(forehead_patch, cv2.CV_64F, 0, 1, ksize=5)**2)) / norm_factor) if forehead_patch.size > 0 else 0.0
+                
+                nasolabial_cy = int(h * 0.6)
+                nasolabial_patch = gray[max(0, nasolabial_cy-40):min(h, nasolabial_cy+40), max(0, cx-80):min(w, cx+80)]
+                wrinkle_nasolabial = (float(np.mean(cv2.Sobel(nasolabial_patch, cv2.CV_64F, 1, 0, ksize=3)**2)) / norm_factor) if nasolabial_patch.size > 0 else 0.0
 
-            # Albedo Uniformity (T-06)
-            albedo_patch = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
-            albedo_uniformity = (1.0 - float(np.std(albedo_patch)) / 255.0) if albedo_patch.size > 0 else 1.0
+            # Albedo Uniformity (Migrated to UV space if available)
+            if has_uv:
+                uv_skin_pixels = uv_gray[uv_mask > 128]
+                albedo_uniformity = (1.0 - float(np.std(uv_skin_pixels)) / 255.0) if uv_skin_pixels.size > 0 else 1.0
+            else:
+                albedo_patch = gray[max(0, cy-32):min(h, cy+32), max(0, cx-32):min(w, cx+32)]
+                albedo_uniformity = (1.0 - float(np.std(albedo_patch)) / 255.0) if albedo_patch.size > 0 else 1.0
 
             # Reliability Weight (Combined with Quality Index)
             res_score = min(w, h) / 1024.0
@@ -277,8 +337,11 @@ class SkinTextureAnalyzer:
             synthetic_adj = (1.0 - studio_lighting_score * 0.3) * (1.0 - retouch_score * 0.4)
             adjusted_silicone_prob = silicone_probability * synthetic_adj
             
-            # Global Smoothness (T-04)
-            fft_res = self.fft_analyzer.analyze_periodicity(gray, cx, cy)
+            # Global Smoothness (Migrated to UV space if available)
+            if has_uv:
+                fft_res = self.fft_analyzer.analyze_periodicity(uv_gray, 512, 512)
+            else:
+                fft_res = self.fft_analyzer.analyze_periodicity(gray, cx, cy)
             periodicity = fft_res.get("periodicity_index", 0.0) if fft_res.get("status") == "ok" else 0.0
             FFT = float(np.clip(1.0 - periodicity / 10.0, 0.0, 1.0))
             LBP = float(np.clip(1.0 - lbp_complexity / 5.0, 0.0, 1.0))

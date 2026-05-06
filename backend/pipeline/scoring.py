@@ -326,46 +326,62 @@ def extract_macro_bone_metrics(
         metrics["gonial_angle_L"] = 0.0
         metrics["gonial_angle_R"] = 0.0
 
+    # 5b. Mandibular ramus length — боковой аналог jaw_width_ratio для профильного ракурса
+    # Длина ветви от gonion до chin_bottom, нормированная на face_height
+    _gonion_for_ramus = None
+    if jaw_L_pts.size > 0:
+        _gonion_for_ramus = jaw_L_pts[np.argmin(jaw_L_pts[:, 1])]
+    elif jaw_R_pts.size > 0:
+        _gonion_for_ramus = jaw_R_pts[np.argmin(jaw_R_pts[:, 1])]
+
+    if _gonion_for_ramus is not None:
+        metrics["mandibular_ramus_length"] = (
+            float(np.linalg.norm(_gonion_for_ramus - chin_bottom)) / face_height
+        )
+    else:
+        metrics["mandibular_ramus_length"] = None
+
     # 6. Nose
     nose_bridge = get_zone_centroid('nose_bridge_tip')
     nose_wing_L = get_zone_centroid('nose_wing_L')
     nose_wing_R = get_zone_centroid('nose_wing_R')
     
     metrics["nose_width_ratio"] = float(np.linalg.norm(nose_wing_L - nose_wing_R)) / zygomatic_breadth
-    metrics["nose_projection_ratio"] = abs(nose_bridge[2] - mid_cheek_z) / zygomatic_breadth
+    metrics["nose_projection_ratio"] = depth_along_normal(nose_bridge, mid_cheek_pt, face_plane_normal) / zygomatic_breadth
     
     forehead_centroid = get_zone_centroid('forehead')
-    metrics["nasal_frontal_index"] = abs(forehead_centroid[2] - nose_bridge[2]) / face_height
+    metrics["nasal_frontal_index"] = depth_along_normal(forehead_centroid, nose_bridge, face_plane_normal) / face_height
     
     # 7. Chin — use jaw_angle average as chin proxy (chin zone not in MACRO_BONE_INDICES)
     chin_pts = vertices[np.concatenate([_idx('jaw_angle_L'), _idx('jaw_angle_R')])]
     chin_centroid = np.mean(chin_pts, axis=0) if chin_pts.size > 0 else chin_bottom
-    metrics["chin_projection_ratio"] = abs(chin_centroid[2] - mid_cheek_z) / zygomatic_breadth
+    metrics["chin_projection_ratio"] = depth_along_normal(chin_centroid, mid_cheek_pt, face_plane_normal) / zygomatic_breadth
     
     # 8. Orbit Centroid Ratio (to prevent overwriting step 4 interorbital_ratio)
     orbit_L_c = get_zone_centroid('orbit_L')
     orbit_R_c = get_zone_centroid('orbit_R')
     metrics["orbit_centroid_ratio"] = float(np.linalg.norm(orbit_L_c - orbit_R_c)) / zygomatic_breadth
 
-    # 9. Forehead slope index (forehead tilt relative to face plane)
+    # 9. Forehead slope index (forehead tilt relative to brow ridge instead of nose bridge to avoid duplication)
     forehead_c = get_zone_centroid('forehead')
-    nose_bridge_c = get_zone_centroid('nose_bridge_tip')
-    fh_slope_z = abs(forehead_c[2] - nose_bridge_c[2])
-    metrics["forehead_slope_index"] = fh_slope_z / face_height
+    brow_L = get_zone_centroid('brow_ridge_L')
+    brow_R = get_zone_centroid('brow_ridge_R')
+    brow_c = (brow_L + brow_R) / 2.0
+    metrics["forehead_slope_index"] = depth_along_normal(forehead_c, brow_c, face_plane_normal) / face_height
 
     # 10. Nasofacial angle ratio (nose protrusion vs face height)
-    nose_protrusion = abs(nose_bridge_c[2] - mid_cheek_z)
-    metrics["nasofacial_angle_ratio"] = nose_protrusion / face_height
+    nose_bridge_c = get_zone_centroid('nose_bridge_tip')
+    metrics["nasofacial_angle_ratio"] = depth_along_normal(nose_bridge_c, mid_cheek_pt, face_plane_normal) / face_height
 
     # 11. Orbital asymmetry index (L vs R orbit depth difference)
     od_L = metrics.get("orbit_depth_L_ratio", 0.0)
     od_R = metrics.get("orbit_depth_R_ratio", 0.0)
-    metrics["orbital_asymmetry_index"] = abs(od_L - od_R)
+    metrics["orbital_asymmetry_index"] = float(abs(od_L - od_R))
 
     # 12. Chin offset asymmetry (chin lateral offset from midline)
     if chin_pts.size > 0:
         midline_x = (cheek_L[0] + cheek_R[0]) / 2.0
-        metrics["chin_offset_asymmetry"] = abs(chin_centroid[0] - midline_x) / zygomatic_breadth
+        metrics["chin_offset_asymmetry"] = float(abs(chin_centroid[0] - midline_x) / zygomatic_breadth)
     else:
         metrics["chin_offset_asymmetry"] = 0.0
 
@@ -376,5 +392,20 @@ def extract_macro_bone_metrics(
     reliability = 1.0
     if yaw_abs > 30: reliability *= 0.5
     if pitch_abs > 20: reliability *= 0.7
+    
+    # Pitch guard: при наклоне головы > 15° подбородок геометрически недостоверен,
+    # но только для околофронтальных ракурсов (abs(yaw) <= 30.0).
+    # Для выраженных профилей подбородок и профиль носа видны идеально.
+    if pitch_abs > 15.0 and yaw_abs <= 30.0:
+        metrics["chin_projection_ratio"] = None
+        metrics["nasofacial_angle_ratio"] = None
+        metrics["chin_offset_asymmetry"] = None
+
+    # Mask unreliable canthal tilt on the occluded side for non-frontal views
+    if yaw_abs > 30.0:
+        if angles[1] < 0:  # Left profile/threequarter: right side is occluded
+            metrics["canthal_tilt_R"] = None
+        else:              # Right profile/threequarter: left side is occluded
+            metrics["canthal_tilt_L"] = None
     
     return metrics, reliability
