@@ -4,15 +4,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
 from .types import ComparisonResult, ReconstructionResult, VisibilityResult, AlignmentResult
 from .alignment import rigid_umeyama, gpa_unit_scale, canonicalize_vertices_for_bucket
 from .scoring import align_and_score, extract_macro_bone_metrics
 from .visibility import compute_visibility
-from .calibration import CalibrationAnalyzer, CalibrationProtocol, CalibrationDecomposition
+from .calibration import CalibrationAnalyzer, CalibrationProtocol, CalibrationDecomposition, find_calibration_match
 from .zones import MACRO_BONE_INDICES, compute_zone_metrics, provisional_band_from_score
 from core.constants import ALIGNMENT_MIN_RANK, VISIBILITY_ANGLE_DEG
 from core.utils import iso_now, json_ready
+
+_IPD_MAX_YAW_DEG = 30.0  # IPD валиден только если оба глаза видны
 
 
 def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
@@ -87,8 +90,15 @@ class PairComparisonEngine:
     [ITER-4] Pairwise Forensic Comparison Engine.
     Orchestrates the full flow for two reconstructions.
     """
-    def __init__(self, calibration: Optional[CalibrationAnalyzer] = None):
+    def __init__(
+        self,
+        calibration: Optional[CalibrationAnalyzer] = None,
+        calib_df: Optional[pd.DataFrame] = None,
+        calib_pairs_df: Optional[pd.DataFrame] = None
+    ):
         self.calibration = calibration or CalibrationAnalyzer()
+        self.calib_df = calib_df
+        self.calib_pairs_df = calib_pairs_df
 
     def compare(
         self, 
@@ -157,7 +167,12 @@ class PairComparisonEngine:
         landmarks_available = False
         geometry_evidence_mode = "calibrated"
 
-        if (recon_a.landmarks_106 is not None and len(recon_a.landmarks_106) >= 48 and
+        _yaw_a = float(recon_a.angles_deg[1])
+        _yaw_b = float(recon_b.angles_deg[1])
+        _ipd_usable = abs(_yaw_a) < _IPD_MAX_YAW_DEG and abs(_yaw_b) < _IPD_MAX_YAW_DEG
+
+        if (_ipd_usable and
+            recon_a.landmarks_106 is not None and len(recon_a.landmarks_106) >= 48 and
             recon_b.landmarks_106 is not None and len(recon_b.landmarks_106) >= 48):
             try:
                 lm_a = recon_a.landmarks_106
@@ -215,10 +230,64 @@ class PairComparisonEngine:
             forced_mode=geometry_evidence_mode,
         )
 
+        # Локальный noise model из nearest-K калибровочных условий
+        if self.calib_df is not None and self.calib_pairs_df is not None:
+            _expr_a = recon_a.payload.get("expression", {}) or {}
+            _expr_b = recon_b.payload.get("expression", {}) or {}
+
+            matches_a = find_calibration_match(
+                self.calib_df,
+                target_yaw=float(recon_a.angles_deg[1]),
+                target_pitch=float(recon_a.angles_deg[0]),
+                target_quality=float(recon_a.payload.get("quality_overall", 0.7)),
+                target_expr_mouth=float(_expr_a.get("mouth_open_intensity", 0.0)),
+                target_expr_smile=float(_expr_a.get("smile_intensity", 0.0)),
+                bucket=view_group_a, k=5,
+            )
+            matches_b = find_calibration_match(
+                self.calib_df,
+                target_yaw=float(recon_b.angles_deg[1]),
+                target_pitch=float(recon_b.angles_deg[0]),
+                target_quality=float(recon_b.payload.get("quality_overall", 0.7)),
+                target_expr_mouth=float(_expr_b.get("mouth_open_intensity", 0.0)),
+                target_expr_smile=float(_expr_b.get("smile_intensity", 0.0)),
+                bucket=view_group_a, k=5,
+            )
+
+            # Объединяем имена ближайших и смотрим их пары в calib_pairs_df
+            near_names = set(matches_a["filename"]) | set(matches_b["filename"])
+            local_pairs = self.calib_pairs_df[
+                self.calib_pairs_df["photo_a"].isin(near_names) |
+                self.calib_pairs_df["photo_b"].isin(near_names)
+            ]
+
+            # Строим локальную noise model: median per zone из этих пар
+            local_noise: Dict[str, float] = {}
+            for zone in MACRO_BONE_INDICES:
+                col = f"zone_{zone}_error"
+                if col in local_pairs.columns and len(local_pairs) > 0:
+                    local_noise[zone] = float(local_pairs[col].median())
+
+            # Передаём в decompose вместо глобальной модели
+            zone_errors_dict = {z.name: z.raw_error for z in zones if z.raw_error is not None}
+            calib_result = self.calibration.decompose_with_local_noise(
+                zone_errors=zone_errors_dict,
+                pose_delta=pose_delta,
+                local_noise=local_noise,
+            )
+            # Переопределяем геометрические свидетельства на локальные калиброванные
+            geometry_evidence["geometry_signal"] = float(np.mean([d["signal"] for d in calib_result.zone_details]))
+            geometry_evidence["geometry_noise"] = float(np.mean([d["predicted_noise"] for d in calib_result.zone_details]))
+            geometry_evidence["geometry_snr"] = float(calib_result.snr)
+            geometry_evidence["geometry_evidence_mode"] = "local_calib"
+
         diagnostics = {
             "pose_delta": pose_delta,
             "face_scale_a": scale_a,
             "face_scale_b": scale_b,
+            "ipd_used": landmarks_available,
+            "ipd_yaw_a": float(recon_a.angles_deg[1]),
+            "ipd_yaw_b": float(recon_b.angles_deg[1]),
             "geometry_signal": geometry_evidence["geometry_signal"],
             "geometry_noise": geometry_evidence["geometry_noise"],
             "geometry_snr": geometry_evidence["geometry_snr"],

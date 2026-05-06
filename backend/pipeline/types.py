@@ -23,6 +23,7 @@ class ReconstructionResult:
     trans_params: Optional[np.ndarray] = None
     landmarks_106: Optional[np.ndarray] = None
     uv_coords: Optional[np.ndarray] = None
+    pose_bucket: str = "frontal"          # ← НОВОЕ
     payload: Dict[str, Any] = field(default_factory=dict)
 
     @property

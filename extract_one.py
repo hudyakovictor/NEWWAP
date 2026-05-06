@@ -165,7 +165,18 @@ def extract_one(photo_path_str, out_root_dir_str):
         }
         
         # Save vertices and mesh directly
-        np.save(out_dir / "vertices.npy", np.array(res.vertices_world))
+        from backend.pipeline.alignment import canonicalize_vertices_for_bucket
+
+        _raw_angles = np.array([
+            pose_result.get("pitch", 0.0) or 0.0,
+            pose_result.get("yaw", 0.0) or 0.0,
+            pose_result.get("roll", 0.0) or 0.0,
+        ])
+        _vertices_canon = canonicalize_vertices_for_bucket(
+            np.array(res.vertices_world), _raw_angles, pose_class
+        )
+        np.save(out_dir / "vertices.npy", _vertices_canon)          # канон для compare
+        np.save(out_dir / "vertices_world_raw.npy", np.array(res.vertices_world))  # raw для дебага
         with open(out_dir / "face_mesh.obj", 'w') as f:
              for v in res.vertices_world:
                  f.write(f"v {v[0]} {v[1]} {v[2]}\n")
@@ -709,3 +720,40 @@ if __name__ == "__main__":
 
         except Exception as err:
             print(f"❌ {Path(photo).name}: {err}")
+
+    # ── Сборка пар калибровки (только для режима calibration) ──────────────────────
+    if args.mode == "calibration":
+        print("[calibration mode] Processing all-pairs calibration and building calibration_pairs.csv...")
+        import pandas as pd
+        from backend.pipeline.calibration import build_calibration_pairs_csv
+
+        calib_records = []
+        for photo in test_photos:
+            res_json_path = Path(out_dir) / Path(photo).stem / "result.json"
+            if res_json_path.exists():
+                try:
+                    with open(res_json_path, "r") as f:
+                        data = json.load(f)
+                    
+                    expr = data.get("expression", {}) or {}
+                    calib_records.append({
+                        "filename": data.get("filename"),
+                        "bucket": data.get("pose_bucket", "frontal"),
+                        "mesh_path": str(Path(out_dir) / Path(photo).stem),
+                        "pose_yaw": float(data.get("pose_yaw") or 0.0),
+                        "pose_pitch": float(data.get("pose_pitch") or 0.0),
+                        "quality_overall": float(data.get("quality_overall") or 0.7),
+                        "expression_mouth_open_intensity": float(expr.get("mouth_open_intensity") or 0.0),
+                        "expression_smile_intensity": float(expr.get("smile_intensity") or 0.0),
+                    })
+                except Exception as e:
+                    print(f"Error reading result for {Path(photo).name}: {e}")
+
+        if calib_records:
+            calib_df = pd.DataFrame(calib_records)
+            pairs_csv_path = Path(out_dir) / "calibration_pairs.csv"
+            try:
+                build_calibration_pairs_csv(calib_df, Path(out_dir), pairs_csv_path)
+                print(f"✅ Successful calibration run! Saved {len(calib_df)} photos and built calibration pairs CSV at {pairs_csv_path}")
+            except Exception as e:
+                print(f"Error building calibration pairs: {e}")

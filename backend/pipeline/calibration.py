@@ -252,3 +252,140 @@ class CalibrationAnalyzer:
             snr=float(snr),
         )
 
+    def decompose_with_local_noise(
+        self,
+        zone_errors: Dict[str, float],
+        pose_delta: float,
+        local_noise: Dict[str, float],
+    ) -> CalibratedComparisonResult:
+        """
+        Декомпозиция с локальным noise model из nearest-K калибровочных пар.
+        local_noise[zone] = медианная ошибка по этой зоне у ближайших калибровочных фото.
+        """
+        zone_details = []
+        weighted_snr_sum = 0.0
+        weight_sum = 0.0
+
+        for zone, error in zone_errors.items():
+            # Приоритет: local_noise → zone_profiles → prior
+            if zone in local_noise and local_noise[zone] > 1e-8:
+                pred_noise = local_noise[zone]
+                source = "local_calib"
+            elif zone in self.model.zone_profiles:
+                pred_noise = self.model.zone_profiles[zone].base_mad
+                source = "global_calib"
+            else:
+                pred_noise = 0.015 + pose_delta * 0.001
+                source = "prior"
+
+            reliability = self.model.get_reliability(zone)
+            snr = _compute_linear_snr(error, pred_noise)
+            signal = max(0.0, error - pred_noise)
+
+            zone_details.append({
+                "zone": zone, "measured": error,
+                "predicted_noise": pred_noise,
+                "noise_source": source,
+                "signal": signal, "snr": snr,
+                "reliability": reliability,
+            })
+            weighted_snr_sum += snr * reliability
+            weight_sum += reliability
+
+        final_snr = weighted_snr_sum / (weight_sum + 1e-6)
+
+        return CalibratedComparisonResult(
+            photo_a="", photo_b="",
+            pose_delta_mag=pose_delta,
+            snr=final_snr,
+            is_significant=bool(final_snr > 2.0),
+            zone_details=zone_details,
+        )
+
+
+
+
+import pandas as pd
+
+def find_calibration_match(
+    calib_df: pd.DataFrame,
+    target_yaw: float,
+    target_pitch: float,
+    target_quality: float,
+    target_expr_mouth: float,
+    target_expr_smile: float,
+    bucket: str,
+    k: int = 5,
+) -> pd.DataFrame:
+    """
+    Находит K калибровочных фото наиболее близких по условиям съёмки.
+    Веса: поза (3x) > качество (1.5x) > мимика (0.5x).
+    """
+    pool = calib_df[calib_df["bucket"] == bucket].copy()
+    if len(pool) < k:
+        pool = calib_df.copy()  # fallback — весь датасет
+
+    pool["_dist"] = np.sqrt(
+        3.0 * (pool["pose_yaw"]   - target_yaw)   ** 2 +
+        3.0 * (pool["pose_pitch"] - target_pitch) ** 2 +
+        1.5 * (pool["quality_overall"] - target_quality) ** 2 +
+        0.5 * (pool["expression_mouth_open_intensity"] - target_expr_mouth) ** 2 +
+        0.5 * (pool["expression_smile_intensity"]      - target_expr_smile) ** 2
+    )
+    return pool.nsmallest(k, "_dist").drop(columns=["_dist"])
+
+
+def build_calibration_pairs_csv(
+    calib_df: pd.DataFrame,
+    storage_root: Path,
+    output_path: Path,
+) -> None:
+    """
+    Для каждого бакета считает all-pairs ошибки по зонам.
+    Результат: calibration_pairs.csv — основа для nearest-matching noise model.
+    """
+    from itertools import combinations
+    from .zones import MACRO_BONE_INDICES
+    from .alignment import canonicalize_vertices_for_bucket
+    from .visibility import compute_visibility_from_normals
+
+    rows = []
+    by_bucket = calib_df.groupby("bucket")
+
+    for bucket, group in by_bucket:
+        photos = group.to_dict("records")
+        for pa, pb in combinations(photos, 2):
+            try:
+                va = np.load(Path(pa["mesh_path"]) / "vertices.npy")
+                vb = np.load(Path(pb["mesh_path"]) / "vertices.npy")
+                # vertices.npy уже канонические (после правки #2)
+                # Считаем per-zone L2 ошибку
+                zone_errors = {}
+                for zone, idx_set in MACRO_BONE_INDICES.items():
+                    idx = np.array(list(idx_set))
+                    if idx.size == 0:
+                        continue
+                    diff = va[idx] - vb[idx]
+                    zone_errors[f"zone_{zone}_error"] = float(
+                        np.mean(np.linalg.norm(diff, axis=1))
+                    )
+                row = {
+                    "bucket": bucket,
+                    "photo_a": pa["filename"],
+                    "photo_b": pb["filename"],
+                    "yaw_a": pa["pose_yaw"],
+                    "yaw_b": pb["pose_yaw"],
+                    "pitch_a": pa["pose_pitch"],
+                    "pitch_b": pb["pose_pitch"],
+                    "quality_a": pa["quality_overall"],
+                    "quality_b": pb["quality_overall"],
+                    "expr_mouth_a": pa["expression_mouth_open_intensity"],
+                    "expr_smile_a": pa["expression_smile_intensity"],
+                    **zone_errors,
+                }
+                rows.append(row)
+            except Exception:
+                continue
+
+    pd.DataFrame(rows).to_csv(output_path, index=False)
+

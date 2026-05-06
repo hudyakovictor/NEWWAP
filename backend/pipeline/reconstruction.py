@@ -201,6 +201,29 @@ class ReconstructionAdapter:
 
         trans_p = alpha_dict["trans"].detach().cpu().numpy()[0]
 
+        _yaw = float(angles_deg[1])
+        _ayaw = abs(_yaw)
+        if _ayaw < 15.0:
+            _pose_bucket = "frontal"
+        elif _yaw < -70.0:
+            _pose_bucket = "left_profile"
+        elif _yaw > 70.0:
+            _pose_bucket = "right_profile"
+        elif _yaw < -45.0:
+            _pose_bucket = "left_threequarter_deep"
+        elif _yaw < -25.0:
+            _pose_bucket = "left_threequarter_mid"
+        elif _yaw < -10.0:
+            _pose_bucket = "left_threequarter_light"
+        elif _yaw > 45.0:
+            _pose_bucket = "right_threequarter_deep"
+        elif _yaw > 25.0:
+            _pose_bucket = "right_threequarter_mid"
+        elif _yaw > 10.0:
+            _pose_bucket = "right_threequarter_light"
+        else:
+            _pose_bucket = "unclassified"
+
         reconstruction = ReconstructionResult(
             image_path=image_path,
             vertices_world=vertices_world_np,
@@ -220,6 +243,7 @@ class ReconstructionAdapter:
             trans_params=None if trans_params is None else np.asarray(trans_params),
             landmarks_106=None if "ldm106" not in result else np.asarray(result["ldm106"])[0],
             uv_coords=self._model.uv_coords.detach().cpu().numpy() if hasattr(self._model, 'uv_coords') else None,
+            pose_bucket=_pose_bucket,
             payload={
                 "raw_result": result,
                 "alpha_angles_deg": angles_deg,
