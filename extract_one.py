@@ -693,17 +693,63 @@ if __name__ == "__main__":
     if args.mode == "main":
         calib_csv = Path(args.calib_csv)
         if calib_csv.exists():
-            with open(calib_csv, newline="", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    metric = row.get("metric") or row.get("zone")
-                    if metric:
-                        calibration_norms[metric] = {
-                            "mean":        float(row.get("mean", 0.0)),
-                            "std":         float(row.get("std",  0.015)),
-                            "pose_bucket": row.get("pose_bucket", "frontal"),
-                        }
-            print(f"[main mode] Loaded {len(calibration_norms)} calibration norms from {calib_csv}")
+            try:
+                import pandas as pd
+                df_calib = pd.read_csv(calib_csv)
+                # Проверим, это плоская таблица фото или готовые нормы
+                if "pose_bucket" in df_calib.columns and any(col.startswith("geo_") for col in df_calib.columns):
+                    print("[main mode] Detected flat photo calibration_data.csv. Dynamically computing norms...")
+                    # Группируем по pose_bucket и считаем mean и std для каждого числового столбца
+                    for bucket, group in df_calib.groupby("pose_bucket"):
+                        for col in group.columns:
+                            # Нам нужны только числовые столбцы геометрии и текстур
+                            if not (col.startswith("geo_") or col.startswith("tex_")):
+                                continue
+                            try:
+                                # Убираем префиксы geo_ и tex_ для совместимости с именами метрик
+                                metric_name = col
+                                if col.startswith("geo_"):
+                                    metric_name = col[4:]
+                                elif col.startswith("tex_"):
+                                    metric_name = col[4:]
+                                    
+                                values = pd.to_numeric(group[col], errors='coerce').dropna()
+                                if len(values) == 0:
+                                    continue
+                                    
+                                mean_val = float(values.mean())
+                                std_val = float(values.std())
+                                if pd.isna(std_val) or std_val < 1e-9:
+                                    std_val = 0.015 # fallback std
+                                    
+                                # Сохраняем как с бакетом, так и без для универсальности
+                                calibration_norms[f"{bucket}_{metric_name}"] = {
+                                    "mean": mean_val,
+                                    "std": std_val,
+                                    "pose_bucket": bucket
+                                }
+                                calibration_norms[metric_name] = {
+                                    "mean": mean_val,
+                                    "std": std_val,
+                                    "pose_bucket": bucket
+                                }
+                            except Exception as col_err:
+                                continue
+                else:
+                    # Стандартный импорт готовых норм
+                    with open(calib_csv, newline="", encoding="utf-8") as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            metric = row.get("metric") or row.get("zone")
+                            if metric:
+                                calibration_norms[metric] = {
+                                    "mean":        float(row.get("mean", 0.0)),
+                                    "std":         float(row.get("std",  0.015)),
+                                    "pose_bucket": row.get("pose_bucket", "frontal"),
+                                }
+                print(f"[main mode] Loaded {len(calibration_norms)} calibration norms from {calib_csv}")
+            except Exception as e:
+                print(f"Error loading calibration norms from {calib_csv}: {e}")
         else:
             print(f"[main mode] WARNING: calibration_data.csv not found at {calib_csv}. "
                   f"Run '--mode calibration' first and approve the results.")
@@ -797,55 +843,57 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Error building calibration pairs: {e}")
 
-            # --- Сборка единой flat CSV со всеми метриками ---
-            print("[calibration mode] Building consolidated calibration_data.csv with all metrics...")
-            flat_records = []
-            for photo in test_photos:
-                res_json_path = Path(out_dir) / Path(photo).stem / "result.json"
-                if res_json_path.exists():
-                    try:
-                        with open(res_json_path, "r") as f:
-                            data = json.load(f)
-                        
-                        source = data.get("source", {}) or {}
-                        pose = data.get("pose", {}) or {}
-                        qual = data.get("quality", {}) or {}
-                        expr = data.get("expression", {}) or {}
-                        geo = data.get("geometry", {}) or {}
-                        tex = data.get("texture", {}) or {}
-                        
-                        flat_row = {
-                            "filename": source.get("filename") or data.get("filename"),
-                            "pose_bucket": pose.get("bucket", "frontal"),
-                            "pose_yaw": pose.get("yaw", 0.0),
-                            "pose_pitch": pose.get("pitch", 0.0),
-                            "pose_roll": pose.get("roll", 0.0),
-                            "quality_overall": qual.get("overall", 0.7),
-                            "quality_sharpness": qual.get("sharpness", 0.0),
-                            "quality_blur": qual.get("blur", 0.0),
-                            "quality_jpeg_noise": qual.get("jpeg_noise", 0.0),
-                            "expression_mouth_open_intensity": expr.get("mouth_open_intensity", 0.0),
-                            "expression_smile_intensity": expr.get("smile_intensity", 0.0),
-                            "mesh_path": str(Path(out_dir) / Path(photo).stem),
-                        }
-                        for k, v in geo.items():
-                            flat_row[f"geo_{k}"] = v
-                        for k, v in tex.items():
-                            if k != "quality":
-                                flat_row[f"tex_{k}"] = v
-                            else:
-                                for qk, qv in (v or {}).items():
-                                    flat_row[f"tex_quality_{qk}"] = qv
-                                    
-                        flat_records.append(flat_row)
-                    except Exception as e:
-                        print(f"Error flattening result for {Path(photo).name}: {e}")
-                        
-            if flat_records:
-                flat_df = pd.DataFrame(flat_records)
-                flat_csv_path = Path(out_dir) / "calibration_data.csv"
-                try:
-                    flat_df.to_csv(flat_csv_path, index=False)
-                    print(f"✅ Created consolidated flat CSV with all metrics at: {flat_csv_path}")
-                except Exception as e:
-                    print(f"Error saving consolidated flat CSV: {e}")
+    # --- Сборка единой flat CSV со всеми метриками для обоих режимов ---
+    print(f"[{args.mode} mode] Building consolidated calibration_data.csv with all metrics...")
+    import pandas as pd
+    flat_records = []
+    for photo in test_photos:
+        res_json_path = Path(out_dir) / Path(photo).stem / "result.json"
+        if res_json_path.exists():
+            try:
+                with open(res_json_path, "r") as f:
+                    data = json.load(f)
+                
+                source = data.get("source", {}) or {}
+                pose = data.get("pose", {}) or {}
+                qual = data.get("quality", {}) or {}
+                expr = data.get("expression", {}) or {}
+                geo = data.get("geometry", {}) or {}
+                tex = data.get("texture", {}) or {}
+                
+                flat_row = {
+                    "filename": source.get("filename") or data.get("filename"),
+                    "pose_bucket": pose.get("bucket", "frontal"),
+                    "pose_yaw": pose.get("yaw", 0.0),
+                    "pose_pitch": pose.get("pitch", 0.0),
+                    "pose_roll": pose.get("roll", 0.0),
+                    "quality_overall": qual.get("overall", 0.7),
+                    "quality_sharpness": qual.get("sharpness", 0.0),
+                    "quality_blur": qual.get("blur", 0.0),
+                    "quality_jpeg_noise": qual.get("jpeg_noise", 0.0),
+                    "expression_mouth_open_intensity": expr.get("mouth_open_intensity", 0.0),
+                    "expression_smile_intensity": expr.get("smile_intensity", 0.0),
+                    "mesh_path": str(Path(out_dir) / Path(photo).stem),
+                }
+                for k, v in geo.items():
+                    flat_row[f"geo_{k}"] = v
+                for k, v in tex.items():
+                    if k != "quality":
+                        flat_row[f"tex_{k}"] = v
+                    else:
+                        for qk, qv in (v or {}).items():
+                            flat_row[f"tex_quality_{qk}"] = qv
+                            
+                flat_records.append(flat_row)
+            except Exception as e:
+                print(f"Error flattening result for {Path(photo).name}: {e}")
+                
+    if flat_records:
+        flat_df = pd.DataFrame(flat_records)
+        csv_filename = "main_data.csv" if args.mode == "main" else "calibration_data.csv"
+        flat_csv_path = Path(out_dir) / csv_filename
+        try:
+            flat_df.to_csv(flat_csv_path, index=False)
+            print(f"✅ Created consolidated flat CSV with all metrics at: {flat_csv_path}")
+        except Exception as e:
+            print(f"Error saving consolidated flat CSV: {e}")
