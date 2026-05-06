@@ -1402,7 +1402,7 @@ if __name__ == "__main__":
             print(f"❌ {Path(photo).name}: {err}")
 
     # ── Сборка пар калибровки (только для режима calibration) ──────────────────────
-    if args.mode == "calibration":
+    if False and args.mode == "calibration":
         print("[calibration mode] Processing all-pairs calibration and building calibration_pairs.csv...")
         import pandas as pd
         from backend.pipeline.calibration import build_calibration_pairs_csv
@@ -1442,10 +1442,11 @@ if __name__ == "__main__":
                 print(f"Error building calibration pairs: {e}")
 
     # --- Сборка единой flat CSV со всеми метриками для обоих режимов ---
-    print(f"[{args.mode} mode] Building consolidated calibration_data.csv with all metrics...")
-    import pandas as pd
     flat_records = []
-    for photo in test_photos:
+    if False:
+        print(f"[{args.mode} mode] Building consolidated calibration_data.csv with all metrics...")
+        import pandas as pd
+    for photo in []:
         res_json_path = Path(out_dir) / Path(photo).stem / "result.json"
         if res_json_path.exists():
             try:
