@@ -77,11 +77,19 @@ def parse_year_from_filename(name: str) -> int:
     return int(match.group(1)) if match else 2000
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="NEWWAP NEXT-GEN FORENSIC QA")
+    parser.add_argument("--limit", type=int, default=10, help="Number of pairs per pose bucket")
+    args = parser.parse_args()
+
+    limit_val = args.limit
+
     logger.info("=== ИНИЦИАЛИЗАЦИЯ СТРЕСС-ТЕСТИРОВАНИЯ ЭФФЕКТИВНОСТИ 99 БАЛЛОВ ===")
     logger.info(f"Main Photos Dir: {SETTINGS.main_photos_dir}")
     logger.info(f"Calibration Dir: {SETTINGS.calibration_dir}")
     logger.info(f"Storage Root:    {SETTINGS.storage_root}")
     logger.info(f"Logs Directory:  {logs_dir}")
+    logger.info(f"Pairs per bucket limit: {limit_val}")
 
     # Сканируем изображения на SD-карте
     all_main = sorted([
@@ -109,7 +117,7 @@ def main():
         bucket = get_bucket_from_yaw(y)
         calib_by_bucket[bucket].append(p)
 
-    # Выбираем ровно по 10 фото каждого ракурса + 10 калибровочных пар к ним
+    # Выбираем заданное количество фото каждого ракурса + калибровочные пары к ним
     selected_pairs = [] # Список кортежей: (main_path, calib_path, bucket_name)
     buckets = ["frontal", "left_threequarter", "right_threequarter", "left_profile", "right_profile"]
 
@@ -119,11 +127,11 @@ def main():
         
         logger.info(f"Ракурс '{b}': найдено в main: {len(m_list)}, в calib: {len(c_list)}")
         
-        # Если фото недостаточно, берём сколько есть, но стараемся выбрать ровно 10 равномерно по таймлайну
-        if len(m_list) >= 10 and len(c_list) >= 10:
-            # Выбираем 10 фото main с максимальным шагом, чтобы захватить разные годы
-            m_indices = np.linspace(0, len(m_list) - 1, 10, dtype=int)
-            c_indices = np.linspace(0, len(c_list) - 1, 10, dtype=int)
+        # Если фото достаточно, берём сколько есть, но стараемся выбрать ровно limit_val равномерно по таймлайну
+        if len(m_list) >= limit_val and len(c_list) >= limit_val:
+            # Выбираем limit_val фото main с максимальным шагом, чтобы захватить разные годы
+            m_indices = np.linspace(0, len(m_list) - 1, limit_val, dtype=int)
+            c_indices = np.linspace(0, len(c_list) - 1, limit_val, dtype=int)
             for mi, ci in zip(m_indices, c_indices):
                 selected_pairs.append((m_list[mi], c_list[ci], b))
         else:
