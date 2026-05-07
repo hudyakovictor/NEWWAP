@@ -83,12 +83,16 @@ class ForensicWorkbenchService:
 
     def _invalidate_cache(self, dataset: str | None = None) -> None:
         """Invalidate caches after writes."""
+        # [BUGFIX-18] Улучшена инвалидация кэша - сбрасываем все связанные кэши
         if dataset:
             self._records_cache.pop(dataset, None)
             self._records_cache_ts.pop(dataset, None)
         else:
             self._records_cache.clear()
             self._records_cache_ts.clear()
+        
+        # [BUGFIX-18] Всегда инвалидируем глобальные кэши при любой записи
+        # Это гарантирует согласованность данных
         self._main_records_cache = None
         self._main_records_cache_ts = 0.0
         self._calib_summary_cache = None

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from .types import ComparisonResult, ReconstructionResult, VisibilityResult, AlignmentResult
-from .alignment import rigid_umeyama, gpa_unit_scale, canonicalize_vertices_for_bucket
+from .alignment import rigid_umeyama, canonicalize_vertices_for_bucket
 from .scoring import align_and_score, extract_macro_bone_metrics
 from .visibility import compute_visibility
 from .calibration import CalibrationAnalyzer, CalibrationProtocol, CalibrationDecomposition, find_calibration_match
@@ -114,12 +114,17 @@ class PairComparisonEngine:
         # 2. Pose Delta (Gimbal Lock safe geodesic compute)
         from scipy.spatial.transform import Rotation
         try:
-            R_a = Rotation.from_euler('yxz', recon_a.angles_deg, degrees=True)
-            R_b = Rotation.from_euler('yxz', recon_b.angles_deg, degrees=True)
+            # [BUGFIX-11] 3DDFA отдает [pitch, yaw, roll] (индексы 0, 1, 2)
+            # Явный маппинг: [angles_deg[1], angles_deg[0], angles_deg[2]] = [yaw, pitch, roll]
+            R_a = Rotation.from_euler('yxz', [recon_a.angles_deg[1], recon_a.angles_deg[0], recon_a.angles_deg[2]], degrees=True)
+            R_b = Rotation.from_euler('yxz', [recon_b.angles_deg[1], recon_b.angles_deg[0], recon_b.angles_deg[2]], degrees=True)
             rot_vec = (R_a.inv() * R_b).as_rotvec()
             pose_delta = float(np.linalg.norm(rot_vec) * 180.0 / np.pi)
         except Exception:
-            pose_delta_vec = np.abs(recon_a.angles_deg - recon_b.angles_deg)
+            # [BUGFIX-3] Тригонометрическая нормализация разности углов для учета цикличности
+            # Пример: delta(179, -179) = 2°, а не 358°
+            angle_diff = recon_a.angles_deg - recon_b.angles_deg
+            pose_delta_vec = np.arctan2(np.sin(np.radians(angle_diff)), np.cos(np.radians(angle_diff))) * 180.0 / np.pi
             pose_delta = float(np.linalg.norm(pose_delta_vec))
 
         if shared_idx.size < ALIGNMENT_MIN_RANK:
@@ -161,8 +166,16 @@ class PairComparisonEngine:
             verts_a_canon = recon_a.vertices_world
             verts_b_canon = recon_b.vertices_world
 
-        _, scale_a_gpa, centroid_a = gpa_unit_scale(verts_a_canon[shared_idx])
-        _, scale_b_gpa, centroid_b = gpa_unit_scale(verts_b_canon[shared_idx])
+        # [BUGFIX-6] Удален GPA масштаб (теряет физиологический масштаб)
+        # Используем centroid для центрирования, но масштаб сохраняем физиологическим
+        centroid_a = np.mean(verts_a_canon[shared_idx], axis=0)
+        centroid_b = np.mean(verts_b_canon[shared_idx], axis=0)
+        
+        # Физиологический масштаб на основе bounding box (сохраняет реальный размер лица)
+        bbox_a = verts_a_canon[shared_idx].max(axis=0) - verts_a_canon[shared_idx].min(axis=0)
+        bbox_b = verts_b_canon[shared_idx].max(axis=0) - verts_b_canon[shared_idx].min(axis=0)
+        scale_a_bbox = float(np.linalg.norm(bbox_a))
+        scale_b_bbox = float(np.linalg.norm(bbox_b))
 
         landmarks_available = False
         geometry_evidence_mode = "calibrated"
@@ -191,9 +204,10 @@ class PairComparisonEngine:
                 pass
 
         if not landmarks_available:
-            scale_a = scale_a_gpa
-            scale_b = scale_b_gpa
-            geometry_evidence_mode = "fallback"
+            # [BUGFIX-6] Используем bounding box масштаб вместо GPA (сохраняет физиологический масштаб)
+            scale_a = scale_a_bbox
+            scale_b = scale_b_bbox
+            geometry_evidence_mode = "bbox_fallback"
 
         # [ITER-2] Используем канонические вершины вместо сырых world vertices
         points_a_unit = (verts_a_canon - centroid_a) / (scale_a + 1e-8)

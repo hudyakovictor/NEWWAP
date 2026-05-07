@@ -12,10 +12,44 @@ from core.utils import iso_now, read_json, write_json
 
 
 from typing import Any, Dict, List, Optional, Protocol
+import re
 
-def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
+
+def parse_angles_from_filename(filename: str) -> Dict[str, float]:
     """
-    [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
+    [BUGFIX-7] Парсит истинные углы из filename калибровочного датасета.
+    Поддерживает форматы:
+    - yaw_+30_pitch_-10_roll_+05
+    - y30_p-10_r5
+    - yaw+30_pitch-10_roll+05
+    
+    :param filename: Имя файла (например, "person_001_yaw_+30_pitch_-10_roll_+05.jpg")
+    :return: Словарь с углами {"yaw": float, "pitch": float, "roll": float}
+    """
+    angles = {"yaw": 0.0, "pitch": 0.0, "roll": 0.0}
+    
+    # Паттерн 1: yaw_+30_pitch_-10_roll_+05
+    pattern1 = r"(?:yaw|y)[_]?([+-]?\d+)"
+    match1 = re.search(pattern1, filename, re.IGNORECASE)
+    if match1:
+        angles["yaw"] = float(match1.group(1))
+    
+    pattern2 = r"(?:pitch|p)[_]?([+-]?\d+)"
+    match2 = re.search(pattern2, filename, re.IGNORECASE)
+    if match2:
+        angles["pitch"] = float(match2.group(1))
+    
+    pattern3 = r"(?:roll|r)[_]?([+-]?\d+)"
+    match3 = re.search(pattern3, filename, re.IGNORECASE)
+    if match3:
+        angles["roll"] = float(match3.group(1))
+    
+    return angles
+
+def _compute_snr_db(signal_error: float, noise_baseline: float) -> float:
+    """
+    [BUGFIX-8] Вычисляет SNR в логарифмической шкале (децибелы).
+    Формула: SNR_dB = 10 * log10(SNR_linear)
     """
     # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
     # чтобы избежать взрывного роста SNR при идеальных масках (G-03).
@@ -24,7 +58,14 @@ def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
     # Сигнал не может быть отрицательным
     safe_signal = max(signal_error - safe_noise, 0.0)
 
-    return safe_signal / safe_noise
+    # Линейный SNR
+    snr_linear = safe_signal / safe_noise
+    
+    # [BUGFIX-8] Перевод в децибелы
+    # Добавляем epsilon чтобы избежать log10(0)
+    snr_db = 10.0 * np.log10(snr_linear + 1e-10)
+    
+    return snr_db
 
 @dataclass
 class CalibrationDecomposition:
@@ -103,15 +144,20 @@ class NoiseModel:
             mean = float(np.mean(errors))
             std = float(np.std(errors)) if len(errors) > 1 else mean * 0.5
             
-            # Bayesian-like reliability: 1 / (1 + noise_variance)
-            reliability = 1.0 / (1.0 + mean * 100.0 + std * 50.0)
+            # [BUGFIX-10] Стабилизация функции надежности с использованием сигмоиды
+            # Сигмоида обеспечивает плавное насыщение и лучшую устойчивость при малых значениях
+            # Формула: reliability = 1 / (1 + exp(k * (noise - threshold)))
+            # где noise = mean * 100 + std * 50, k = коэффициент крутизны, threshold = порог
+            noise_score = mean * 100.0 + std * 50.0
+            # Сигмоида с центром в 1.0 и крутизной 2.0 для плавного перехода
+            reliability = 1.0 / (1.0 + np.exp(2.0 * (noise_score - 1.0)))
             
             self.zone_profiles[zone] = ZoneNoiseProfile(
                 zone_name=zone,
                 mean=mean,
                 std=std,
                 count=len(errors),
-                reliability=float(np.clip(reliability, 0.1, 1.0))
+                reliability=float(np.clip(reliability, 0.05, 0.99))  # [BUGFIX-10] Расширен диапазон для большей чувствительности
             )
 
     def predict_noise(self, zone_name: str, pose_delta_mag: float) -> float:
@@ -181,7 +227,7 @@ class CalibrationAnalyzer:
             reliability = self.model.get_reliability(zone)
 
             # [ITER-1] ИСПРАВЛЕНИЕ: Используем унифицированную функцию линейного SNR
-            snr = _compute_linear_snr(error, pred_noise)
+            snr = _compute_snr_db(error, pred_noise)
             signal = max(0.0, error - pred_noise)
             
             zone_details.append({
@@ -244,7 +290,7 @@ class CalibrationAnalyzer:
             expected_noise = 0.015 + nuisance.pose_delta_mag * 0.001
 
         signal = max(raw_error - expected_noise, 0.0)
-        snr = _compute_linear_snr(raw_error, expected_noise)
+        snr = _compute_snr_db(raw_error, expected_noise)
 
         return CalibrationDecomposition(
             signal=float(signal),
@@ -279,7 +325,7 @@ class CalibrationAnalyzer:
                 source = "prior"
 
             reliability = self.model.get_reliability(zone)
-            snr = _compute_linear_snr(error, pred_noise)
+            snr = _compute_snr_db(error, pred_noise)
             signal = max(0.0, error - pred_noise)
 
             zone_details.append({
@@ -321,18 +367,25 @@ def find_calibration_match(
     Находит K калибровочных фото наиболее близких по условиям съёмки.
     Веса: поза (3x) > качество (1.5x) > мимика (0.5x).
     """
-    pool = calib_df[calib_df["bucket"] == bucket].copy()
+    # [BUGFIX-16] Устранено глубокое копирование DataFrame
+    # Используем view вместо копии для экономии памяти
+    pool = calib_df[calib_df["bucket"] == bucket]
     if len(pool) < k:
-        pool = calib_df.copy()  # fallback — весь датасет
+        pool = calib_df  # fallback — весь датасет (view, не копия)
 
-    pool["_dist"] = np.sqrt(
-        3.0 * (pool["pose_yaw"]   - target_yaw)   ** 2 +
-        3.0 * (pool["pose_pitch"] - target_pitch) ** 2 +
-        1.5 * (pool["quality_overall"] - target_quality) ** 2 +
-        0.5 * (pool.get("mouth_open_intensity", 0.0) - target_expr_mouth) ** 2 +
-        0.5 * (pool.get("smile_intensity", 0.0)      - target_expr_smile) ** 2
+    # [BUGFIX-16] Вычисляем расстояние без добавления колонки в DataFrame
+    distances = np.sqrt(
+        3.0 * (pool["pose_yaw"].values - target_yaw) ** 2 +
+        3.0 * (pool["pose_pitch"].values - target_pitch) ** 2 +
+        1.5 * (pool["quality_overall"].values - target_quality) ** 2 +
+        0.5 * (pool.get("mouth_open_intensity", pd.Series(0.0, index=pool.index)).values - target_expr_mouth) ** 2 +
+        0.5 * (pool.get("smile_intensity", pd.Series(0.0, index=pool.index)).values - target_expr_smile) ** 2
     )
-    return pool.nsmallest(k, "_dist").drop(columns=["_dist"])
+    
+    # Сортируем по расстоянию и берем K ближайших
+    nearest_indices = np.argsort(distances)[:k]
+    result = pool.iloc[nearest_indices].copy()  # Копируем только результат
+    return result
 
 
 def build_calibration_pairs_csv(
@@ -347,12 +400,22 @@ def build_calibration_pairs_csv(
     from itertools import combinations
     from .zones import MACRO_BONE_INDICES
     # [BUGFIX] Removed unused import compute_visibility_from_normals (function does not exist)
-
+    
+    # [BUGFIX-14] Ограничение на размер группы для предотвращения OOM
+    # Если в бакете слишком много фото, сэмплируем подмножество
+    MAX_PHOTOS_PER_BUCKET = 100  # Максимальное количество фото для all-pairs
+    
     rows = []
     by_bucket = calib_df.groupby("bucket")
 
     for bucket, group in by_bucket:
         photos = group.to_dict("records")
+        
+        # [BUGFIX-14] Сэмплируем если слишком много фото
+        if len(photos) > MAX_PHOTOS_PER_BUCKET:
+            import random
+            photos = random.sample(photos, MAX_PHOTOS_PER_BUCKET)
+        
         for pa, pb in combinations(photos, 2):
             try:
                 va = np.load(Path(pa["mesh_path"]) / "vertices.npy")
@@ -368,6 +431,10 @@ def build_calibration_pairs_csv(
                     zone_errors[f"zone_{zone}_error"] = float(
                         np.mean(np.linalg.norm(diff, axis=1))
                     )
+                # [BUGFIX-7] Парсим истинные углы из filename для верификации
+                true_angles_a = parse_angles_from_filename(pa["filename"])
+                true_angles_b = parse_angles_from_filename(pb["filename"])
+                
                 row = {
                     "bucket": bucket,
                     "photo_a": pa["filename"],
@@ -376,6 +443,13 @@ def build_calibration_pairs_csv(
                     "yaw_b": pb["pose_yaw"],
                     "pitch_a": pa["pose_pitch"],
                     "pitch_b": pb["pose_pitch"],
+                    # [BUGFIX-7] Истинные углы из filename
+                    "true_yaw_a": true_angles_a["yaw"],
+                    "true_yaw_b": true_angles_b["yaw"],
+                    "true_pitch_a": true_angles_a["pitch"],
+                    "true_pitch_b": true_angles_b["pitch"],
+                    "true_roll_a": true_angles_a["roll"],
+                    "true_roll_b": true_angles_b["roll"],
                     "quality_a": pa["quality_overall"],
                     "quality_b": pb["quality_overall"],
                     "expr_mouth_a": pa.get("mouth_open_intensity", 0.0),

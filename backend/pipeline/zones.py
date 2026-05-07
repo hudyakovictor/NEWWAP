@@ -7,14 +7,8 @@ from .alignment import rigid_umeyama
 from .utils import bounded_score_from_error, weighted_mean_abs, provisional_band_from_score
 
 # --- Exclusion Config ---
-EAR_INDICES = {13, 14, 15, 16}
-assert len(EAR_INDICES) == 4, "EAR_INDICES must contain exactly 4 vertices"
-
-def filter_indices(indices: set | list | np.ndarray | frozenset) -> set:
-    """Removes ear indices from any given vertex set."""
-    if isinstance(indices, (list, np.ndarray, frozenset)):
-        indices = set(indices)
-    return indices - EAR_INDICES
+# [BUGFIX-4] Удален EAR_INDICES - искусственные дыры вырезали критические точки лица
+# (глазные щели, переносица, уголки рта), снижая точность асимметрии
 
 EXCLUDED_ZONES = frozenset(
     {
@@ -27,6 +21,11 @@ EXCLUDED_ZONES = frozenset(
         "cheek_lower_R",
         "nose_wing_L",
         "nose_wing_R",
+        # [BUGFIX-9] Исключены зоны с мягкими тканями из скоринга
+        # Глаза и кожа содержат мягкие ткани, которые изменяются со временем
+        "right_eye",
+        "left_eye",
+        "skin",
     }
 )
 
@@ -42,11 +41,11 @@ def apply_expression_exclusion_mask(
     base_mask: np.ndarray,
     exp_params: np.ndarray | None,
     bfm_indices: dict[str, np.ndarray],
-    face_scale: float = 1.0,
 ) -> tuple[np.ndarray, dict[str, bool]]:
     """
     BFM exp_params (коэффициенты базиса выражений) НЕ зависят от физического 
-    масштаба сетки (face_scale). Они безразмерны. Умножать на scale — фатальная ошибка.
+    масштаба сетки. Они безразмерны.
+    [BUGFIX-20] Удален фантомный параметр face_scale - он не использовался и не нужен.
     """
     THRESHOLD_JAW_OPEN = 0.22
     THRESHOLD_SMILE = 2.2
@@ -317,7 +316,8 @@ def _build_zone_metric(
         bone_weight=zone_bone_weight(name),
         raw_error=float(raw_error),
         bounded_score=bounded_score_from_error(float(raw_error)),
-        mean_weight=float(np.mean(zone_weights)),
+        # [BUGFIX-15] RMS вместо mean для большей устойчивости к выбросам
+        rms_weight=float(np.sqrt(np.mean(np.square(zone_weights)))),
         mean_signed_depth_delta=mean_signed_depth_delta,
         mean_signed_lateral_delta=mean_signed_lateral_delta,
         mean_signed_vertical_delta=mean_signed_vertical_delta,
@@ -356,18 +356,34 @@ def compute_zone_metrics(
     shared_lookup = {int(vertex_id): idx for idx, vertex_id in enumerate(shared_indices.tolist())}
     zones: list[ZoneMetric] = []
     
-    x_coords = points_b[:, 0]
-    face_width = float(np.max(x_coords) - np.min(x_coords))
+    # [BUGFIX-19] Отслеживаем использованные индексы для предотвращения интерференции зон
+    used_vertex_ids = set()
+    
+    # [BUGFIX-1] Вычисляем face_width на канонической 3D-сетке, а не на 2D-спроецированных точках
+    # На профильных снимках 2D-проекция дает face_width -> 0, что ломает нормализацию
+    if reconstruction_b is not None and reconstruction_b.vertices_world is not None:
+        verts_canon = reconstruction_b.vertices_world
+        x_coords_3d = verts_canon[:, 0]
+        face_width = float(np.max(x_coords_3d) - np.min(x_coords_3d))
+        assert face_width > 1e-5, f"Invalid face_width: {face_width}. 3D mesh appears degenerate."
+    else:
+        # Fallback к 2D если 3D недоступно
+        x_coords = points_b[:, 0]
+        face_width = float(np.max(x_coords) - np.min(x_coords))
 
     # 1) Базовые зоны аннотаций (губы исключены — сильно зависят от мимики)
     for zone_name, zone_vertices in zip(BASE_ZONE_NAMES, reconstruction_a.annotation_groups):
         if zone_name in EXCLUDED_FROM_ANALYSIS:
             continue
+        # [BUGFIX-19] Фильтруем вершины, которые уже использованы другими зонами
+        zone_vertices_filtered = [v for v in zone_vertices.tolist() if int(v) not in used_vertex_ids]
         zone_shared_positions = [
             shared_lookup[int(vertex_id)]
-            for vertex_id in zone_vertices.tolist()
+            for vertex_id in zone_vertices_filtered
             if int(vertex_id) in shared_lookup
         ]
+        # [BUGFIX-19] Помечаем использованные вершины
+        used_vertex_ids.update([int(v) for v in zone_vertices_filtered])
         zone_shared_positions_np = np.asarray(zone_shared_positions, dtype=np.int64)
         zones.append(
             _build_zone_metric(
@@ -385,7 +401,8 @@ def compute_zone_metrics(
 
     # 2) Макро-зоны из ТЗ
     for macro_name, indices_raw in MACRO_BONE_INDICES.items():
-        indices = filter_indices(indices_raw)
+        # [BUGFIX-4] Удалена фильтрация EAR_INDICES - используем все вершины зоны
+        indices = indices_raw
         if macro_name in EXCLUDED_FROM_ANALYSIS:
             continue
         if not indices or macro_name == 'full_mesh':
@@ -394,12 +411,15 @@ def compute_zone_metrics(
              else:
                  zone_shared_positions_np = np.empty((0,), dtype=np.int64)
         else:
-            all_vertices = list(indices)
+            # [BUGFIX-19] Фильтруем вершины, которые уже использованы другими зонами
+            all_vertices = [v for v in list(indices) if int(v) not in used_vertex_ids]
             zone_shared_positions = [
                 shared_lookup[int(vertex_id)]
                 for vertex_id in all_vertices
                 if int(vertex_id) in shared_lookup
             ]
+            # [BUGFIX-19] Помечаем использованные вершины
+            used_vertex_ids.update([int(v) for v in all_vertices])
             zone_shared_positions_np = np.asarray(zone_shared_positions, dtype=np.int64)
             
         zones.append(
@@ -534,3 +554,34 @@ def calculate_jaw_width(vertices_centered: np.ndarray) -> float:
     
     width = np.linalg.norm(jaw_L_pt - jaw_R_pt)
     return float(width)
+
+
+def calculate_jaw_asymmetry_vector(vertices_canonical: np.ndarray) -> dict:
+    """
+    [BUGFIX-13] Вычисляет вектор асимметрии челюсти используя индексы jaw_angle_L и jaw_angle_R.
+    Вектор асимметрии показывает перекос челюсти, который может указывать на маску.
+    """
+    jaw_angle_L_indices = MACRO_BONE_INDICES.get('jaw_angle_L', [])
+    jaw_angle_R_indices = MACRO_BONE_INDICES.get('jaw_angle_R', [])
+    
+    if len(jaw_angle_L_indices) == 0 or len(jaw_angle_R_indices) == 0:
+        return {"magnitude": 0.0, "direction": np.zeros(3)}
+    
+    # Вычисляем средние точки для левого и правого углов челюсти
+    jaw_L_pt = np.mean(vertices_canonical[jaw_angle_L_indices], axis=0)
+    jaw_R_pt = np.mean(vertices_canonical[jaw_angle_R_indices], axis=0)
+    
+    # [BUGFIX-13] Вектор асимметрии: разница между левой и правой половинами
+    # Нормализуем по оси X (горизонтальной) для выявления перекоса
+    asymmetry_vector = jaw_L_pt - jaw_R_pt
+    magnitude = float(np.linalg.norm(asymmetry_vector))
+    
+    # Направление асимметрии (нормализованный вектор)
+    direction = asymmetry_vector / (magnitude + 1e-8) if magnitude > 1e-8 else np.zeros(3)
+    
+    return {
+        "magnitude": magnitude,
+        "direction": direction,
+        "jaw_L_point": jaw_L_pt,
+        "jaw_R_point": jaw_R_pt
+    }
