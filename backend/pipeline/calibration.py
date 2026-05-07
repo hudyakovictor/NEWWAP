@@ -329,8 +329,8 @@ def find_calibration_match(
         3.0 * (pool["pose_yaw"]   - target_yaw)   ** 2 +
         3.0 * (pool["pose_pitch"] - target_pitch) ** 2 +
         1.5 * (pool["quality_overall"] - target_quality) ** 2 +
-        0.5 * (pool["expression_mouth_open_intensity"] - target_expr_mouth) ** 2 +
-        0.5 * (pool["expression_smile_intensity"]      - target_expr_smile) ** 2
+        0.5 * (pool.get("mouth_open_intensity", 0.0) - target_expr_mouth) ** 2 +
+        0.5 * (pool.get("smile_intensity", 0.0)      - target_expr_smile) ** 2
     )
     return pool.nsmallest(k, "_dist").drop(columns=["_dist"])
 
@@ -346,8 +346,7 @@ def build_calibration_pairs_csv(
     """
     from itertools import combinations
     from .zones import MACRO_BONE_INDICES
-    from .alignment import canonicalize_vertices_for_bucket
-    from .visibility import compute_visibility_from_normals
+    # [BUGFIX] Removed unused import compute_visibility_from_normals (function does not exist)
 
     rows = []
     by_bucket = calib_df.groupby("bucket")
@@ -379,8 +378,8 @@ def build_calibration_pairs_csv(
                     "pitch_b": pb["pose_pitch"],
                     "quality_a": pa["quality_overall"],
                     "quality_b": pb["quality_overall"],
-                    "expr_mouth_a": pa["expression_mouth_open_intensity"],
-                    "expr_smile_a": pa["expression_smile_intensity"],
+                    "expr_mouth_a": pa.get("mouth_open_intensity", 0.0),
+                    "expr_smile_a": pa.get("smile_intensity", 0.0),
                     **zone_errors,
                 }
                 rows.append(row)

@@ -154,7 +154,7 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             "fftAnomaly": texture_data.get("quality", {}).get("noise_level", 0.1),
             "albedoHealth": texture_data.get("quality", {}).get("quality_index", 0.8),
             "specularIndex": texture_data.get("specular_gloss", 0.2),
-            "syntheticProb": texture_data.get("silicone_probability", 0.05),
+            "syntheticProb": texture_data.get("texture_silicone_prob", 0.05),
             "poreDensity": texture_data.get("pore_density", 0.0),
             "wrinkleForehead": texture_data.get("wrinkle_forehead", 0.0),
             "wrinkleNasolabial": texture_data.get("wrinkle_nasolabial", 0.0),

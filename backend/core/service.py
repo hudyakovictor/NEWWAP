@@ -327,14 +327,15 @@ class ForensicWorkbenchService:
                     message=record["filename"],
                 )
 
-    def compute_pairwise_matrix(self) -> np.ndarray:
+    def compute_pairwise_matrix(self) -> dict:
         """
         [ITER-1.4] Сравнение N x N на основе готовых summaries.
+        [BUGFIX] Возвращает словарь с матрицами H0, H1, H2 и ключами.
         """
         from .compare import InvestigationEngine
         engine = InvestigationEngine(self.storage_root / "main")
-        matrix = engine.compute_n_x_n_matrix()
-        return matrix
+        matrices = engine.compute_n_x_n_matrix()
+        return matrices
 
     def calibration_records(self) -> list[dict[str, Any]]:
         return self.list_dataset("calibration")
@@ -670,15 +671,15 @@ class ForensicWorkbenchService:
         # Texture metrics: mean silicone probability per year
         silicone_probs = []
         for y in years:
-            with_texture = [r for r in records_by_year[y] if r.get("texture_forensics") and "silicone_probability" in r.get("texture_forensics", {})]
+            with_texture = [r for r in records_by_year[y] if r.get("texture_forensics") and "texture_silicone_prob" in r.get("texture_forensics", {})]
             if with_texture:
-                vals = [r["texture_forensics"]["silicone_probability"] for r in with_texture]
+                vals = [r["texture_forensics"]["texture_silicone_prob"] for r in with_texture]
                 silicone_probs.append(float(np.mean(vals)))
             else:
                 silicone_probs.append(0.0)
         
         metric_configs.append({
-            "id": "silicone_probability",
+            "id": "texture_silicone_prob",
             "title": "Silicone probability (texture)",
             "color": "#ec4899",
             "kind": "line",

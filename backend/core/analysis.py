@@ -390,16 +390,19 @@ def _compute_texture_h1_evidence(
     
     # [FIX-16] Вместо max() используем взвешенное среднее признаков
     # [FIX-C4] Нет дефолта 0.5 — None для отсутствующих метрик
-    raw_silicone_a = tex_a.get("silicone_probability")
-    raw_silicone_b = tex_b.get("silicone_probability")
-    raw_fft_a = tex_a.get("fft_high_freq_ratio")
-    raw_fft_b = tex_b.get("fft_high_freq_ratio")
-    raw_albedo_a = tex_a.get("albedo_uniformity")
-    raw_albedo_b = tex_b.get("albedo_uniformity")
-    raw_spec_a = tex_a.get("specular_gloss")
-    raw_spec_b = tex_b.get("specular_gloss")
-    raw_lbp_a = tex_a.get("lbp_uniformity")
-    raw_lbp_b = tex_b.get("lbp_uniformity")
+    # [BUGFIX] Ключи текстур приведены в соответствие с выходом SkinTextureAnalyzer / extract_photo_bundle
+    raw_silicone_a = tex_a.get("texture_silicone_prob")
+    raw_silicone_b = tex_b.get("texture_silicone_prob")
+    # FFT high-freq ratio не вычисляется анализатором — используем GLCM contrast как proxy
+    raw_fft_a = tex_a.get("glcm_contrast")
+    raw_fft_b = tex_b.get("glcm_contrast")
+    # albedo_uniformity не вычисляется — используем GLCM homogeneity как proxy
+    raw_albedo_a = tex_a.get("glcm_homogeneity")
+    raw_albedo_b = tex_b.get("glcm_homogeneity")
+    raw_spec_a = tex_a.get("texture_specular_gloss")
+    raw_spec_b = tex_b.get("texture_specular_gloss")
+    raw_lbp_a = tex_a.get("texture_lbp_uniformity")
+    raw_lbp_b = tex_b.get("texture_lbp_uniformity")
     
     # Взвешенное среднее (не максимум)
     # [FIX-C4] Пропускаем None значения в среднем — не используем 0.5 как дефолт
@@ -428,12 +431,13 @@ def _compute_texture_h1_evidence(
     
     # [FIX-17] Отрицательное доказательство для H0 (естественность текстуры)
     # Чем больше признаков естественной кожи - тем ниже вероятность синтетики
+    # [BUGFIX] Ключи текстур приведены в соответствие с extract_photo_bundle
     natural_markers = {
-        "pore_density": (float(tex_a.get("pore_density", 0.0)) + float(tex_b.get("pore_density", 0.0))) / 2,
-        "lbp_complexity": (float(tex_a.get("lbp_complexity", 0.0)) + float(tex_b.get("lbp_complexity", 0.0))) / 2,
+        "pore_density": (float(tex_a.get("texture_pore_density", 0.0)) + float(tex_b.get("texture_pore_density", 0.0))) / 2,
+        "lbp_complexity": (float(tex_a.get("texture_lbp_complexity", 0.0)) + float(tex_b.get("texture_lbp_complexity", 0.0))) / 2,
         "wrinkle_detail": (
-            float(tex_a.get("wrinkle_forehead", 0.0)) + float(tex_a.get("wrinkle_nasolabial", 0.0)) +
-            float(tex_b.get("wrinkle_forehead", 0.0)) + float(tex_b.get("wrinkle_nasolabial", 0.0))
+            float(tex_a.get("texture_wrinkle_forehead", 0.0)) + float(tex_a.get("texture_wrinkle_nasolabial", 0.0)) +
+            float(tex_b.get("texture_wrinkle_forehead", 0.0)) + float(tex_b.get("texture_wrinkle_nasolabial", 0.0))
         ) / 4,
     }
     
@@ -514,6 +518,8 @@ def calculate_bayesian_evidence(
 
     metrics_a = summary_a.get("metrics", {})
     metrics_b = summary_b.get("metrics", {})
+    tex_a = summary_a.get("texture_forensics", {})
+    tex_b = summary_b.get("texture_forensics", {})
     
     year_a = summary_a.get("year", summary_a.get("parsed_year", 2000))
     year_b = summary_b.get("year", summary_b.get("parsed_year", 2000))
@@ -529,21 +535,27 @@ def calculate_bayesian_evidence(
             
     avg_bone_delta = bone_delta_sum / max(valid_zones, 1)
     
-    # 2. Подключаем новый движок из verdict.py
-    engine = BayesianForensicEngine(base_prior_h0=0.5, base_prior_h1=0.1, base_prior_h2=0.4)
+    # 2. Подключаем движок из verdict.py
+    # [BUGFIX] Используем унифицированные априорные вероятности из constants.py (P3-3)
+    engine = BayesianForensicEngine()
     
     # Базовый шум 0.04. Надежность берем минимальную из пары
     reliability = min(metrics_a.get("reliability_weight", 0.5), metrics_b.get("reliability_weight", 0.5))
     
-    # 3. Вызов ПРАВИЛЬНОЙ функции (время расширяет дисперсию, а не меняет приор)
+    # 3. Текстурное H1 доказательство — [BUGFIX] реально вычисляем, а не 1e-6
+    tex_h1_result = _compute_texture_h1_evidence(tex_a, tex_b, year_a, year_b)
+    texture_h1_likelihood = float(tex_h1_result.get("likelihood", 1e-6))
+    
+    # 4. Вызов ПРАВИЛЬНОЙ функции (время расширяет дисперсию, а не меняет приор)
     likelihoods = engine.compute_likelihoods(
         metric_delta=avg_bone_delta, 
         base_sigma=0.04, 
         delta_years=delta_years, 
-        reliability=reliability
+        reliability=reliability,
+        texture_h1_likelihood=texture_h1_likelihood,
     )
     
-    # 4. Байесовское обновление
+    # 5. Байесовское обновление
     priors = engine.priors
     unnormalized_posteriors = priors * likelihoods
     evidence = sum(unnormalized_posteriors)
@@ -553,6 +565,31 @@ def calculate_bayesian_evidence(
         posteriors = unnormalized_posteriors / evidence
     
     dominant = ["H0", "H1", "H2"][np.argmax(posteriors)]
+    
+    # 6. [BUGFIX] Реальные данные вместо захардкоженных фейковых значений
+    # Geometry SNR из реальных метрик (не 10.0)
+    geom_snr = _compute_linear_snr(avg_bone_delta, 0.04) if valid_zones > 0 else 0.0
+    bone_score = float(1.0 - avg_bone_delta) if valid_zones > 0 else 0.0
+    
+    # Silicone probability из реальных текстур (не 0.0)
+    silicone_prob_a = float(tex_a.get("texture_silicone_prob", 0.0) or 0.0)
+    silicone_prob_b = float(tex_b.get("texture_silicone_prob", 0.0) or 0.0)
+    synthetic_prob = max(silicone_prob_a, silicone_prob_b)
+    
+    # Текстурные фичи из реальных данных (не 0.5)
+    fft_val = tex_h1_result.get("features", {}).get("fft_anomaly")
+    lbp_val = tex_h1_result.get("features", {}).get("lbp_uniformity")
+    albedo_val = tex_h1_result.get("features", {}).get("albedo_uniformity")
+    specular_val = tex_h1_result.get("features", {}).get("specular_gloss")
+    
+    # Pose distance из реальных углов
+    pose_a = summary_a.get("pose", {})
+    pose_b = summary_b.get("pose", {})
+    pose_distance = float(np.sqrt(
+        (float(pose_a.get("yaw", 0) - pose_b.get("yaw", 0))) ** 2 +
+        (float(pose_a.get("pitch", 0) - pose_b.get("pitch", 0))) ** 2 +
+        (float(pose_a.get("roll", 0) - pose_b.get("roll", 0))) ** 2
+    ))
     
     # Сборка true coverage
     from backend.core.scoring import compute_true_coverage
@@ -571,8 +608,8 @@ def calculate_bayesian_evidence(
             "missingZonesB": [],
         },
         "geometric": {
-            "snr": 10.0,
-            "boneScore": float(1.0 - avg_bone_delta),
+            "snr": float(geom_snr),
+            "boneScore": bone_score,
             "ligamentScore": 1.0,
             "softTissueScore": 1.0,
             "zoneCount": valid_zones,
@@ -580,16 +617,16 @@ def calculate_bayesian_evidence(
             "categoryDivergence": {},
         },
         "texture": {
-            "syntheticProb": 0.0,
-            "rawSyntheticProb": 0.0,
-            "naturalScore": 1.0,
-            "fft": 0.5,
-            "lbp": 0.5,
-            "albedo": 0.5,
-            "specular": 0.5,
-            "textureFeatures": {},
-            "naturalMarkers": {},
-            "epochAdjustments": {},
+            "syntheticProb": float(synthetic_prob),
+            "rawSyntheticProb": float(tex_h1_result.get("raw_composite", 0.0)),
+            "naturalScore": float(tex_h1_result.get("naturalScore", 0.5)),
+            "fft": float(fft_val) if fft_val is not None else None,
+            "lbp": float(lbp_val) if lbp_val is not None else None,
+            "albedo": float(albedo_val) if albedo_val is not None else None,
+            "specular": float(specular_val) if specular_val is not None else None,
+            "textureFeatures": tex_h1_result.get("features", {}),
+            "naturalMarkers": tex_h1_result.get("naturalMarkers", {}),
+            "epochAdjustments": tex_h1_result.get("epochAdjustments", {}),
         },
         "chronology": {
             "deltaYears": delta_years,
@@ -600,7 +637,7 @@ def calculate_bayesian_evidence(
         "pose": {
             "mutualVisibility": 1.0,
             "expressionExcluded": 0,
-            "poseDistanceDeg": 0.0,
+            "poseDistanceDeg": pose_distance,
         },
         "likelihoods_summary": {
             "H0": float(likelihoods[0]),
@@ -614,6 +651,8 @@ def calculate_bayesian_evidence(
             f"BayesianForensicEngine calculated new posteriors",
             f"Bone Delta: {avg_bone_delta:.4f}",
             f"Delta Years: {delta_years}",
+            f"Texture H1 Likelihood: {texture_h1_likelihood:.4f}",
+            f"Geometry SNR: {geom_snr:.4f}",
         ]
     }
 
@@ -711,9 +750,9 @@ def _assess_reconstruction_trust(recon: ReconstructionResult) -> dict[str, Any]:
         vertex_quality = 1.0
     
     # 2. Проверяем качество позы
-    pose_confidence = getattr(recon, 'pose_confidence', 0.8)
-    if pose_confidence < 0.5:
-        issues.append(f"Low pose confidence: {pose_confidence:.2f}")
+    # [BUGFIX] pose_confidence не существует в ReconstructionResult
+    # Убираем эту проверку — доверие к реконструкции оцениваем по другим критериям
+    pose_quality = 0.8  # Дефолт для отсутствующего атрибута
     
     # 3. Проверяем параметры трансформации
     trans_params = getattr(recon, 'trans_params', None)
@@ -721,13 +760,20 @@ def _assess_reconstruction_trust(recon: ReconstructionResult) -> dict[str, Any]:
         issues.append("Missing transformation parameters")
         transform_quality = 0.0
     else:
-        # Проверяем масштаб (scale) - должен быть разумным
-        scale = float(trans_params.get('scale', 1.0) if isinstance(trans_params, dict) else 1.0)
-        if scale < 0.3 or scale > 3.0:
-            issues.append(f"Abnormal scale: {scale:.2f}")
-            transform_quality = 0.5
+        # [BUGFIX] trans_params это ndarray, не dict
+        # Проверяем разумность значений трансляции и масштаба
+        if isinstance(trans_params, np.ndarray) and trans_params.size >= 3:
+            # trans_params: [scale, crop_width, crop_height, cx, cy] в 3DDFA
+            # Проверяем масштаб
+            scale = float(trans_params[0]) if trans_params.size > 0 else 1.0
+            if scale < 0.3 or scale > 3.0:
+                issues.append(f"Abnormal scale: {scale:.2f}")
+                transform_quality = 0.5
+            else:
+                transform_quality = 1.0
         else:
-            transform_quality = 1.0
+            issues.append("Invalid transformation parameters format")
+            transform_quality = 0.0
     
     # 4. Проверяем углы (не должны быть экстремальными)
     angles = getattr(recon, 'angles_deg', None)
@@ -741,7 +787,7 @@ def _assess_reconstruction_trust(recon: ReconstructionResult) -> dict[str, Any]:
     # 5. Комбинированный trust score
     trust_score = (
         vertex_quality * 0.4 +
-        pose_confidence * 0.3 +
+        pose_quality * 0.3 +
         transform_quality * 0.3
     )
     
@@ -761,7 +807,7 @@ def _assess_reconstruction_trust(recon: ReconstructionResult) -> dict[str, Any]:
         "vertex_quality": round(vertex_quality, 3),
         "confidence_metrics": {
             "vertex_count": vertex_count,
-            "pose_confidence": pose_confidence,
+            "pose_quality": pose_quality,
             "transform_quality": transform_quality,
         },
     }
@@ -1375,14 +1421,14 @@ def recompute_metric_subset(
 
     texture_metrics = {
         "reliability_weight": final_reliability,
-        "texture_lbp_complexity": float(texture_forensics.get("lbp_complexity", 0.0)),
+        "texture_lbp_complexity": float(texture_forensics.get("lbp_entropy", 0.0)),
         "texture_lbp_uniformity": float(texture_forensics.get("lbp_uniformity", 0.0)),
         "texture_specular_gloss": float(texture_forensics.get("specular_gloss", 0.0)),
-        "texture_silicone_prob": float(texture_forensics.get("silicone_probability", 0.0)),
-        "texture_pore_density": float(texture_forensics.get("pore_density", 0.0)),
+        "texture_silicone_prob": float(texture_forensics.get("texture_silicone_prob", 0.0)),
+        "texture_pore_density": float(texture_forensics.get("nose_pore_density", 0.0)),
         "texture_wrinkle_forehead": float(texture_forensics.get("wrinkle_forehead", 0.0)),
-        "texture_wrinkle_nasolabial": float(texture_forensics.get("wrinkle_nasolabial", 0.0)),
-        "texture_global_smoothness": float(texture_forensics.get("global_smoothness", 0.0)),
+        "texture_wrinkle_nasolabial": float(texture_forensics.get("nasolabial_depth", 0.0)),
+        "texture_global_smoothness": float(1.0 / (float(texture_forensics.get("laplacian_energy", 0.01) or 0.01) * 1000 + 1.0)),
     }
 
     merged_metrics = {**summary.get("metrics", {})}

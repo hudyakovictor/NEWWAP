@@ -131,8 +131,9 @@ class CascadeEngine:
         chron_flags.extend(self._collect_timeline_flags(timeline_context, date_a, date_b))
 
         # C-03: Use max() instead of mean() for silicone probability to preserve mask anomaly signal
-        raw_silicone_a = float(tex_a.get("silicone_probability", 0.0))
-        raw_silicone_b = float(tex_b.get("silicone_probability", 0.0))
+        # [BUGFIX] Используем texture_silicone_prob вместо silicone_probability для согласованности
+        raw_silicone_a = float(tex_a.get("texture_silicone_prob", 0.0))
+        raw_silicone_b = float(tex_b.get("texture_silicone_prob", 0.0))
         silicone_prob = max(raw_silicone_a, raw_silicone_b)
         
         # --- Stage 2: Deep Geometry ---

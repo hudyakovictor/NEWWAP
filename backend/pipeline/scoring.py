@@ -461,6 +461,7 @@ def extract_macro_bone_metrics(
     metrics["gnathion_midline_deviation_ratio"] = calc_point_to_line_distance(
         gnathion_pt, nasion_pt, subnasale_pt
     ) / zygomatic_breadth
+    metrics["chin_offset_asymmetry"] = metrics["gnathion_midline_deviation_ratio"]
 
     # 13. Reliability
     yaw_abs = abs(angles[1])
@@ -476,6 +477,7 @@ def extract_macro_bone_metrics(
     if pitch_abs > 20.0 and yaw_abs <= 30.0:
         metrics["chin_projection_ratio"] = None
         metrics["gnathion_midline_deviation_ratio"] = None
+        metrics["chin_offset_asymmetry"] = None
 
     # Mask unreliable canthal tilt & orbit depth on the occluded side for non-frontal views (yaw > 20.0)
     if yaw_abs > 20.0:
@@ -495,8 +497,14 @@ def apply_expression_exclusion_mask(metrics: dict, expression_params: np.ndarray
     """
     Удаляет зоны, искаженные мимикой. 
     Использует np.nan вместо None для безопасности матричных вычислений.
+    [BUGFIX] expression_params[0] это jaw_open, а не smile. 
+    Smile находится в expression_params[1] и expression_params[2] (см. zones.py).
     """
-    smile_intensity = expression_params[0]
+    if expression_params is None or expression_params.size < 3:
+        return metrics.copy()
+    
+    # [BUGFIX] Правильные индексы: 0=jaw_open, 1-2=smile (согласно zones.py)
+    smile_intensity = max(abs(expression_params[1]), abs(expression_params[2]))
     
     cleaned_metrics = metrics.copy()
     

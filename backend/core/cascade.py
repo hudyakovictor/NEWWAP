@@ -2,11 +2,12 @@ def aggregate_texture_flags(tex_a: dict, tex_b: dict, conf_a: float, conf_b: flo
     """
     Симметричная агрегация текстурных аномалий (Силикон, Ретушь).
     Избавляемся от токсичного max().
+    [BUGFIX] Используем texture_silicone_prob вместо silicone_probability для согласованности
     """
-    silicone_a = tex_a.get('silicone_probability', 0.0)
+    silicone_a = tex_a.get('texture_silicone_prob', 0.0)
     if silicone_a is None:
         silicone_a = 0.0
-    silicone_b = tex_b.get('silicone_probability', 0.0)
+    silicone_b = tex_b.get('texture_silicone_prob', 0.0)
     if silicone_b is None:
         silicone_b = 0.0
     

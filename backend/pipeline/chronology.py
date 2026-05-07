@@ -6,6 +6,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
+from dataclasses import dataclass
 
 from core.constants import (
     REFERENCE_PERIOD_END, RTR_RATIO, RTR_MIN_ABS_DELTA, IMPOSSIBLE_AGE_REVERSAL_DAYS,
@@ -16,12 +17,20 @@ from core.utils import iso_now, BUCKET_METRIC_KEYS
 
 def get_ordered_metric_vector(metrics_dict: dict, required_keys: list) -> np.ndarray:
     """
-    [ITER-1] ИСПРАВЛЕНИЕ: Гарантированный порядок ключей перед вычислением L2 нормы.
+    [ITER-1] Гарантированный порядок ключей перед вычислением L2 нормы.
+    [BUGFIX] Missing metrics = NaN вместо 0.0. Раньше 0.0 создавал ложную
+    стабильность: два фото с разными missing metrics выглядели одинаково,
+    потому что оба имели 0.0 для отсутствующих ключей.
     """
     vector = []
     for key in sorted(required_keys):
-        # Если метрики нет, подставляем 0.0 для сохранения размерности пространства
-        vector.append(metrics_dict.get(key, 0.0))
+        val = metrics_dict.get(key)
+        if val is None:
+            vector.append(np.nan)
+        elif isinstance(val, float) and np.isnan(val):
+            vector.append(np.nan)
+        else:
+            vector.append(float(val))
     return np.array(vector, dtype=np.float64)
 
 
@@ -128,7 +137,8 @@ class ChronologyAnalyzer:
             buckets[bucket].append(p)
 
         for bucket, bucket_photos in buckets.items():
-            bucket_photos.sort(key=lambda x: x.get("extracted_at", ""))
+            # [BUGFIX] Sort by actual photo date (date_str) not extraction time (extracted_at)
+            bucket_photos.sort(key=lambda x: x.get("date_str", ""))
             
             for i in range(len(bucket_photos)):
                 curr = bucket_photos[i]
@@ -137,8 +147,8 @@ class ChronologyAnalyzer:
                 if i == 0: continue
                 
                 prev = bucket_photos[i-1]
-                d1 = parse_forensic_date(prev.get("extracted_at"))
-                d2 = parse_forensic_date(curr.get("extracted_at"))
+                d1 = parse_forensic_date(prev.get("date_str"))
+                d2 = parse_forensic_date(curr.get("date_str"))
                 
                 if not d1 or not d2: continue
                 
@@ -203,8 +213,9 @@ class ChronologyAnalyzer:
 
 
                 # [ITER-3] RTR Detector (Return To Reference)
-                if not is_reference_period(curr.get("extracted_at")):
-                    ref_photos = [p for p in bucket_photos[:i] if is_reference_period(p.get("extracted_at"))]
+                # [BUGFIX] Use actual photo date (date_str) not extraction time (extracted_at)
+                if not is_reference_period(curr.get("date_str")):
+                    ref_photos = [p for p in bucket_photos[:i] if is_reference_period(p.get("date_str"))]
                     if ref_photos:
                         # [ITER-1] ИСПРАВЛЕНИЕ: Используем упорядоченные векторы метрик по общим ключам
                         all_ref_keys = sorted(set().union(*[p.get("metrics", {}).keys() for p in ref_photos]))

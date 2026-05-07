@@ -38,7 +38,7 @@ FORENSIC_PASSPORT_FIELDS = [
     'metadata.entity_tag',
     'metadata.photo_id',
     'texture_forensics.lbp_complexity',
-    'texture_forensics.silicone_probability',
+    'texture_forensics.texture_silicone_prob',
     'texture_forensics.verdict',
     'anomaly_flags',
     'temporal_metadata',
@@ -48,9 +48,10 @@ def map_confidence_level(provisional_band: str | None, texture_forensics: dict |
     """
     Maps internal band statuses and texture data to a strict UI contract:
     acceptable | unlikely | impossible
+    [BUGFIX] Используем texture_silicone_prob вместо silicone_probability для согласованности
     """
     if texture_forensics:
-        silicone_prob = float(texture_forensics.get('silicone_probability', 0.0))
+        silicone_prob = float(texture_forensics.get('texture_silicone_prob', 0.0))
         if silicone_prob > 0.85:
             return "impossible" # Mask detected
         if silicone_prob > 0.6:
