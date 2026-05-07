@@ -1,0 +1,949 @@
+{
+  "1998_01_01_y16p-18r1": {
+    "photo_id": "1998_01_01_y16p-18r1",
+    "dataset": "main",
+    "filename": "1998_01_01_y16p-18r1.jpg",
+    "source_path": "/Volumes/SDCARD/photo/main/1998_01_01_y16p-18r1.jpg",
+    "file_size_bytes": 77528,
+    "date_str": "1998-01-01",
+    "date_source": "filename",
+    "year": 1998,
+    "parsed_year": 1998,
+    "bucket": "frontal",
+    "angle": "frontal",
+    "bucket_label": "Анфас",
+    "pose": {
+      "yaw": -13.230372428894043,
+      "pitch": 16.673606872558594,
+      "roll": -6.434342861175537,
+      "bucket": "frontal",
+      "pose_source": "3DDFA_v3",
+      "needs_manual_review": false
+    },
+    "reconstruction": {
+      "angles_deg": [
+        16.673606872558594,
+        -13.230372428894043,
+        -6.434342861175537
+      ],
+      "vertex_count": 35709,
+      "triangle_count": 70789
+    },
+    "quality": {
+      "success": true,
+      "is_rejected": false,
+      "blur_value": 148.60227136995766,
+      "sharpness_variance": 148.60227136995766,
+      "noise_level": 1.454960823059082,
+      "overall_score": 0.9760177365164266,
+      "overall_quality": 0.9760177365164266
+    },
+    "texture_forensics": {
+      "lbp_uniformity": 0.11070237543626454,
+      "lbp_entropy": 2.247254078844682,
+      "glcm_contrast": 1.424042936097976,
+      "glcm_energy": 0.127492218749704,
+      "glcm_homogeneity": 0.7507177158075704,
+      "glcm_correlation": 0.9870113729856203,
+      "gabor_mean": 8.248435974121094,
+      "gabor_std": 20.98830223083496,
+      "laplacian_energy": 0.0031349362256259217,
+      "spot_density": 0.11415448406975219,
+      "specular_gloss": 0.032581617936279006,
+      "skin_tone_std": 23.355955812292695,
+      "pigmentation_index": 4.152090906744867,
+      "wrinkle_forehead": 0.0028724332272609876,
+      "nasolabial_depth": 0.05208820477128029,
+      "crow_feet_score": 0.004168042913655762,
+      "nose_pore_density": 208.8944091796875,
+      "quality_sharpness_score": 205.16256789929608,
+      "quality_noise_score": 59.270063827603735,
+      "quality_index": 0.22887350601449347,
+      "texture_silicone_prob": 0.0
+    },
+    "metrics": {
+      "cranial_face_index": 0.6194134532499899,
+      "jaw_width_ratio": 0.16568701388363122,
+      "canthal_tilt_3d_L": 18.190604956915134,
+      "canthal_tilt_3d_R": 26.646169992307367,
+      "canthal_tilt_L": 18.190604956915134,
+      "canthal_tilt_R": 26.646169992307367,
+      "interorbital_ratio": 0.6825335803463106,
+      "orbit_depth_L_ratio": 0.02020157152235212,
+      "orbit_depth_R_ratio": 0.026905118556072808,
+      "gonial_angle_L": 57.87165069580078,
+      "gonial_angle_R": 42.83201217651367,
+      "mandibular_ramus_length": 0.5649829980336539,
+      "nose_width_ratio": 0.1826672132975217,
+      "nose_projection_ratio": 0.32334984728651966,
+      "nasal_frontal_index": -0.3698433814575553,
+      "chin_projection_ratio": 0.05708152501583456,
+      "orbit_centroid_ratio": 0.4773024511713881,
+      "glabella_nasion_projection_angle": 176.79264472212603,
+      "forehead_slope_index": 1.9643627191347337,
+      "nasofacial_angle_ratio": 0.2002872455156,
+      "orbital_perimeter_symmetry": 0.7628433108329773,
+      "orbital_asymmetry_index": 0.2371566891670227,
+      "gnathion_midline_deviation_ratio": 0.4376455843448639,
+      "asymmetry_jaw_skew": 0.1320096254348755,
+      "asymmetry_orbit_skew": 0.061869099736213684,
+      "asymmetry_total_vector": 0.19387872517108917,
+      "ligament_zygomatic_L_depth": 1.1296916007995605,
+      "ligament_zygomatic_R_depth": 1.3408647775650024,
+      "index_neurocranium_width": 0.8086794018745422,
+      "_reconstruction_trust_score": 0.94,
+      "_reconstruction_issues_count": 0,
+      "reliability_weight": 0.8379999999999999,
+      "texture_lbp_complexity": 2.247254078844682,
+      "texture_lbp_uniformity": 0.11070237543626454,
+      "texture_specular_gloss": 0.032581617936279006,
+      "texture_silicone_prob": 0.0,
+      "texture_pore_density": 208.8944091796875,
+      "texture_spot_density": 0.11415448406975219,
+      "texture_wrinkle_forehead": 0.0028724332272609876,
+      "texture_wrinkle_nasolabial": 0.05208820477128029,
+      "texture_global_smoothness": 0.24184169850131754,
+      "glcm_contrast": 1.424042936097976,
+      "glcm_energy": 0.127492218749704,
+      "glcm_homogeneity": 0.7507177158075704,
+      "glcm_correlation": 0.9870113729856203
+    },
+    "selected_metric_keys": [
+      "cranial_face_index",
+      "jaw_width_ratio",
+      "canthal_tilt_L",
+      "canthal_tilt_R",
+      "chin_offset_asymmetry",
+      "nose_width_ratio",
+      "nose_projection_ratio",
+      "nasal_frontal_index",
+      "nasofacial_angle_ratio",
+      "chin_projection_ratio",
+      "gonial_angle_L",
+      "gonial_angle_R",
+      "orbital_asymmetry_index",
+      "interorbital_ratio",
+      "forehead_slope_index",
+      "orbit_depth_L_ratio",
+      "orbit_depth_R_ratio",
+      "texture_silicone_prob",
+      "texture_pore_density",
+      "texture_spot_density",
+      "texture_wrinkle_forehead",
+      "texture_wrinkle_nasolabial",
+      "texture_global_smoothness",
+      "texture_specular_gloss",
+      "texture_lbp_complexity"
+    ],
+    "artifacts": {
+      "uv_texture": "uv_texture.png",
+      "uv_confidence": "uv_confidence.png",
+      "mesh_obj": "mesh.obj",
+      "mesh_mtl": "mesh.mtl",
+      "face_crop": "face_crop.jpg",
+      "original_photo": "1998_01_01_y16p-18r1.jpg"
+    },
+    "status": "ready",
+    "status_detail": {
+      "overall": "ready",
+      "quality_status": "ok",
+      "pose_status": "ok",
+      "reliability_tier": "high",
+      "usable_for_comparison": true
+    },
+    "dataQuality": {
+      "coverageRatio": 0.96
+    },
+    "lineage": {
+      "raw_sources": {
+        "original_image": "/Volumes/SDCARD/photo/main/1998_01_01_y16p-18r1.jpg",
+        "file_size_bytes": 77528,
+        "file_hash": null
+      },
+      "extraction_steps": [
+        {
+          "step": "pose_detection",
+          "source": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:22:28Z"
+        },
+        {
+          "step": "3d_reconstruction",
+          "method": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:22:28Z"
+        },
+        {
+          "step": "texture_analysis",
+          "input": "face_crop.jpg",
+          "timestamp": "2026-05-07T01:22:28Z"
+        },
+        {
+          "step": "quality_assessment",
+          "timestamp": "2026-05-07T01:22:28Z"
+        },
+        {
+          "step": "geometry_metrics",
+          "bucket": "frontal",
+          "timestamp": "2026-05-07T01:22:28Z"
+        }
+      ],
+      "methodology_version": "ITER-6.5-2025-05-01",
+      "artifact_version": "2.1.0"
+    },
+    "extracted_at": "2026-05-07T01:22:28Z",
+    "artifact_version": "2.1.0",
+    "methodology_version": "ITER-6.5-2025-05-01",
+    "runtime_config_hash": "807b5e53f7eeac60",
+    "source_url": "/source/main/1998_01_01_y16p-18r1.jpg"
+  },
+  "1999_07_01_y-13p17r-11": {
+    "photo_id": "1999_07_01_y-13p17r-11",
+    "dataset": "main",
+    "filename": "1999_07_01_y-13p17r-11.jpg",
+    "source_path": "/Volumes/SDCARD/photo/main/1999_07_01_y-13p17r-11.jpg",
+    "file_size_bytes": 657856,
+    "date_str": "1999-07-01",
+    "date_source": "filename",
+    "year": 1999,
+    "parsed_year": 1999,
+    "bucket": "frontal",
+    "angle": "frontal",
+    "bucket_label": "Анфас",
+    "pose": {
+      "yaw": -12.552456855773926,
+      "pitch": 17.28261375427246,
+      "roll": -11.409555435180664,
+      "bucket": "frontal",
+      "pose_source": "3DDFA_v3",
+      "needs_manual_review": false
+    },
+    "reconstruction": {
+      "angles_deg": [
+        17.28261375427246,
+        -12.552456855773926,
+        -11.409555435180664
+      ],
+      "vertex_count": 35709,
+      "triangle_count": 70789
+    },
+    "quality": {
+      "success": true,
+      "is_rejected": false,
+      "blur_value": 1093.542783079137,
+      "sharpness_variance": 1093.542783079137,
+      "noise_level": 5.797565460205078,
+      "overall_score": 0.930429214477539,
+      "overall_quality": 0.930429214477539
+    },
+    "texture_forensics": {
+      "lbp_uniformity": 0.12635313696704717,
+      "lbp_entropy": 2.1840678457788707,
+      "glcm_contrast": 2.6467889769205515,
+      "glcm_energy": 0.0954442576846672,
+      "glcm_homogeneity": 0.5240850722337794,
+      "glcm_correlation": 0.9615965711423284,
+      "gabor_mean": 11.176034927368164,
+      "gabor_std": 14.477264404296875,
+      "laplacian_energy": 0.017923001776219118,
+      "spot_density": 0.06271890411062896,
+      "specular_gloss": 0.03185621196607799,
+      "skin_tone_std": 19.110583407329685,
+      "pigmentation_index": 15.868120369359914,
+      "wrinkle_forehead": 0.01612983602698467,
+      "nasolabial_depth": 0.07950826734304428,
+      "crow_feet_score": 0.0169205938292498,
+      "nose_pore_density": 1109.55615234375,
+      "quality_sharpness_score": 1167.5848832126735,
+      "quality_noise_score": 46.92547887452875,
+      "quality_index": 0.8965421250899497,
+      "texture_silicone_prob": 0.0
+    },
+    "metrics": {
+      "cranial_face_index": 0.5856126769652106,
+      "jaw_width_ratio": 0.17699704205133032,
+      "canthal_tilt_3d_L": 24.267977464285487,
+      "canthal_tilt_3d_R": 32.38249693687472,
+      "canthal_tilt_L": 24.267977464285487,
+      "canthal_tilt_R": 32.38249693687472,
+      "interorbital_ratio": 0.6842501371203933,
+      "orbit_depth_L_ratio": 0.04829159839478034,
+      "orbit_depth_R_ratio": 0.058522160742927286,
+      "gonial_angle_L": 58.79600524902344,
+      "gonial_angle_R": 43.18203353881836,
+      "mandibular_ramus_length": 0.5398268003874094,
+      "nose_width_ratio": 0.18900017955967402,
+      "nose_projection_ratio": 0.3514209432314652,
+      "nasal_frontal_index": -0.35367317938577614,
+      "chin_projection_ratio": 0.07036149473683725,
+      "orbit_centroid_ratio": 0.4779738403351227,
+      "glabella_nasion_projection_angle": 170.75919898914418,
+      "forehead_slope_index": 1.897324433212713,
+      "nasofacial_angle_ratio": 0.20579655930741766,
+      "orbital_perimeter_symmetry": 0.7733995914459229,
+      "orbital_asymmetry_index": 0.22660040855407715,
+      "gnathion_midline_deviation_ratio": 0.4538947641849518,
+      "asymmetry_jaw_skew": 0.13571669161319733,
+      "asymmetry_orbit_skew": 0.10500767827033997,
+      "asymmetry_total_vector": 0.2407243698835373,
+      "ligament_zygomatic_L_depth": 0.9283826351165771,
+      "ligament_zygomatic_R_depth": 1.1390719413757324,
+      "index_neurocranium_width": 0.8242031335830688,
+      "_reconstruction_trust_score": 0.94,
+      "_reconstruction_issues_count": 0,
+      "reliability_weight": 0.9269626375269848,
+      "texture_lbp_complexity": 2.1840678457788707,
+      "texture_lbp_uniformity": 0.12635313696704717,
+      "texture_specular_gloss": 0.03185621196607799,
+      "texture_silicone_prob": 0.0,
+      "texture_pore_density": 1109.55615234375,
+      "texture_spot_density": 0.06271890411062896,
+      "texture_wrinkle_forehead": 0.01612983602698467,
+      "texture_wrinkle_nasolabial": 0.07950826734304428,
+      "texture_global_smoothness": 0.052845738314981204,
+      "glcm_contrast": 2.6467889769205515,
+      "glcm_energy": 0.0954442576846672,
+      "glcm_homogeneity": 0.5240850722337794,
+      "glcm_correlation": 0.9615965711423284
+    },
+    "selected_metric_keys": [
+      "cranial_face_index",
+      "jaw_width_ratio",
+      "canthal_tilt_L",
+      "canthal_tilt_R",
+      "chin_offset_asymmetry",
+      "nose_width_ratio",
+      "nose_projection_ratio",
+      "nasal_frontal_index",
+      "nasofacial_angle_ratio",
+      "chin_projection_ratio",
+      "gonial_angle_L",
+      "gonial_angle_R",
+      "orbital_asymmetry_index",
+      "interorbital_ratio",
+      "forehead_slope_index",
+      "orbit_depth_L_ratio",
+      "orbit_depth_R_ratio",
+      "texture_silicone_prob",
+      "texture_pore_density",
+      "texture_spot_density",
+      "texture_wrinkle_forehead",
+      "texture_wrinkle_nasolabial",
+      "texture_global_smoothness",
+      "texture_specular_gloss",
+      "texture_lbp_complexity"
+    ],
+    "artifacts": {
+      "uv_texture": "uv_texture.png",
+      "uv_confidence": "uv_confidence.png",
+      "mesh_obj": "mesh.obj",
+      "mesh_mtl": "mesh.mtl",
+      "face_crop": "face_crop.jpg",
+      "original_photo": "1999_07_01_y-13p17r-11.jpg"
+    },
+    "status": "ready",
+    "status_detail": {
+      "overall": "ready",
+      "quality_status": "ok",
+      "pose_status": "ok",
+      "reliability_tier": "high",
+      "usable_for_comparison": true
+    },
+    "dataQuality": {
+      "coverageRatio": 0.96
+    },
+    "lineage": {
+      "raw_sources": {
+        "original_image": "/Volumes/SDCARD/photo/main/1999_07_01_y-13p17r-11.jpg",
+        "file_size_bytes": 657856,
+        "file_hash": null
+      },
+      "extraction_steps": [
+        {
+          "step": "pose_detection",
+          "source": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:21:54Z"
+        },
+        {
+          "step": "3d_reconstruction",
+          "method": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:21:54Z"
+        },
+        {
+          "step": "texture_analysis",
+          "input": "face_crop.jpg",
+          "timestamp": "2026-05-07T01:21:54Z"
+        },
+        {
+          "step": "quality_assessment",
+          "timestamp": "2026-05-07T01:21:54Z"
+        },
+        {
+          "step": "geometry_metrics",
+          "bucket": "frontal",
+          "timestamp": "2026-05-07T01:21:54Z"
+        }
+      ],
+      "methodology_version": "ITER-6.5-2025-05-01",
+      "artifact_version": "2.1.0"
+    },
+    "extracted_at": "2026-05-07T01:21:54Z",
+    "artifact_version": "2.1.0",
+    "methodology_version": "ITER-6.5-2025-05-01",
+    "runtime_config_hash": "db9b92743c229afb",
+    "source_url": "/source/main/1999_07_01_y-13p17r-11.jpg"
+  },
+  "1999_08_16_y-46p-27r23": {
+    "photo_id": "1999_08_16_y-46p-27r23",
+    "dataset": "main",
+    "filename": "1999_08_16_y-46p-27r23.jpg",
+    "source_path": "/Volumes/SDCARD/photo/main/1999_08_16_y-46p-27r23.jpg",
+    "file_size_bytes": 549653,
+    "date_str": "1999-08-16",
+    "date_source": "filename",
+    "year": 1999,
+    "parsed_year": 1999,
+    "bucket": "right_threequarter_deep",
+    "angle": "right-3-4-deep",
+    "bucket_label": "Правые 3/4 глубокие",
+    "pose": {
+      "yaw": 45.95502853393555,
+      "pitch": 20.41448402404785,
+      "roll": 0.8066281080245972,
+      "bucket": "right_threequarter_deep",
+      "pose_source": "3DDFA_v3",
+      "needs_manual_review": true
+    },
+    "reconstruction": {
+      "angles_deg": [
+        20.41448402404785,
+        45.95502853393555,
+        0.8066281080245972
+      ],
+      "vertex_count": 35709,
+      "triangle_count": 70789
+    },
+    "quality": {
+      "success": true,
+      "is_rejected": false,
+      "blur_value": 196.95248633806395,
+      "sharpness_variance": 196.95248633806395,
+      "noise_level": 1.9242156744003296,
+      "overall_score": 0.9769094119071959,
+      "overall_quality": 0.9769094119071959
+    },
+    "texture_forensics": {
+      "lbp_uniformity": 0.11054787982275491,
+      "lbp_entropy": 2.249938131003804,
+      "glcm_contrast": 1.5403946773032733,
+      "glcm_energy": 0.11815926315444228,
+      "glcm_homogeneity": 0.6603661141684412,
+      "glcm_correlation": 0.9869980160578606,
+      "gabor_mean": 9.70727825164795,
+      "gabor_std": 13.656170845031738,
+      "laplacian_energy": 0.0046355741979774556,
+      "spot_density": 0.06015131400054383,
+      "specular_gloss": 0.031155328780050864,
+      "skin_tone_std": 24.627854571392778,
+      "pigmentation_index": 4.778398865957046,
+      "wrinkle_forehead": 0.005626364237667583,
+      "nasolabial_depth": 0.09990842640399933,
+      "crow_feet_score": 0.002349241017003416,
+      "nose_pore_density": 348.6240234375,
+      "quality_sharpness_score": 303.5581965691644,
+      "quality_noise_score": 61.528988608605076,
+      "quality_index": 0.5010524592047588,
+      "texture_silicone_prob": 0.0
+    },
+    "metrics": {
+      "cranial_face_index": 0.6252112814663351,
+      "jaw_width_ratio": 0.15250925901208975,
+      "canthal_tilt_3d_L": null,
+      "canthal_tilt_3d_R": 18.979695915485753,
+      "canthal_tilt_L": null,
+      "canthal_tilt_R": 18.979695915485753,
+      "interorbital_ratio": 0.6622425840456417,
+      "orbit_depth_L_ratio": null,
+      "orbit_depth_R_ratio": 0.08322204473321343,
+      "gonial_angle_L": 56.60014724731445,
+      "gonial_angle_R": 44.120582580566406,
+      "mandibular_ramus_length": 0.5741390046448831,
+      "nose_width_ratio": 0.16520782380193194,
+      "nose_projection_ratio": 0.3847587824266781,
+      "nasal_frontal_index": -0.3587321903464009,
+      "chin_projection_ratio": 0.08331052715271169,
+      "orbit_centroid_ratio": 0.4977188449834035,
+      "glabella_nasion_projection_angle": 164.6430007044214,
+      "forehead_slope_index": 1.8293666744935713,
+      "nasofacial_angle_ratio": 0.24055553141641023,
+      "orbital_perimeter_symmetry": 0.8003478646278381,
+      "orbital_asymmetry_index": 0.19965213537216187,
+      "gnathion_midline_deviation_ratio": 0.4005175232887268,
+      "ligament_zygomatic_R_depth": 1.717404842376709,
+      "_reconstruction_trust_score": 0.94,
+      "_reconstruction_issues_count": 1,
+      "reliability_weight": 0.41029999999999994,
+      "texture_lbp_complexity": 2.249938131003804,
+      "texture_lbp_uniformity": 0.11054787982275491,
+      "texture_specular_gloss": 0.031155328780050864,
+      "texture_silicone_prob": 0.0,
+      "texture_pore_density": 348.6240234375,
+      "texture_spot_density": 0.06015131400054383,
+      "texture_wrinkle_forehead": 0.005626364237667583,
+      "texture_wrinkle_nasolabial": 0.09990842640399933,
+      "texture_global_smoothness": 0.17744420796711163,
+      "glcm_contrast": 1.5403946773032733,
+      "glcm_energy": 0.11815926315444228,
+      "glcm_homogeneity": 0.6603661141684412,
+      "glcm_correlation": 0.9869980160578606
+    },
+    "selected_metric_keys": [
+      "cranial_face_index",
+      "forehead_slope_index",
+      "orbit_depth_R_ratio",
+      "canthal_tilt_R",
+      "nose_projection_ratio",
+      "nasofacial_angle_ratio",
+      "jaw_width_ratio",
+      "gonial_angle_R",
+      "chin_projection_ratio",
+      "chin_offset_asymmetry",
+      "orbital_asymmetry_index",
+      "texture_silicone_prob",
+      "texture_pore_density",
+      "texture_spot_density",
+      "texture_wrinkle_forehead",
+      "texture_wrinkle_nasolabial",
+      "texture_global_smoothness",
+      "texture_specular_gloss",
+      "texture_lbp_complexity"
+    ],
+    "artifacts": {
+      "uv_texture": "uv_texture.png",
+      "uv_confidence": "uv_confidence.png",
+      "mesh_obj": "mesh.obj",
+      "mesh_mtl": "mesh.mtl",
+      "face_crop": "face_crop.jpg",
+      "original_photo": "1999_08_16_y-46p-27r23.jpg"
+    },
+    "status": "ready",
+    "status_detail": {
+      "overall": "ready",
+      "quality_status": "ok",
+      "pose_status": "uncertain",
+      "reliability_tier": "medium",
+      "usable_for_comparison": true
+    },
+    "dataQuality": {
+      "coverageRatio": 0.9473684210526315
+    },
+    "lineage": {
+      "raw_sources": {
+        "original_image": "/Volumes/SDCARD/photo/main/1999_08_16_y-46p-27r23.jpg",
+        "file_size_bytes": 549653,
+        "file_hash": null
+      },
+      "extraction_steps": [
+        {
+          "step": "pose_detection",
+          "source": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:23:02Z"
+        },
+        {
+          "step": "3d_reconstruction",
+          "method": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:23:02Z"
+        },
+        {
+          "step": "texture_analysis",
+          "input": "face_crop.jpg",
+          "timestamp": "2026-05-07T01:23:02Z"
+        },
+        {
+          "step": "quality_assessment",
+          "timestamp": "2026-05-07T01:23:02Z"
+        },
+        {
+          "step": "geometry_metrics",
+          "bucket": "right_threequarter_deep",
+          "timestamp": "2026-05-07T01:23:02Z"
+        }
+      ],
+      "methodology_version": "ITER-6.5-2025-05-01",
+      "artifact_version": "2.1.0"
+    },
+    "extracted_at": "2026-05-07T01:23:02Z",
+    "artifact_version": "2.1.0",
+    "methodology_version": "ITER-6.5-2025-05-01",
+    "runtime_config_hash": "522ea00e903bac01",
+    "source_url": "/source/main/1999_08_16_y-46p-27r23.jpg"
+  },
+  "1999_12_01_y60p-11r-5": {
+    "photo_id": "1999_12_01_y60p-11r-5",
+    "dataset": "main",
+    "filename": "1999_12_01_y60p-11r-5.jpg",
+    "source_path": "/Volumes/SDCARD/photo/main/1999_12_01_y60p-11r-5.jpg",
+    "file_size_bytes": 562649,
+    "date_str": "1999-12-01",
+    "date_source": "filename",
+    "year": 1999,
+    "parsed_year": 1999,
+    "bucket": "left_threequarter_deep",
+    "angle": "left-3-4-deep",
+    "bucket_label": "Левые 3/4 глубокие",
+    "pose": {
+      "yaw": -58.27859115600586,
+      "pitch": 13.012228965759277,
+      "roll": -8.851309776306152,
+      "bucket": "left_threequarter_deep",
+      "pose_source": "3DDFA_v3",
+      "needs_manual_review": true
+    },
+    "reconstruction": {
+      "angles_deg": [
+        13.012228965759277,
+        -58.27859115600586,
+        -8.851309776306152
+      ],
+      "vertex_count": 35709,
+      "triangle_count": 70789
+    },
+    "quality": {
+      "success": true,
+      "is_rejected": false,
+      "blur_value": 180.14715278070065,
+      "sharpness_variance": 180.14715278070065,
+      "noise_level": 1.4229437112808228,
+      "overall_score": 0.9829246754646301,
+      "overall_quality": 0.9829246754646301
+    },
+    "texture_forensics": {
+      "lbp_uniformity": 0.1222768419845356,
+      "lbp_entropy": 2.193558965504922,
+      "glcm_contrast": 0.9465347088216383,
+      "glcm_energy": 0.1428714070792757,
+      "glcm_homogeneity": 0.7464824887908559,
+      "glcm_correlation": 0.990370254107058,
+      "gabor_mean": 13.653088569641113,
+      "gabor_std": 25.21434783935547,
+      "laplacian_energy": 0.0015443511383236887,
+      "spot_density": 0.10447320054492396,
+      "specular_gloss": 0.030307148219994362,
+      "skin_tone_std": 22.323571504086438,
+      "pigmentation_index": 10.248961878429544,
+      "wrinkle_forehead": 0.001825063022859362,
+      "nasolabial_depth": 0.048831757158041,
+      "crow_feet_score": 0.002145616418768705,
+      "nose_pore_density": 76.72663116455078,
+      "quality_sharpness_score": 101.90676178608383,
+      "quality_noise_score": 56.24219613739499,
+      "quality_index": 0.056468372781383155,
+      "texture_silicone_prob": 0.06982010650634765
+    },
+    "metrics": {
+      "cranial_face_index": 0.6239571891855699,
+      "jaw_width_ratio": 0.14102569183653674,
+      "canthal_tilt_3d_L": 36.60432978565676,
+      "canthal_tilt_3d_R": null,
+      "canthal_tilt_L": 36.60432978565676,
+      "canthal_tilt_R": null,
+      "interorbital_ratio": 0.6324485401105829,
+      "orbit_depth_L_ratio": 0.05560756204703241,
+      "orbit_depth_R_ratio": null,
+      "gonial_angle_L": 54.33613204956055,
+      "gonial_angle_R": 43.779518127441406,
+      "mandibular_ramus_length": 0.587833160783832,
+      "nose_width_ratio": 0.181857309147347,
+      "nose_projection_ratio": 0.32964206033562904,
+      "nasal_frontal_index": -0.3574577181091065,
+      "chin_projection_ratio": 0.07076860025220681,
+      "orbit_centroid_ratio": 0.4856695536493771,
+      "glabella_nasion_projection_angle": 170.91688571116057,
+      "forehead_slope_index": 1.8990765079017842,
+      "nasofacial_angle_ratio": 0.20568253340435913,
+      "orbital_perimeter_symmetry": 0.7475582361221313,
+      "orbital_asymmetry_index": 0.25244176387786865,
+      "gnathion_midline_deviation_ratio": 0.34945034980773926,
+      "ligament_zygomatic_L_depth": 1.01070237159729,
+      "_reconstruction_trust_score": 0.94,
+      "_reconstruction_issues_count": 1,
+      "reliability_weight": 0.5089999999999999,
+      "texture_lbp_complexity": 2.193558965504922,
+      "texture_lbp_uniformity": 0.1222768419845356,
+      "texture_specular_gloss": 0.030307148219994362,
+      "texture_silicone_prob": 0.06982010650634765,
+      "texture_pore_density": 76.72663116455078,
+      "texture_spot_density": 0.10447320054492396,
+      "texture_wrinkle_forehead": 0.001825063022859362,
+      "texture_wrinkle_nasolabial": 0.048831757158041,
+      "texture_global_smoothness": 0.39302751296302463,
+      "glcm_contrast": 0.9465347088216383,
+      "glcm_energy": 0.1428714070792757,
+      "glcm_homogeneity": 0.7464824887908559,
+      "glcm_correlation": 0.990370254107058
+    },
+    "selected_metric_keys": [
+      "cranial_face_index",
+      "forehead_slope_index",
+      "orbit_depth_L_ratio",
+      "canthal_tilt_L",
+      "nose_projection_ratio",
+      "nasofacial_angle_ratio",
+      "jaw_width_ratio",
+      "gonial_angle_L",
+      "chin_projection_ratio",
+      "chin_offset_asymmetry",
+      "orbital_asymmetry_index",
+      "texture_silicone_prob",
+      "texture_pore_density",
+      "texture_spot_density",
+      "texture_wrinkle_forehead",
+      "texture_wrinkle_nasolabial",
+      "texture_global_smoothness",
+      "texture_specular_gloss",
+      "texture_lbp_complexity"
+    ],
+    "artifacts": {
+      "uv_texture": "uv_texture.png",
+      "uv_confidence": "uv_confidence.png",
+      "mesh_obj": "mesh.obj",
+      "mesh_mtl": "mesh.mtl",
+      "face_crop": "face_crop.jpg",
+      "original_photo": "1999_12_01_y60p-11r-5.jpg"
+    },
+    "status": "ready",
+    "status_detail": {
+      "overall": "ready",
+      "quality_status": "ok",
+      "pose_status": "uncertain",
+      "reliability_tier": "medium",
+      "usable_for_comparison": true
+    },
+    "dataQuality": {
+      "coverageRatio": 0.9473684210526315
+    },
+    "lineage": {
+      "raw_sources": {
+        "original_image": "/Volumes/SDCARD/photo/main/1999_12_01_y60p-11r-5.jpg",
+        "file_size_bytes": 562649,
+        "file_hash": null
+      },
+      "extraction_steps": [
+        {
+          "step": "pose_detection",
+          "source": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:23:36Z"
+        },
+        {
+          "step": "3d_reconstruction",
+          "method": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:23:36Z"
+        },
+        {
+          "step": "texture_analysis",
+          "input": "face_crop.jpg",
+          "timestamp": "2026-05-07T01:23:36Z"
+        },
+        {
+          "step": "quality_assessment",
+          "timestamp": "2026-05-07T01:23:36Z"
+        },
+        {
+          "step": "geometry_metrics",
+          "bucket": "left_threequarter_deep",
+          "timestamp": "2026-05-07T01:23:36Z"
+        }
+      ],
+      "methodology_version": "ITER-6.5-2025-05-01",
+      "artifact_version": "2.1.0"
+    },
+    "extracted_at": "2026-05-07T01:23:36Z",
+    "artifact_version": "2.1.0",
+    "methodology_version": "ITER-6.5-2025-05-01",
+    "runtime_config_hash": "831bd8260bbdcacb",
+    "source_url": "/source/main/1999_12_01_y60p-11r-5.jpg"
+  },
+  "2000_05_18_y-66p6r4": {
+    "photo_id": "2000_05_18_y-66p6r4",
+    "dataset": "main",
+    "filename": "2000_05_18_y-66p6r4.jpg",
+    "source_path": "/Volumes/SDCARD/photo/main/2000_05_18_y-66p6r4.jpg",
+    "file_size_bytes": 512102,
+    "date_str": "2000-05-18",
+    "date_source": "filename",
+    "year": 2000,
+    "parsed_year": 2000,
+    "bucket": "right_threequarter_deep",
+    "angle": "right-3-4-deep",
+    "bucket_label": "Правые 3/4 глубокие",
+    "pose": {
+      "yaw": 62.1837043762207,
+      "pitch": -20.500795364379883,
+      "roll": -18.883983612060547,
+      "bucket": "right_threequarter_deep",
+      "pose_source": "3DDFA_v3",
+      "needs_manual_review": true
+    },
+    "reconstruction": {
+      "angles_deg": [
+        -20.500795364379883,
+        62.1837043762207,
+        -18.883983612060547
+      ],
+      "vertex_count": 35709,
+      "triangle_count": 70789
+    },
+    "quality": {
+      "success": true,
+      "is_rejected": false,
+      "blur_value": 224.53645108738039,
+      "sharpness_variance": 224.53645108738039,
+      "noise_level": 1.8906015157699585,
+      "overall_score": 0.9773127818107605,
+      "overall_quality": 0.9773127818107605
+    },
+    "texture_forensics": {
+      "lbp_uniformity": 0.11017163936201857,
+      "lbp_entropy": 2.2492215786227456,
+      "glcm_contrast": 1.2319817746400954,
+      "glcm_energy": 0.13316879666691617,
+      "glcm_homogeneity": 0.7111006419330324,
+      "glcm_correlation": 0.9861775918217013,
+      "gabor_mean": 9.93908405303955,
+      "gabor_std": 18.04578971862793,
+      "laplacian_energy": 0.0037218677505224604,
+      "spot_density": 0.08218403050765263,
+      "specular_gloss": 0.030889733058039485,
+      "skin_tone_std": 21.292313553459664,
+      "pigmentation_index": 7.093256480635852,
+      "wrinkle_forehead": 0.004339948055028248,
+      "nasolabial_depth": 0.037830933928489685,
+      "crow_feet_score": 0.002724158290767287,
+      "nose_pore_density": 283.5059509277344,
+      "quality_sharpness_score": 251.15148771321304,
+      "quality_noise_score": 53.41409933951026,
+      "quality_index": 0.3429815669317961,
+      "texture_silicone_prob": 0.0
+    },
+    "metrics": {
+      "cranial_face_index": 0.695628087041868,
+      "jaw_width_ratio": 0.12658546468065074,
+      "canthal_tilt_3d_L": null,
+      "canthal_tilt_3d_R": 18.23464363125568,
+      "canthal_tilt_L": null,
+      "canthal_tilt_R": 18.23464363125568,
+      "interorbital_ratio": 0.6240795549849406,
+      "orbit_depth_L_ratio": null,
+      "orbit_depth_R_ratio": 0.06131860443328462,
+      "gonial_angle_L": 55.550941467285156,
+      "gonial_angle_R": 43.34426498413086,
+      "mandibular_ramus_length": 0.6109249730123157,
+      "nose_width_ratio": 0.16154031572835567,
+      "nose_projection_ratio": 0.34685405583693646,
+      "nasal_frontal_index": -0.38517322356095296,
+      "chin_projection_ratio": 0.07475983191495499,
+      "orbit_centroid_ratio": 0.5035328266642652,
+      "glabella_nasion_projection_angle": 168.18578639771806,
+      "forehead_slope_index": 1.8687309599746451,
+      "nasofacial_angle_ratio": 0.24128142334456135,
+      "orbital_perimeter_symmetry": 0.7545047402381897,
+      "orbital_asymmetry_index": 0.2454952597618103,
+      "gnathion_midline_deviation_ratio": 0.3439820408821106,
+      "ligament_zygomatic_R_depth": 2.0430026054382324,
+      "_reconstruction_trust_score": 0.94,
+      "_reconstruction_issues_count": 1,
+      "reliability_weight": 0.41029999999999994,
+      "texture_lbp_complexity": 2.2492215786227456,
+      "texture_lbp_uniformity": 0.11017163936201857,
+      "texture_specular_gloss": 0.030889733058039485,
+      "texture_silicone_prob": 0.0,
+      "texture_pore_density": 283.5059509277344,
+      "texture_spot_density": 0.08218403050765263,
+      "texture_wrinkle_forehead": 0.004339948055028248,
+      "texture_wrinkle_nasolabial": 0.037830933928489685,
+      "texture_global_smoothness": 0.2117806031076057,
+      "glcm_contrast": 1.2319817746400954,
+      "glcm_energy": 0.13316879666691617,
+      "glcm_homogeneity": 0.7111006419330324,
+      "glcm_correlation": 0.9861775918217013
+    },
+    "selected_metric_keys": [
+      "cranial_face_index",
+      "forehead_slope_index",
+      "orbit_depth_R_ratio",
+      "canthal_tilt_R",
+      "nose_projection_ratio",
+      "nasofacial_angle_ratio",
+      "jaw_width_ratio",
+      "gonial_angle_R",
+      "chin_projection_ratio",
+      "chin_offset_asymmetry",
+      "orbital_asymmetry_index",
+      "texture_silicone_prob",
+      "texture_pore_density",
+      "texture_spot_density",
+      "texture_wrinkle_forehead",
+      "texture_wrinkle_nasolabial",
+      "texture_global_smoothness",
+      "texture_specular_gloss",
+      "texture_lbp_complexity"
+    ],
+    "artifacts": {
+      "uv_texture": "uv_texture.png",
+      "uv_confidence": "uv_confidence.png",
+      "mesh_obj": "mesh.obj",
+      "mesh_mtl": "mesh.mtl",
+      "face_crop": "face_crop.jpg",
+      "original_photo": "2000_05_18_y-66p6r4.jpg"
+    },
+    "status": "ready",
+    "status_detail": {
+      "overall": "ready",
+      "quality_status": "ok",
+      "pose_status": "uncertain",
+      "reliability_tier": "medium",
+      "usable_for_comparison": true
+    },
+    "dataQuality": {
+      "coverageRatio": 0.9473684210526315
+    },
+    "lineage": {
+      "raw_sources": {
+        "original_image": "/Volumes/SDCARD/photo/main/2000_05_18_y-66p6r4.jpg",
+        "file_size_bytes": 512102,
+        "file_hash": null
+      },
+      "extraction_steps": [
+        {
+          "step": "pose_detection",
+          "source": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:24:10Z"
+        },
+        {
+          "step": "3d_reconstruction",
+          "method": "3DDFA_v3",
+          "timestamp": "2026-05-07T01:24:10Z"
+        },
+        {
+          "step": "texture_analysis",
+          "input": "face_crop.jpg",
+          "timestamp": "2026-05-07T01:24:10Z"
+        },
+        {
+          "step": "quality_assessment",
+          "timestamp": "2026-05-07T01:24:10Z"
+        },
+        {
+          "step": "geometry_metrics",
+          "bucket": "right_threequarter_deep",
+          "timestamp": "2026-05-07T01:24:10Z"
+        }
+      ],
+      "methodology_version": "ITER-6.5-2025-05-01",
+      "artifact_version": "2.1.0"
+    },
+    "extracted_at": "2026-05-07T01:24:10Z",
+    "artifact_version": "2.1.0",
+    "methodology_version": "ITER-6.5-2025-05-01",
+    "runtime_config_hash": "78eed3fc8ed92508",
+    "source_url": "/source/main/2000_05_18_y-66p6r4.jpg"
+  }
+}
