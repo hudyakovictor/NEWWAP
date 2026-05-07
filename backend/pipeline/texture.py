@@ -101,6 +101,24 @@ class SkinTextureAnalyzer:
     def __init__(self):
         pass
 
+    def compute_synthetic_probability(self, specular_gloss: float, lbp_uniformity: float, pore_density: float) -> float:
+        """
+        Форензик-логика: Силиконовая маска или Deepfake обычно имеют:
+        1. Аномально высокие блики (specular_gloss > 0.08)
+        2. Идеально ровную текстуру без пор (pore_density < 50)
+        3. Высокую монотонность пикселей (lbp_uniformity > 0.2)
+        """
+        if np.isnan(specular_gloss) or np.isnan(lbp_uniformity):
+            return 0.0
+            
+        gloss_penalty = max(0.0, (specular_gloss - 0.05) / 0.05)
+        pore_penalty = max(0.0, (100.0 - (pore_density or 100.0)) / 100.0)
+        uniformity_penalty = max(0.0, (lbp_uniformity - 0.15) / 0.1)
+        
+        # Взвешенная сумма признаков синтетики
+        prob = (gloss_penalty * 0.5) + (pore_penalty * 0.3) + (uniformity_penalty * 0.2)
+        return float(np.clip(prob, 0.0, 1.0))
+
     def compute_specular_gloss(self, gray_uv: np.ndarray, skin_mask: np.ndarray) -> float:
         """
         Оценивает наличие глянцевых бликов (часто признак силиконовой маски).
@@ -195,19 +213,23 @@ class SkinTextureAnalyzer:
             angles=[0, np.pi/4], 
             levels=33, 
             symmetric=True, 
-            normed=True
-        )
+            normed=False
+        ).astype(np.float64)
+        
         glcm[0, :, :, :] = 0
         glcm[:, 0, :, :] = 0
         for d in range(glcm.shape[2]):
             for a in range(glcm.shape[3]):
                 sum_val = np.sum(glcm[:, :, d, a])
-                if sum_val > 0:
+                if sum_val > 1e-6:
                     glcm[:, :, d, a] /= sum_val
-        metrics.glcm_contrast = float(np.mean(graycoprops(glcm, 'contrast')[1:, :])) if glcm.shape[0] > 1 else 0.0
-        metrics.glcm_energy = float(np.mean(graycoprops(glcm, 'energy')[1:, :])) if glcm.shape[0] > 1 else 0.0
-        metrics.glcm_homogeneity = float(np.mean(graycoprops(glcm, 'homogeneity')[1:, :])) if glcm.shape[0] > 1 else 0.0
-        metrics.glcm_correlation = float(np.mean(graycoprops(glcm, 'correlation')[1:, :])) if glcm.shape[0] > 1 else 0.0
+                else:
+                    glcm[:, :, d, a] = 1.0 / (32 * 32)
+                    
+        metrics.glcm_contrast = float(np.mean(graycoprops(glcm, 'contrast')))
+        metrics.glcm_energy = float(np.mean(graycoprops(glcm, 'energy')))
+        metrics.glcm_homogeneity = float(np.mean(graycoprops(glcm, 'homogeneity')))
+        metrics.glcm_correlation = float(np.mean(graycoprops(glcm, 'correlation')))
 
         # Gabor responses
         gabor_responses = []

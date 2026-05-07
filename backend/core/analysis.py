@@ -1105,6 +1105,26 @@ def _save_mesh_assets(reconstruction: Any, texture_filename: str, output_dir: Pa
     return {"mesh_obj": obj_path.name, "mesh_mtl": mtl_path.name}
 
 
+def sanitize_for_json(obj):
+    import math
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, (float, np.floating, np.float32, np.float64)):
+        val = float(obj)
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return val
+    elif isinstance(obj, (int, np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, np.ndarray):
+        return sanitize_for_json(obj.tolist())
+    else:
+        return obj
+
+
 def _safe_atomic_write_json(target_path: Path, data: dict):
     import json, tempfile, os
     from backend.core.utils import _NumpyEncoder
@@ -1112,8 +1132,9 @@ def _safe_atomic_write_json(target_path: Path, data: dict):
     target_path.parent.mkdir(parents=True, exist_ok=True)
     fd, temp_path = tempfile.mkstemp(dir=str(target_path.parent), suffix=".tmp")
     try:
+        clean_data = sanitize_for_json(data)
         with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
+            json.dump(clean_data, f, ensure_ascii=False, indent=2, cls=_NumpyEncoder)
         os.replace(temp_path, str(target_path))
     except Exception as e:
         if os.path.exists(temp_path):
@@ -1181,20 +1202,36 @@ def extract_photo_bundle(
     geometry_metrics, pose_reliability = _compute_geometry_metrics(reconstruction, bucket)
 
 
-    # Итоговый вес достоверности: текстурная четкость * геометрическая стабильность (поза)
-    final_reliability = float(texture_forensics.get("reliability_weight", 1.0)) * pose_reliability
+    # 1. Рассчитываем вероятность силикона (H1) на лету
+    gloss = texture_forensics.get("specular_gloss", 0.0) or 0.0
+    uniformity = texture_forensics.get("lbp_uniformity", 0.0) or 0.0
+    pore_density = texture_forensics.get("nose_pore_density", 0.0) or 0.0
+    
+    silicone_prob = runtime.texture.compute_synthetic_probability(
+        specular_gloss=gloss,
+        lbp_uniformity=uniformity,
+        pore_density=pore_density
+    )
+    texture_forensics["texture_silicone_prob"] = silicone_prob
 
+    final_reliability = float(texture_forensics.get("quality_index", 0.8) or 0.8) * pose_reliability
+
+    # 2. ПРАВИЛЬНЫЙ МАППИНГ ТЕКСТУР В МЕТРИКИ (Устранение бага нулей)
     metrics = {
         **geometry_metrics,
         "reliability_weight": final_reliability,
-        "texture_lbp_complexity": float(texture_forensics.get("lbp_complexity", 0.0)),
-        "texture_lbp_uniformity": float(texture_forensics.get("lbp_uniformity", 0.0)),
-        "texture_specular_gloss": float(texture_forensics.get("specular_gloss", 0.0)),
-        "texture_silicone_prob": float(texture_forensics.get("silicone_probability", 0.0)),
-        "texture_pore_density": float(texture_forensics.get("pore_density", 0.0)),
-        "texture_wrinkle_forehead": float(texture_forensics.get("wrinkle_forehead", 0.0)),
-        "texture_wrinkle_nasolabial": float(texture_forensics.get("wrinkle_nasolabial", 0.0)),
-        "texture_global_smoothness": float(texture_forensics.get("global_smoothness", 0.0)),
+        "texture_lbp_complexity": float(texture_forensics.get("lbp_entropy", 0.0) or 0.0),
+        "texture_lbp_uniformity": float(uniformity),
+        "texture_specular_gloss": float(gloss),
+        "texture_silicone_prob": float(silicone_prob),
+        "texture_pore_density": float(pore_density),
+        "texture_wrinkle_forehead": float(texture_forensics.get("wrinkle_forehead", 0.0) or 0.0),
+        "texture_wrinkle_nasolabial": float(texture_forensics.get("nasolabial_depth", 0.0) or 0.0),
+        "texture_global_smoothness": float(1.0 / (float(texture_forensics.get("laplacian_energy", 0.01) or 0.01) * 1000 + 1.0)),
+        "glcm_contrast": float(texture_forensics.get("glcm_contrast", 0.0) or 0.0),
+        "glcm_energy": float(texture_forensics.get("glcm_energy", 0.0) or 0.0),
+        "glcm_homogeneity": float(texture_forensics.get("glcm_homogeneity", 0.0) or 0.0),
+        "glcm_correlation": float(texture_forensics.get("glcm_correlation", 0.0) or 0.0),
     }
 
     # [FIX-82, FIX-83, FIX-95] Версионирование и lineage для traceability

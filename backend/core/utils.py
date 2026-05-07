@@ -349,12 +349,33 @@ class _NumpyEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
+def sanitize_for_json(obj):
+    import math
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, (float, np.floating, np.float32, np.float64)):
+        val = float(obj)
+        if math.isnan(val) or math.isinf(val):
+            return None
+        return val
+    elif isinstance(obj, (int, np.integer, np.int32, np.int64)):
+        return int(obj)
+    elif isinstance(obj, np.ndarray):
+        return sanitize_for_json(obj.tolist())
+    else:
+        return obj
+
+
 def write_json(path: Path, payload: Any) -> None:
     """Atomic write: write to tmp file then rename to prevent partial/corrupt JSON on crash."""
     ensure_directory(path.parent)
     tmp = path.with_suffix(".tmp")
     try:
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2, cls=_NumpyEncoder), encoding="utf-8")
+        clean_payload = sanitize_for_json(payload)
+        tmp.write_text(json.dumps(clean_payload, ensure_ascii=False, indent=2, cls=_NumpyEncoder), encoding="utf-8")
         tmp.replace(path)
     except Exception:
         if tmp.exists():
