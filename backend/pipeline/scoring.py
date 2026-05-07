@@ -7,20 +7,19 @@ from core.constants import TRIMMED_KEEP_RATIO, MIN_KEEP_N, FACE_SCALE_Y_FACTOR
 
 def _get_face_scale_from_points(points: np.ndarray) -> float:
     """
-    [ITER-1.2] Stable face scale estimation.
-    Uses max(x_extent, y_extent * FACE_SCALE_Y_FACTOR) to avoid over-scaling in profiles.
+    [ИСПРАВЛЕНИЕ №3] Трехмерное вычисление масштаба лица.
+    Использует евклидову норму между перцентилями вместо одномерных осей.
     """
     if points.shape[0] == 0:
         return 1.0
     
-    # Use percentiles to avoid outliers
-    q_x = np.percentile(points[:, 0], [95, 5])
-    q_y = np.percentile(points[:, 1], [95, 5])
+    # Берем перцентили по каждой из 3-х осей
+    q_95 = np.percentile(points, 95, axis=0)
+    q_05 = np.percentile(points, 5, axis=0)
     
-    x_extent = q_x[0] - q_x[1]
-    y_extent = q_y[0] - q_y[1]
+    # 3D Евклидово расстояние между 95% и 5% границами
+    scale = float(np.linalg.norm(q_95 - q_05))
     
-    scale = float(max(x_extent, y_extent * FACE_SCALE_Y_FACTOR))
     return max(scale, 1e-6)
 
 def compute_interorbital_ratio(canthus_L_inner: np.ndarray, canthus_R_inner: np.ndarray, zygomatic_breadth: float) -> float:
@@ -39,24 +38,32 @@ def _robust_trimmed_3d_error(
     min_keep_n: int = MIN_KEEP_N
 ) -> float:
     """
-    [ITER-1.2] Trimmed weighted mean with min_keep_n guard.
+    [ИСПРАВЛЕНИЕ №4] Корректное усеченное среднее (Trimmed mean).
+    Удаляет экстремальные выбросы с обеих сторон распределения для полной робастности.
     """
     if values.size == 0:
         return 0.0
     
-    magnitudes = np.abs(values)
-    n = magnitudes.size
-    
+    n = values.size
     if n <= min_keep_n:
         return weighted_mean_abs(values, weights)
     
-    # Calculate how many to keep
-    n_keep = max(int(n * keep_ratio), min_keep_n)
+    # Определяем сколько элементов отрезать с каждой стороны
+    cut_count = int(n * (1.0 - keep_ratio) / 2)
     
-    # Get cutoff threshold
-    cutoff = float(np.partition(magnitudes, n_keep - 1)[n_keep - 1])
-    
-    keep_mask = magnitudes <= cutoff
+    if cut_count == 0 or (n - 2 * cut_count) < min_keep_n:
+        # Если после симметричного обрезания остается слишком мало точек,
+        # отрезаем только самые худшие ошибки (верхний хвост)
+        n_keep = max(int(n * keep_ratio), min_keep_n)
+        cutoff = float(np.partition(np.abs(values), n_keep - 1)[n_keep - 1])
+        keep_mask = np.abs(values) <= cutoff
+    else:
+        # Симметричное отсечение
+        sorted_indices = np.argsort(values)
+        keep_indices = sorted_indices[cut_count : n - cut_count]
+        keep_mask = np.zeros(n, dtype=bool)
+        keep_mask[keep_indices] = True
+        
     if not np.any(keep_mask):
         return weighted_mean_abs(values, weights)
         

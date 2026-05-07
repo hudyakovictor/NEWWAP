@@ -3,16 +3,17 @@ from __future__ import annotations
 import numpy as np
 from .types import AlignmentResult
 
+# ИСПРАВЛЕНИЕ №1: Корректные знаки для канонических ракурсов
 _CANONICAL_YAW_BY_VIEW_GROUP: dict[str, float] = {
     "frontal": 0.0,
-    "left_threequarter_light": -22.5,
-    "right_threequarter_light": 22.5,
-    "left_threequarter_mid": -45.0,
-    "right_threequarter_mid": 45.0,
-    "left_threequarter_deep": -67.5,
-    "right_threequarter_deep": 67.5,
-    "left_profile": -90.0,
-    "right_profile": 90.0,
+    "left_threequarter_light": 22.5,   # Было -22.5
+    "right_threequarter_light": -22.5, # Было 22.5
+    "left_threequarter_mid": 45.0,     # Было -45.0
+    "right_threequarter_mid": -45.0,   # Было 45.0
+    "left_threequarter_deep": 67.5,    # Было -67.5
+    "right_threequarter_deep": -67.5,  # Было 67.5
+    "left_profile": 90.0,              # Было -90.0
+    "right_profile": -90.0,            # Было 90.0
 }
 
 def rigid_umeyama(
@@ -28,8 +29,9 @@ def rigid_umeyama(
         raise ValueError(f"source/target must be (N,3), got {source.shape} / {target.shape}")
     if source.shape[0] != target.shape[0]:
         raise ValueError(f"source/target length mismatch: {source.shape[0]} vs {target.shape[0]}")
-    if source.shape[0] < 3:
-        raise ValueError("source/target must have at least 3 points for 3D alignment")
+    # ИСПРАВЛЕНИЕ №8: Требуется минимум 4 точки для избежания вырожденности ковариации
+    if source.shape[0] < 4:
+        raise ValueError("source/target must have at least 4 points for reliable 3D alignment")
 
     if weights is None:
         weights = np.ones(len(source), dtype=np.float32)
@@ -49,8 +51,8 @@ def rigid_umeyama(
 
     residual_before = float(np.sum(np.linalg.norm(source - target, axis=1) * weights.flatten()))
     
-    # Covariance matrix
-    m = (centered_source * w).T @ centered_target
+    # ИСПРАВЛЕНИЕ №2: Корректное умножение весов на столбцы для матрицы ковариации
+    m = centered_source.T @ (w * centered_target)
     
     # [ITER-1.1] Rank Check Guard
     if np.linalg.matrix_rank(m) < 3:
