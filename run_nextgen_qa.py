@@ -80,9 +80,11 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description="NEWWAP NEXT-GEN FORENSIC QA")
     parser.add_argument("--limit", type=int, default=10, help="Number of pairs per pose bucket")
+    parser.add_argument("--force", action="store_true", help="Force recompute even if data exists")
     args = parser.parse_args()
 
     limit_val = args.limit
+    force_recompute = args.force
 
     logger.info("=== ИНИЦИАЛИЗАЦИЯ СТРЕСС-ТЕСТИРОВАНИЯ ЭФФЕКТИВНОСТИ 99 БАЛЛОВ ===")
     logger.info(f"Main Photos Dir: {SETTINGS.main_photos_dir}")
@@ -162,13 +164,19 @@ def main():
         logger.debug(f"Обработка основного фото: {m_path.name} (ID: {photo_id_main})")
         
         t0 = time.perf_counter()
-        mem0 = get_memory_mb()
-        sum_main = service.process_photo("main", photo_id_main)
+        # Проверяем, есть ли уже готовый результат
+        existing_main = service.get_record("main", photo_id_main)
+        if existing_main and existing_main.get("status") == "ready" and not force_recompute:
+            sum_main = existing_main
+            logger.debug(f"  [CACHE] Используем готовую сводку для {photo_id_main}")
+        else:
+            sum_main = service.process_photo("main", photo_id_main)
+        
         t_main = time.perf_counter() - t0
         io_times_main.append(t_main)
         mem_usages.append(get_memory_mb())
         
-        logger.debug(f"  Основное фото извлечено за {t_main:.2f}с | RAM: {get_memory_mb():.2f} MB")
+        logger.debug(f"  Основное фото получено за {t_main:.2f}с | RAM: {get_memory_mb():.2f} MB")
 
         # Проверка создания textured OBJ для Quick Look
         storage_main = SETTINGS.storage_root / "main" / photo_id_main
@@ -181,25 +189,37 @@ def main():
         logger.debug(f"Обработка калибровочного фото: {c_path.name} (ID: {photo_id_calib})")
         
         t0 = time.perf_counter()
-        sum_calib = service.process_photo("calibration", photo_id_calib)
+        existing_calib = service.get_record("calibration", photo_id_calib)
+        if existing_calib and existing_calib.get("status") == "ready" and not force_recompute:
+            sum_calib = existing_calib
+            logger.debug(f"  [CACHE] Используем готовую сводку для {photo_id_calib}")
+        else:
+            sum_calib = service.process_photo("calibration", photo_id_calib)
+            
         t_calib = time.perf_counter() - t0
         io_times_calib.append(t_calib)
         
-        logger.debug(f"  Калибровочное фото извлечено за {t_calib:.2f}с")
+        logger.debug(f"  Калибровочное фото получено за {t_calib:.2f}с")
 
         # 3. Кросс-сравнение и вычисление Байесовского вывода
         logger.debug("  Вычисление Байесовского вывода (Main vs Calibration)...")
         verdict = calculate_bayesian_evidence(sum_main, sum_calib)
         comparison_results.append(verdict)
 
+        def safe_f(val, fmt=".4f"):
+            if val is None: return "N/A"
+            try: return f"{float(val):{fmt}}"
+            except: return "N/A"
+
+        posteriors = verdict.get("posteriors", {})
         logger.info(f"  Результат пары:")
         logger.info(f"    - Основное фото:   {m_path.name} (Год: {sum_main.get('parsed_year', 2000)})")
         logger.info(f"    - Калибровочное:   {c_path.name} (Год: {sum_calib.get('parsed_year', 2000)})")
-        logger.info(f"    - Разница лет:     {verdict.get('delta_years')} лет")
-        logger.info(f"    - Костный Delta:   {verdict.get('geometric_divergence'):.4f}")
-        logger.info(f"    - Покрытие (Cov):  {verdict.get('dataQuality', {}).get('coverageRatio', 0.0):.1%}")
-        logger.info(f"    - Апостериорные:   H0={verdict.get('H0'):.4f}, H1={verdict.get('H1'):.4f}, H2={verdict.get('H2'):.4f}")
-        logger.info(f"    - ВЕРДИКТ:         {verdict.get('verdict')}")
+        logger.info(f"    - Разница лет:     {verdict.get('delta_years', 'N/A')} лет")
+        logger.info(f"    - Костный Delta:   {safe_f(verdict.get('geometric_divergence'))}")
+        logger.info(f"    - Покрытие (Cov):  {safe_f(verdict.get('dataQuality', {}).get('coverageRatio', 0.0), '.1%')}")
+        logger.info(f"    - Апостериорные:   H0={safe_f(posteriors.get('H0'))}, H1={safe_f(posteriors.get('H1'))}, H2={safe_f(posteriors.get('H2'))}")
+        logger.info(f"    - ВЕРДИКТ:         {verdict.get('verdict', 'UNKNOWN')}")
 
     total_time = time.perf_counter() - start_time
 
