@@ -356,6 +356,8 @@ def sanitize_for_json(obj):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, bool):
+        return obj
     elif isinstance(obj, (float, np.floating, np.float32, np.float64)):
         val = float(obj)
         if math.isnan(val) or math.isinf(val):

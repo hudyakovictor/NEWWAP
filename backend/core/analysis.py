@@ -1112,6 +1112,8 @@ def sanitize_for_json(obj):
         return {k: sanitize_for_json(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, bool):
+        return obj
     elif isinstance(obj, (float, np.floating, np.float32, np.float64)):
         val = float(obj)
         if math.isnan(val) or math.isinf(val):
@@ -1214,17 +1216,25 @@ def extract_photo_bundle(
     )
     texture_forensics["texture_silicone_prob"] = silicone_prob
 
-    final_reliability = float(texture_forensics.get("quality_index", 0.8) or 0.8) * pose_reliability
+    # Взвешенная надежность (Weighted Reliability)
+    # Геометрия (3D) важнее для криминалистики, чем идеальный фокус текстуры
+    tex_reliability = float(texture_forensics.get("quality_index", 0.5) or 0.5)
+    if quality.get("overall_score", 0) > 0.8:
+        tex_reliability = max(tex_reliability, 0.6)
+
+    # Берем взвешенное среднее: 70% доверяем геометрии (поза), 30% текстура
+    final_reliability = (pose_reliability * 0.7) + (tex_reliability * 0.3)
 
     # 2. ПРАВИЛЬНЫЙ МАППИНГ ТЕКСТУР В МЕТРИКИ (Устранение бага нулей)
     metrics = {
         **geometry_metrics,
-        "reliability_weight": final_reliability,
+        "reliability_weight": float(final_reliability),
         "texture_lbp_complexity": float(texture_forensics.get("lbp_entropy", 0.0) or 0.0),
         "texture_lbp_uniformity": float(uniformity),
         "texture_specular_gloss": float(gloss),
         "texture_silicone_prob": float(silicone_prob),
         "texture_pore_density": float(pore_density),
+        "texture_spot_density": float(texture_forensics.get("spot_density", 0.0) or 0.0),
         "texture_wrinkle_forehead": float(texture_forensics.get("wrinkle_forehead", 0.0) or 0.0),
         "texture_wrinkle_nasolabial": float(texture_forensics.get("nasolabial_depth", 0.0) or 0.0),
         "texture_global_smoothness": float(1.0 / (float(texture_forensics.get("laplacian_energy", 0.01) or 0.01) * 1000 + 1.0)),
@@ -1233,6 +1243,15 @@ def extract_photo_bundle(
         "glcm_homogeneity": float(texture_forensics.get("glcm_homogeneity", 0.0) or 0.0),
         "glcm_correlation": float(texture_forensics.get("glcm_correlation", 0.0) or 0.0),
     }
+
+    # Очистка мертвых зон UV: заполняем их реальными данными или удаляем ключи, если они пустые
+    texture_forensics["uv_spot_density"] = texture_forensics.pop("uv_spot_density", texture_forensics.get("spot_density"))
+    texture_forensics["uv_texture_entropy"] = texture_forensics.pop("uv_texture_entropy", texture_forensics.get("lbp_entropy"))
+    texture_forensics["uv_silicone_flatness"] = texture_forensics.pop("uv_silicone_flatness", silicone_prob)
+    
+    # Безопасно удаляем неиспользуемые null
+    texture_forensics.pop("uv_wrinkle_energy", None)
+    texture_forensics.pop("uv_retouch_score", None)
 
     # [FIX-82, FIX-83, FIX-95] Версионирование и lineage для traceability
     # Строим lineage доказательств
@@ -1260,8 +1279,8 @@ def extract_photo_bundle(
         "overall": "ready",
         "quality_status": "ok" if quality.get("overall_score", 0) > 0.5 else "low_quality",
         "pose_status": "ok" if not pose.get("needs_manual_review", False) else "uncertain",
-        "reliability_tier": "high" if final_reliability > 0.8 else ("medium" if final_reliability > 0.5 else "low"),
-        "usable_for_comparison": final_reliability > 0.5 and quality.get("overall_score", 0) > 0.5,
+        "reliability_tier": "high" if final_reliability > 0.75 else ("medium" if final_reliability > 0.4 else "low"),
+        "usable_for_comparison": bool(final_reliability > 0.35 and quality.get("overall_score", 0) > 0.4),
     }
     
     # [FIX-YR1] Add date/year fields for calculate_bayesian_evidence compatibility
