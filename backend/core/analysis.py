@@ -1244,12 +1244,10 @@ def extract_photo_bundle(
         "glcm_correlation": float(texture_forensics.get("glcm_correlation", 0.0) or 0.0),
     }
 
-    # Очистка мертвых зон UV: заполняем их реальными данными или удаляем ключи, если они пустые
-    texture_forensics["uv_spot_density"] = texture_forensics.pop("uv_spot_density", texture_forensics.get("spot_density"))
-    texture_forensics["uv_texture_entropy"] = texture_forensics.pop("uv_texture_entropy", texture_forensics.get("lbp_entropy"))
-    texture_forensics["uv_silicone_flatness"] = texture_forensics.pop("uv_silicone_flatness", silicone_prob)
-    
     # Безопасно удаляем неиспользуемые null
+    texture_forensics.pop("uv_spot_density", None)
+    texture_forensics.pop("uv_texture_entropy", None)
+    texture_forensics.pop("uv_silicone_flatness", None)
     texture_forensics.pop("uv_wrinkle_energy", None)
     texture_forensics.pop("uv_retouch_score", None)
 
