@@ -46,26 +46,26 @@ def parse_angles_from_filename(filename: str) -> Dict[str, float]:
     
     return angles
 
-def _compute_snr_db(signal_error: float, noise_baseline: float) -> float:
+def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
     """
-    [BUGFIX-8] Вычисляет SNR в логарифмической шкале (децибелы).
-    Формула: SNR_dB = 10 * log10(SNR_linear)
+    [CRITICAL FIX] Вычисляет линейный SNR — совместимый с порогами в pipeline/verdict.py.
+
+    БЫЛО: _compute_snr_db() — возвращал децибелы (-30...+30 dB).
+    СТАЛО: линейный SNR (0.0...∞), совместимый с:
+      - SNR_UNCERTAIN_THRESHOLD = 1.0  (из core/constants.py)
+      - SNR_SIGNAL_THRESHOLD    = 2.0  (из core/constants.py)
+      - pipeline/verdict.py BayesianMultiHypothesisEngine.synthesize()
+
+    При dB-шкале threshold=2.0 означал ~1.58× (почти нет сигнала),
+    что делало CalibrationAnalyzer.is_significant полностью бессмысленным.
     """
-    # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
-    # чтобы избежать взрывного роста SNR при идеальных масках (G-03).
+    # Жёсткий нижний предел шума для защиты от взрывного роста (G-03)
     safe_noise = max(abs(noise_baseline), 0.005)
 
-    # Сигнал не может быть отрицательным
+    # Сигнал = превышение над ожидаемым шумом (не может быть отрицательным)
     safe_signal = max(signal_error - safe_noise, 0.0)
 
-    # Линейный SNR
-    snr_linear = safe_signal / safe_noise
-    
-    # [BUGFIX-8] Перевод в децибелы
-    # Добавляем epsilon чтобы избежать log10(0)
-    snr_db = 10.0 * np.log10(snr_linear + 1e-10)
-    
-    return snr_db
+    return safe_signal / safe_noise
 
 @dataclass
 class CalibrationDecomposition:
@@ -226,8 +226,8 @@ class CalibrationAnalyzer:
             pred_noise = self.model.predict_noise(zone, pose_delta_mag)
             reliability = self.model.get_reliability(zone)
 
-            # [ITER-1] ИСПРАВЛЕНИЕ: Используем унифицированную функцию линейного SNR
-            snr = _compute_snr_db(error, pred_noise)
+            # [FIX SNR] Линейный SNR — совместим с SNR_SIGNAL_THRESHOLD=2.0 в pipeline/verdict.py
+            snr = _compute_linear_snr(error, pred_noise)
             signal = max(0.0, error - pred_noise)
             
             zone_details.append({
@@ -290,7 +290,7 @@ class CalibrationAnalyzer:
             expected_noise = 0.015 + nuisance.pose_delta_mag * 0.001
 
         signal = max(raw_error - expected_noise, 0.0)
-        snr = _compute_snr_db(raw_error, expected_noise)
+        snr = _compute_linear_snr(raw_error, expected_noise)
 
         return CalibrationDecomposition(
             signal=float(signal),
@@ -325,7 +325,7 @@ class CalibrationAnalyzer:
                 source = "prior"
 
             reliability = self.model.get_reliability(zone)
-            snr = _compute_snr_db(error, pred_noise)
+            snr = _compute_linear_snr(error, pred_noise)
             signal = max(0.0, error - pred_noise)
 
             zone_details.append({

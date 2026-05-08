@@ -251,20 +251,23 @@ def _get_epoch_texture_adjustments(year: int) -> Dict[str, float]:
 
 def _determine_bucket_from_pose(pose: Dict[str, Any]) -> str:
     """
-    Определяет pose bucket из yaw/pitch/roll.
-    Упрощенная версия PoseDetector.get_bucket_name.
+    [FIX Бага #4] Определяет pose bucket из yaw/pitch/roll.
+    Исправлено: 5-уровневая система бакетов с правильными диапазонами.
     """
-    yaw = abs(float(pose.get("yaw", 0.0)))
+    yaw_raw = float(pose.get("yaw", 0.0))
+    yaw = abs(yaw_raw)
+    side = "right" if yaw_raw > 0 else "left"
     
-    # Типичные диапазоны bucket-ов
-    if yaw <= 10:
+    if yaw <= 12:
         return "frontal"
     elif yaw <= 25:
-        return "right_threequarter" if pose.get("yaw", 0) > 0 else "left_threequarter"
-    elif yaw <= 50:
-        return "right_profile" if pose.get("yaw", 0) > 0 else "left_profile"
+        return f"{side}_threequarter_light"
+    elif yaw <= 45:
+        return f"{side}_threequarter_mid"
+    elif yaw <= 65:
+        return f"{side}_threequarter_extreme"
     else:
-        return "unclassified"
+        return f"{side}_profile"
 
 
 def _classify_h1_subtype(
@@ -429,25 +432,58 @@ def _compute_texture_h1_evidence(
     if lbp_combined is not None:
         lbp_combined += epoch_adj.get("lbp_bias", 0)
     
-    # [FIX-17] Отрицательное доказательство для H0 (естественность текстуры)
-    # Чем больше признаков естественной кожи - тем ниже вероятность синтетики
-    # [BUGFIX] Ключи текстур приведены в соответствие с extract_photo_bundle
+    # [FIX Бага #7] Анти-доказательство для H0 (естественность кожи).
+    # КРИТИЧНО: float(val or 0.0) обнуляло natural_score для не-фронтальных фото
+    # (поры не видны на профилях) — все фото на профиле казались синтетикой!
+    def _safe_avg_natural(val_a, val_b):
+        """None-безопасное среднее: None игнорируется, а не заменяется 0."""
+        if val_a is None and val_b is None:
+            return None
+        if val_a is None:
+            return float(val_b)
+        if val_b is None:
+            return float(val_a)
+        return (float(val_a) + float(val_b)) / 2
+    
+    pore_a = tex_a.get("texture_pore_density")
+    pore_b = tex_b.get("texture_pore_density")
+    lbp_a = tex_a.get("texture_lbp_complexity")
+    lbp_b = tex_b.get("texture_lbp_complexity")
+    wrink_f_a = tex_a.get("texture_wrinkle_forehead")
+    wrink_n_a = tex_a.get("texture_wrinkle_nasolabial")
+    wrink_f_b = tex_b.get("texture_wrinkle_forehead")
+    wrink_n_b = tex_b.get("texture_wrinkle_nasolabial")
+    wrinkle_a = (float(wrink_f_a) + float(wrink_n_a)) / 2 if wrink_f_a is not None and wrink_n_a is not None else None
+    wrinkle_b = (float(wrink_f_b) + float(wrink_n_b)) / 2 if wrink_f_b is not None and wrink_n_b is not None else None
+    
+    pore_avg = _safe_avg_natural(pore_a, pore_b)
+    lbp_avg = _safe_avg_natural(lbp_a, lbp_b)
+    wrinkle_avg = _safe_avg_natural(wrinkle_a, wrinkle_b)
+    
     natural_markers = {
-        "pore_density": (float(tex_a.get("texture_pore_density", 0.0)) + float(tex_b.get("texture_pore_density", 0.0))) / 2,
-        "lbp_complexity": (float(tex_a.get("texture_lbp_complexity", 0.0)) + float(tex_b.get("texture_lbp_complexity", 0.0))) / 2,
-        "wrinkle_detail": (
-            float(tex_a.get("texture_wrinkle_forehead", 0.0)) + float(tex_a.get("texture_wrinkle_nasolabial", 0.0)) +
-            float(tex_b.get("texture_wrinkle_forehead", 0.0)) + float(tex_b.get("texture_wrinkle_nasolabial", 0.0))
-        ) / 4,
+        "pore_density": pore_avg,
+        "lbp_complexity": lbp_avg,
+        "wrinkle_detail": wrinkle_avg,
     }
     
-    # Нормализованный score естественности [0, 1]
-    # Высокие значения pore_density, lbp_complexity, wrinkle_detail = естественная кожа
-    natural_score = (
-        min(1.0, natural_markers["pore_density"] / 50.0) * 0.4 +
-        min(1.0, natural_markers["lbp_complexity"] / 3.0) * 0.35 +
-        min(1.0, natural_markers["wrinkle_detail"] / 20.0) * 0.25
-    )
+    # [FIX Бага #7] Нормализуем NATURAL_SCORE только по ДОСТУПНЫМ метрикам
+    # (например, поры не видны на профиле — не штрафуем за это!)
+    avail_score = 0.0
+    avail_weight = 0.0
+    if pore_avg is not None:
+        avail_score += min(1.0, pore_avg / 50.0) * 0.4
+        avail_weight += 0.4
+    if lbp_avg is not None:
+        avail_score += min(1.0, lbp_avg / 3.0) * 0.35
+        avail_weight += 0.35
+    if wrinkle_avg is not None:
+        avail_score += min(1.0, wrinkle_avg / 20.0) * 0.25
+        avail_weight += 0.25
+    
+    if avail_weight > 0:
+        natural_score = avail_score / avail_weight  # Нормализируем по доступным
+    else:
+        natural_score = 0.5  # Нейтральный маркер при отсутствии любых данных
     
     # [FIX-C4] Фильтруем None значения — не используем 0.5 как дефолт
     features = {
@@ -525,31 +561,43 @@ def calculate_bayesian_evidence(
     year_b = summary_b.get("year", summary_b.get("parsed_year", 2000))
     delta_years = abs(year_a - year_b)
     
-    # 1. Считаем дельты по костным зонам
+    # 1. [FIX Бага #1] Считаем дельты по ВСЕМ взвешенным зонам из ZONE_WEIGHTS (не только 3!)
     bone_delta_sum = 0.0
+    total_weight = 0.0
     valid_zones = 0
-    for zone in ["jaw_width_ratio", "cranial_face_index", "nose_projection_ratio"]:
-        if zone in metrics_a and zone in metrics_b and metrics_a[zone] is not None and metrics_b[zone] is not None:
-            bone_delta_sum += abs(metrics_a[zone] - metrics_b[zone])
+    zone_deltas = {}  # Для последующего SNR
+    
+    for zone, weight in ZONE_WEIGHTS.items():
+        val_a = metrics_a.get(zone)
+        val_b = metrics_b.get(zone)
+        if val_a is not None and val_b is not None and not (isinstance(val_a, float) and math.isnan(val_a)) and not (isinstance(val_b, float) and math.isnan(val_b)):
+            delta = abs(float(val_a) - float(val_b))
+            bone_delta_sum += delta * weight
+            total_weight += weight
             valid_zones += 1
+            zone_deltas[zone] = delta
             
-    avg_bone_delta = bone_delta_sum / max(valid_zones, 1)
+    avg_bone_delta = bone_delta_sum / max(total_weight, 1e-6) if valid_zones > 0 else 0.0
     
     # 2. Подключаем движок из verdict.py
-    # [BUGFIX] Используем унифицированные априорные вероятности из constants.py (P3-3)
     engine = BayesianForensicEngine()
     
-    # Базовый шум 0.04. Надежность берем минимальную из пары
+    # [FIX Бага #3] Базовый шум: берём из калибровки, если есть — иначе хардкод 0.04
+    base_sigma = 0.04
+    if calibration_stats and "sigma_noise" in calibration_stats:
+        base_sigma = max(float(calibration_stats["sigma_noise"]), 0.01)
+    
+    # Надежность берём минимальную из пары
     reliability = min(metrics_a.get("reliability_weight", 0.5), metrics_b.get("reliability_weight", 0.5))
     
-    # 3. Текстурное H1 доказательство — [BUGFIX] реально вычисляем, а не 1e-6
+    # 3. Текстурное H1 доказательство — реально вычисляем
     tex_h1_result = _compute_texture_h1_evidence(tex_a, tex_b, year_a, year_b)
     texture_h1_likelihood = float(tex_h1_result.get("likelihood", 1e-6))
     
-    # 4. Вызов ПРАВИЛЬНОЙ функции (время расширяет дисперсию, а не меняет приор)
+    # 4. Вызов движка (время расширяет дисперсию, а не меняет приор)
     likelihoods = engine.compute_likelihoods(
         metric_delta=avg_bone_delta, 
-        base_sigma=0.04, 
+        base_sigma=base_sigma, 
         delta_years=delta_years, 
         reliability=reliability,
         texture_h1_likelihood=texture_h1_likelihood,
@@ -778,7 +826,8 @@ def _assess_reconstruction_trust(recon: ReconstructionResult) -> dict[str, Any]:
     # 4. Проверяем углы (не должны быть экстремальными)
     angles = getattr(recon, 'angles_deg', None)
     if angles is not None:
-        yaw, pitch, roll = angles if len(angles) >= 3 else (0, 0, 0)
+        # [FIX Бага #8] Порядок углов 3DDFA: [pitch, yaw, roll] — НЕ [yaw, pitch, roll]!
+        pitch, yaw, roll = angles if len(angles) >= 3 else (0, 0, 0)
         if abs(yaw) > 60:
             issues.append(f"Extreme yaw: {yaw:.1f}°")
         if abs(pitch) > 45:

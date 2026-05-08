@@ -34,17 +34,21 @@ class BayesianForensicEngine:
         adjusted_sigma = effective_sigma / max(reliability, 0.1)
         
         # 3. Расчет плотностей вероятностей (PDF)
-        # Likelihood для H0 (Тот же человек): Гауссиана вокруг 0
+        # Likelihood для H0 (Тот же человек): Гауссиана строго вокруг 0
         l_h0 = self._gaussian_pdf(metric_delta, mean=0.0, sigma=adjusted_sigma)
         
-        # [BUGFIX] H1 (подмена/маска/дипфейк): берём из текстурного анализа
-        # Если текстурное доказательство не передано — используем минимальный baseline
-        l_h1 = max(float(texture_h1_likelihood), 1e-6)
+        # [FIX Бага #9]: Likelihood H1 (Маска/Подмена).
+        # Маска сохраняет общую геометрию, но вносит небольшие искажения (~5%) + текстурные аномалии.
+        # Объединяем геометрическую (малое смещение) и текстурную компоненту.
+        h1_geom_likelihood = self._gaussian_pdf(metric_delta, mean=0.05, sigma=adjusted_sigma * 2.0)
+        l_h1 = max(float(texture_h1_likelihood) * h1_geom_likelihood * 10.0, 1e-6)
         
-        # Likelihood для H2 (Разные люди): Равномерное или широкое распределение
-        # Базируется на популяционной дисперсии (population_sigma)
-        population_sigma = base_sigma * 15.0 # Разные люди отличаются сильно
-        l_h2 = self._gaussian_pdf(metric_delta, mean=0.0, sigma=population_sigma)
+        # [FIX Бага #2]: Likelihood H2 (Разные люди).
+        # КРИТИЧНО: разные люди имеют СМЕЩЁННУЮ дельту — пик НЕ на 0, а на типичном
+        # популяционном расстоянии между лицами (~0.20 в нормализованных единицах).
+        # mean=0.0 делало H2 неотличимым от H0 — фундаментальная ошибка!
+        population_sigma = base_sigma * 15.0  # Широкий разброс между разными людьми
+        l_h2 = self._gaussian_pdf(metric_delta, mean=0.20, sigma=population_sigma)
         
         return np.array([l_h0, l_h1, l_h2])
     
