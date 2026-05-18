@@ -198,7 +198,8 @@ class CascadeEngine:
         
         # C-02: Filter texture metrics based on pose bucket keys
         from core.utils import BUCKET_METRIC_KEYS, classify_pose_bucket
-        bucket = classify_pose_bucket(recon.angles_deg[1])
+        # [BUGFIX] Invert the yaw sign to align 3DDFA's coordinate system with the filename pose convention
+        bucket = classify_pose_bucket(-recon.angles_deg[1])
         valid_keys = BUCKET_METRIC_KEYS.get(bucket, set())
         filtered_tex = {k: v for k, v in tex.items() if k in valid_keys or k == "quality"}
         

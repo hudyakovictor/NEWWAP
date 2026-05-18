@@ -201,7 +201,9 @@ class ReconstructionAdapter:
 
         trans_p = alpha_dict["trans"].detach().cpu().numpy()[0]
 
-        _yaw = float(angles_deg[1])
+        # [BUGFIX] Invert the yaw sign to align 3DDFA's coordinate system with the filename pose convention
+        # Positive yaw in filenames = right side, negative yaw = left side
+        _yaw = -float(angles_deg[1])
         _ayaw = abs(_yaw)
         if _ayaw < 15.0:
             _pose_bucket = "frontal"

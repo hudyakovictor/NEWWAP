@@ -1259,22 +1259,38 @@ def extract_photo_bundle(
         neutral_expression=False,
     )
 
-    angles_deg = reconstruction.angles_deg
-    yaw = float(angles_deg[1])
-    pitch = float(angles_deg[0])
-    roll = float(angles_deg[2])
+    from backend.core.utils import parse_pose_from_filename
+    fn_pose = parse_pose_from_filename(source_path.name)
+    if fn_pose:
+        yaw = fn_pose["yaw"]
+        pitch = fn_pose["pitch"]
+        roll = fn_pose["roll"]
+        bucket = fn_pose["bucket"]
+        pose = {
+            "yaw": yaw,
+            "pitch": pitch,
+            "roll": roll,
+            "bucket": bucket,
+            "pose_source": "filename",
+            "needs_manual_review": False,
+        }
+    else:
+        angles_deg = reconstruction.angles_deg
+        # [BUGFIX] Invert the yaw sign to align 3DDFA's coordinate system with the filename pose convention
+        yaw = -float(angles_deg[1])
+        pitch = float(angles_deg[0])
+        roll = float(angles_deg[2])
+        bucket = reconstruction.pose_bucket
+        pose = {
+            "yaw": yaw,
+            "pitch": pitch,
+            "roll": roll,
+            "bucket": bucket,
+            "pose_source": "3DDFA_v3",
+            "needs_manual_review": abs(yaw) > 45.0,
+        }
 
-    bucket = reconstruction.pose_bucket
     angle = RAW_BUCKET_TO_UI.get(bucket, bucket)
-
-    pose = {
-        "yaw": yaw,
-        "pitch": pitch,
-        "roll": roll,
-        "bucket": bucket,
-        "pose_source": "3DDFA_v3",
-        "needs_manual_review": abs(yaw) > 45.0,
-    }
 
     raw_result = reconstruction.payload.get("raw_result", {})
     # [PIPE-FIX] Skip render_face/render_shape/render_mask — not needed for pipeline.

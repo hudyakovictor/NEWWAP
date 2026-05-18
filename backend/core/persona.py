@@ -44,7 +44,9 @@ def cluster_personas(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             m = r.get("metrics", {})
             vec = []
             for k in keys:
-                v = m.get(k, 0.0)
+                v = m.get(k)
+                if v is None:
+                    v = 0.0
                 if k.startswith("texture_"):
                     if k in TEXTURE_KEYS_INCLUDE:
                         vec.append(v * TEXTURE_WEIGHT)
@@ -57,7 +59,7 @@ def cluster_personas(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         
         if not vectors:
             continue
-
+ 
         # Очень простая кластеризация на основе евклидова расстояния
         # В будущем можно использовать DBSCAN
         data = np.array(vectors)
@@ -67,7 +69,7 @@ def cluster_personas(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         denom = maxs - mins
         denom[denom == 0] = 1.0
         norm_data = (data - mins) / denom
-
+ 
         # Поиск "сигнатур" (близких векторов)
         # Если расстояние < 0.15 (15% от размаха), считаем одной персоной
         assigned = [False] * len(valid_records)
@@ -91,7 +93,7 @@ def cluster_personas(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                     "bucket": bucket,
                     "count": len(current_cluster),
                     "photo_ids": [r["photo_id"] for r in current_cluster],
-                    "avg_profile": {k: float(np.mean([r["metrics"].get(k, 0.0) for r in current_cluster])) for k in keys}
+                    "avg_profile": {k: float(np.mean([(r["metrics"].get(k) if r["metrics"].get(k) is not None else 0.0) for r in current_cluster])) for k in keys}
                 })
 
     return persona_groups

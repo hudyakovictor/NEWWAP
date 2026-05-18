@@ -69,7 +69,13 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
     if pose_data and "yaw" in pose_data:
         pose = [pose_data.get("yaw", 0), pose_data.get("pitch", 0), pose_data.get("roll", 0)]
     elif recon and "angles_deg" in recon:
-        pose = recon["angles_deg"]
+        # angles_deg format is [pitch, yaw, roll]
+        # We need [yaw, pitch, roll] for UI consistency and must invert yaw to match filename convention
+        recon_angles = recon["angles_deg"]
+        if len(recon_angles) >= 3:
+            pose = [-float(recon_angles[1]), float(recon_angles[0]), float(recon_angles[2])]
+        else:
+            pose = [0, 0, 0]
     else:
         pose = [0, 0, 0]
     logger.info(f"[DETAIL_MAPPER] Pose: {pose}")
@@ -95,12 +101,19 @@ def map_record_to_detail(record: Dict[str, Any]) -> Dict[str, Any]:
             excluded = True # Dynamic in mock, here simplified
             
         # Determine score
-        score = np.nan
+        score = None
         if visible and not excluded:
             if backend_key and backend_key in metrics:
                 score = metrics[backend_key]
+                if score is not None:
+                    try:
+                        import math
+                        if math.isnan(float(score)):
+                            score = None
+                    except Exception:
+                        score = None
             else:
-                score = np.nan
+                score = None
         
         zones.append({
             **meta,

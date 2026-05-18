@@ -259,7 +259,7 @@ class ForensicManifest:
 
 
 def is_image_file(path: Path) -> bool:
-    return path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+    return path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS and not path.name.startswith("._")
 
 
 def list_image_files(root: Path) -> list[Path]:
@@ -462,4 +462,44 @@ def json_ready(obj: Any) -> Any:
     if isinstance(obj, np.ndarray):
         return obj.tolist()
     return obj
+
+
+def parse_pose_from_filename(filename: str) -> dict[str, Any] | None:
+    """
+    Parses yaw, pitch, roll from filenames like y35p-25r-15 or y-10p-3r-1.
+    Falls back to only yaw if present.
+    """
+    import re
+    # Match patterns like y-10p-3r-1 or y35p-25r-15 or y12p0r0
+    match = re.search(r'y(-?\d+)p(-?\d+)r(-?\d+)', filename.lower())
+    if match:
+        yaw = float(match.group(1))
+        pitch = float(match.group(2))
+        roll = float(match.group(3))
+        bucket = classify_pose_bucket(yaw)
+        return {
+            "yaw": yaw,
+            "pitch": pitch,
+            "roll": roll,
+            "source": "filename",
+            "pose_source": "filename",
+            "classification": bucket,
+            "bucket": bucket
+        }
+    # Match only yaw if others are not present, like y35
+    match_yaw = re.search(r'y(-?\d+)', filename.lower())
+    if match_yaw:
+        yaw = float(match_yaw.group(1))
+        bucket = classify_pose_bucket(yaw)
+        return {
+            "yaw": yaw,
+            "pitch": 0.0,
+            "roll": 0.0,
+            "source": "filename",
+            "pose_source": "filename",
+            "classification": bucket,
+            "bucket": bucket
+        }
+    return None
+
 

@@ -206,6 +206,7 @@ def start_extract(request: ExtractJobRequest) -> dict:
             limit=request.limit,
             only_ids=request.only_ids,
             progress_callback=progress,
+            force_recompute=request.force,
         ),
     )
     return {"job_id": job_id}
@@ -570,6 +571,33 @@ async def upload_photo(file: UploadFile = File(...)) -> dict:
     dest.write_bytes(content)
     # Build stub to return bucket/pose info
     stub = service._build_stub("main", dest)
+    return {
+        "filename": dest.name,
+        "photo_id": stub["photo_id"],
+        "bucket": stub["bucket"],
+        "pose": stub["pose"],
+        "status": stub["status"],
+    }
+
+
+@app.post("/api/upload-calibration")
+async def upload_calibration_photo(file: UploadFile = File(...)) -> dict:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename")
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
+    dest = SETTINGS.calibration_dir / file.filename
+    # Avoid overwriting — add suffix if needed
+    counter = 1
+    while dest.exists():
+        stem = Path(file.filename).stem
+        dest = SETTINGS.calibration_dir / f"{stem}_{counter}{suffix}"
+        counter += 1
+    content = await file.read()
+    dest.write_bytes(content)
+    # Build stub to return bucket/pose info
+    stub = service._build_stub("calibration", dest)
     return {
         "filename": dest.name,
         "photo_id": stub["photo_id"],

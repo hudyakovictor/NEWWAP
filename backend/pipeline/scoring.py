@@ -458,6 +458,20 @@ def extract_macro_bone_metrics(
     metrics["orbital_perimeter_symmetry"] = min(perimeter_L, perimeter_R) / (max(perimeter_L, perimeter_R) + 1e-8)
     metrics["orbital_asymmetry_index"] = float(1.0 - metrics["orbital_perimeter_symmetry"])
 
+    # 11b. Signed orbital height asymmetry (for horizontal flip detection)
+    # Positive = left orbit centroid is higher than right; negative = right is higher.
+    # A horizontally mirrored photo flips this sign.
+    orbit_L_c = get_zone_centroid('orbit_L')
+    orbit_R_c = get_zone_centroid('orbit_R')
+    if not np.allclose(orbit_L_c, 0) and not np.allclose(orbit_R_c, 0):
+        # In BFM canonical coords, the vertical axis depends on reconstruction.
+        # Use the axis perpendicular to the lateral (Y) and depth (Z) axes — i.e. X.
+        # Higher orbit = more negative X in BFM convention (head-up direction).
+        height_diff = float(orbit_R_c[0] - orbit_L_c[0])  # positive if L is higher
+        metrics["orbital_height_signed"] = height_diff / (face_height + 1e-8)
+    else:
+        metrics["orbital_height_signed"] = 0.0
+
     # 12. Gnathion midline deviation
     nasion_pt = get_zone_centroid('nose_bridge_tip')
     subnasale_pt = (get_zone_centroid('nose_wing_L') + get_zone_centroid('nose_wing_R')) / 2.0

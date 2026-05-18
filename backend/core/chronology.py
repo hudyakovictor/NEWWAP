@@ -94,7 +94,8 @@ def build_timeline(records: list[dict[str, Any]], calibration_summary: dict[str,
             
             exceeded_clusters = defaultdict(list)
             for key in metric_keys:
-                if key not in record.get("metrics", {}) or key not in previous.get("metrics", {}):
+                if (key not in record.get("metrics", {}) or record["metrics"][key] is None or
+                    key not in previous.get("metrics", {}) or previous["metrics"][key] is None):
                     continue
                 current_value = float(record["metrics"][key])
                 previous_value = float(previous["metrics"][key])
@@ -203,7 +204,7 @@ def build_timeline(records: list[dict[str, Any]], calibration_summary: dict[str,
             reference_hits = 0
             if reference and index >= 2:
                 for key in metric_keys:
-                    if key not in reference or key not in record.get("metrics", {}):
+                    if key not in reference or key not in record.get("metrics", {}) or record["metrics"][key] is None:
                         continue
                     allowed = allowed_metric_delta(calibration_summary, bucket, key, max(days_delta, 30))
                     if abs(float(record["metrics"][key]) - reference[key]) <= allowed * 0.85:

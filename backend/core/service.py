@@ -141,6 +141,24 @@ class ForensicWorkbenchService:
                 "bucket": pose_report.get("classification"),
             }
             bucket = str(pose_report.get("classification") or bucket)
+        
+        # Fallback to filename-based pose if not detected or unclassified
+        from backend.core.utils import parse_pose_from_filename
+        fn_pose = parse_pose_from_filename(source_path.name)
+        if fn_pose:
+            if not pose_report or not pose or bucket == "unclassified":
+                pose = {
+                    **(pose or {}),
+                    "yaw": fn_pose["yaw"],
+                    "pitch": fn_pose["pitch"],
+                    "roll": fn_pose["roll"],
+                    "source": "filename",
+                    "pose_source": "filename",
+                    "classification": fn_pose["bucket"],
+                    "bucket": fn_pose["bucket"],
+                }
+                bucket = fn_pose["bucket"]
+
         stub = {
             "photo_id": photo_id,
             "dataset": dataset,
@@ -164,6 +182,7 @@ class ForensicWorkbenchService:
             "status": summary.get("status", "not_extracted"),
             "extracted_at": summary.get("extracted_at"),
             # Top-level fields for PhotoRecord compatibility
+            "date": date_str,
             "year": parsed_date.year if parsed_date else None,
             "syntheticProb": float(summary.get("metrics", {}).get("texture_silicone_prob", 0.0)),
             "bayesH0": summary.get("verdict", {}).get("bayesH0"),  # None if not computed
@@ -450,6 +469,7 @@ class ForensicWorkbenchService:
                 "score": real_score,
                 "manually_overridden": True,
                 "url": matched["artifacts"].get("face_overlay") or matched["artifacts"].get("render_face"),
+                "source_url": matched.get("source_url"),
                 "angles": [
                     float(matched.get("pose", {}).get("pitch", 0.0)),
                     float(matched.get("pose", {}).get("yaw", 0.0)),
@@ -461,7 +481,7 @@ class ForensicWorkbenchService:
         candidates = [
             candidate
             for candidate in calibration_records.values()
-            if candidate.get("bucket") == record.get("bucket") and candidate.get("status") == "ready"
+            if candidate.get("status") == "ready"
         ]
         if not candidates:
             return None
@@ -475,6 +495,7 @@ class ForensicWorkbenchService:
             "source": "auto_pose_match",
             "score": max(0.0, 1.0 - min(distance / 40.0, 1.0)),
             "url": best["artifacts"].get("face_overlay") or best["artifacts"].get("render_face"),
+            "source_url": best.get("source_url"),
             "angles": [
                 float(best.get("pose", {}).get("pitch", 0.0)),
                 float(best.get("pose", {}).get("yaw", 0.0)),
@@ -885,7 +906,8 @@ class ForensicWorkbenchService:
         for record in records:
             if record["photo_id"] == photo_id:
                 if dataset == "calibration":
-                    record["bucket_metric_health"] = bucket_metric_health(self.calibration_summary(), record.get("bucket", "unclassified"))
+                    raw_summary = build_calibration_summary(self.calibration_records())
+                    record["bucket_metric_health"] = bucket_metric_health(raw_summary, record.get("bucket", "unclassified"))
                 return record
         return None
 

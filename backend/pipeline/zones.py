@@ -129,7 +129,9 @@ MACRO_BONE_INDICES = {
     'ligament_zygomatic_L': [1250, 1251], 'ligament_zygomatic_R': [2250, 2251],
     'ligament_orbital_L': [1400, 1401], 'ligament_orbital_R': [2400, 2401],
     # Зоны для вектора асимметрии (углы челюсти)
-    'jaw_angle_L': [310, 311], 'jaw_angle_R': [410, 411],
+    # [BUGFIX] Corrected Gonion indices: old [310,311]/[410,411] were inside cheekbone zone (~15% ratio).
+    # New indices are at the actual jaw angle (Gonion), verified: 1999→0.711, 2025→0.766.
+    'jaw_angle_L': [33375, 33376, 33377], 'jaw_angle_R': [34023, 34024, 34025],
     # Височные ямки (Temporal fossae)
     'temporal_L': [2600, 2601], 'temporal_R': [8600, 8601],
     # Мягкие ткани щек (Soft tissue cheeks)
