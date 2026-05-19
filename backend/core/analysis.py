@@ -1013,24 +1013,12 @@ def _recon_dict(reconstruction: Any, bucket: str | None = None, image_shape: tup
         v2d_orig = v2d_224
 
     vertices = reconstruction.vertices_world
-    if bucket is not None and hasattr(reconstruction, 'angles_deg'):
-        try:
-            from backend.pipeline.alignment import canonicalize_vertices_for_bucket
-            raw_angles = np.array(reconstruction.angles_deg)
-            vertices = canonicalize_vertices_for_bucket(
-                np.array(reconstruction.vertices_world),
-                raw_angles,
-                bucket
-            )
-        except Exception as e:
-            print(f"Warning in _recon_dict canonicalization: {e}")
-            vertices = reconstruction.vertices_world
 
     return {
         "triangles": reconstruction.triangles,
         "uv_coords": reconstruction.uv_coords,
-        "vertices": vertices,  # СТРОГО КАНОН!
-        "vertices_2d": v2d_orig,  # СТРОГО ОРИГИНАЛЬНЫЕ ПИКСЕЛИ ИЗОБРАЖЕНИЯ (чтобы сэмплировать черты лица)!
+        "vertices": vertices,
+        "vertices_2d": v2d_orig,
         "vertices_3d": vertices,
         "visible_idx_renderer": reconstruction.visible_idx_renderer,
         "angles_deg": reconstruction.angles_deg,
@@ -1213,7 +1201,7 @@ def sanitize_for_json(obj):
         val = float(obj)
         if math.isnan(val) or math.isinf(val):
             return None
-        return val
+        return round(val, 3)
     elif isinstance(obj, (int, np.integer, np.int32, np.int64)):
         return int(obj)
     elif isinstance(obj, np.ndarray):
@@ -1259,22 +1247,39 @@ def extract_photo_bundle(
         neutral_expression=False,
     )
 
-    from backend.core.utils import parse_pose_from_filename
-    fn_pose = parse_pose_from_filename(source_path.name)
-    if fn_pose:
-        yaw = fn_pose["yaw"]
-        pitch = fn_pose["pitch"]
-        roll = fn_pose["roll"]
-        bucket = fn_pose["bucket"]
-        pose = {
-            "yaw": yaw,
-            "pitch": pitch,
-            "roll": roll,
-            "bucket": bucket,
-            "pose_source": "filename",
-            "needs_manual_review": False,
-        }
-    else:
+    # [BUGFIX] Attempt to use the highly accurate HighResHeadPoseEstimator first
+    pose_dict = None
+    try:
+        from backend.core.head_pose import HighResHeadPoseEstimator
+        estimator = HighResHeadPoseEstimator()
+        hr_pose = estimator.predict(source_path)
+        if hr_pose:
+            yaw = hr_pose["yaw"]
+            pitch = hr_pose["pitch"]
+            roll = hr_pose["roll"]
+            # [BUGFIX] Invert yaw sign to match the legacy filename logic which expected left = negative, right = positive
+            # Note: The external model already outputs left = positive, right = negative (standard mathematical yaw)
+            # We must invert it to match the rest of the application's filename conventions.
+            yaw = -yaw
+            
+            from backend.core.utils import classify_pose_bucket
+            bucket = classify_pose_bucket(yaw)
+            
+            pose_dict = {
+                "yaw": yaw,
+                "pitch": pitch,
+                "roll": roll,
+                "bucket": bucket,
+                "pose_source": "mobilenetv3_large",
+                "needs_manual_review": abs(yaw) > 45.0,
+            }
+    except Exception as e:
+        logger.error(f"Failed to use HighResHeadPoseEstimator: {e}")
+
+    if pose_dict:
+        pose = pose_dict
+        bucket = pose["bucket"]
+    elif reconstruction and hasattr(reconstruction, 'angles_deg') and reconstruction.angles_deg is not None:
         angles_deg = reconstruction.angles_deg
         # [BUGFIX] Invert the yaw sign to align 3DDFA's coordinate system with the filename pose convention
         yaw = -float(angles_deg[1])
@@ -1289,6 +1294,29 @@ def extract_photo_bundle(
             "pose_source": "3DDFA_v3",
             "needs_manual_review": abs(yaw) > 45.0,
         }
+    else:
+        from backend.core.utils import parse_pose_from_filename
+        fn_pose = parse_pose_from_filename(source_path.name)
+        if fn_pose:
+            yaw = fn_pose["yaw"]
+            pitch = fn_pose["pitch"]
+            roll = fn_pose["roll"]
+            bucket = fn_pose["bucket"]
+            pose = {
+                "yaw": yaw,
+                "pitch": pitch,
+                "roll": roll,
+                "bucket": bucket,
+                "pose_source": "filename",
+                "needs_manual_review": False,
+            }
+        else:
+            bucket = "frontal"
+            pose = {
+                "yaw": 0.0, "pitch": 0.0, "roll": 0.0,
+                "bucket": bucket, "pose_source": "fallback",
+                "needs_manual_review": True
+            }
 
     angle = RAW_BUCKET_TO_UI.get(bucket, bucket)
 

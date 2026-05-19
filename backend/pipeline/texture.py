@@ -111,9 +111,9 @@ class SkinTextureAnalyzer:
         if np.isnan(specular_gloss) or np.isnan(lbp_uniformity):
             return 0.0
             
-        gloss_penalty = max(0.0, (specular_gloss - 0.05) / 0.05)
-        pore_penalty = max(0.0, (100.0 - (pore_density or 100.0)) / 100.0)
-        uniformity_penalty = max(0.0, (lbp_uniformity - 0.15) / 0.1)
+        gloss_penalty = max(0.0, (specular_gloss - 0.06) / 0.06)
+        pore_penalty = max(0.0, (15.0 - (pore_density or 15.0)) / 15.0)
+        uniformity_penalty = max(0.0, (lbp_uniformity - 0.18) / 0.1)
         
         # Взвешенная сумма признаков синтетики
         prob = (gloss_penalty * 0.5) + (pore_penalty * 0.3) + (uniformity_penalty * 0.2)
