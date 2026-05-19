@@ -3,6 +3,10 @@ import './index.css'
 import { Dashboard } from './pages/Dashboard'
 import { Gallery } from './pages/Gallery'
 import { Timeline } from './pages/Timeline'
+import { ComparePage } from './pages/Compare'
+import { SettingsPage } from './pages/Settings'
+import { CalibrationPage } from './pages/Calibration'
+import { NotificationProvider } from './components/NotificationSystem'
 import {
   LayoutDashboard,
   ImageIcon,
@@ -27,51 +31,36 @@ export default function App() {
   const [page, setPage] = useState<Page>('dashboard')
 
   return (
-    <div className="app-layout">
-      <aside className="sidebar">
-        <div className="sidebar-logo">
-          <h1>DEEPUTIN</h1>
-          <span>Forensic SCAP v2.0</span>
-        </div>
-        <nav className="sidebar-nav">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              className={`nav-item ${page === item.id ? 'active' : ''}`}
-              onClick={() => setPage(item.id)}
-            >
-              <item.icon />
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </aside>
+    <NotificationProvider>
+      <div className="app-layout">
+        <aside className="sidebar">
+          <div className="sidebar-logo">
+            <h1>DEEPUTIN</h1>
+            <span>Forensic SCAP v2.0</span>
+          </div>
+          <nav className="sidebar-nav">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                className={`nav-item ${page === item.id ? 'active' : ''}`}
+                onClick={() => setPage(item.id)}
+              >
+                <item.icon />
+                {item.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-      <main className="main-content">
-        {page === 'dashboard' && <Dashboard />}
-        {page === 'gallery' && <Gallery />}
-        {page === 'timeline' && <Timeline />}
-        {page === 'compare' && <ComingSoon title="Сравнение" />}
-        {page === 'calibration' && <ComingSoon title="Калибровка" />}
-        {page === 'settings' && <ComingSoon title="Настройки" />}
-      </main>
-    </div>
-  )
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div>
-      <div className="page-header">
-        <h2>{title}</h2>
-        <p>Этот раздел находится в разработке</p>
+        <main className="main-content">
+          {page === 'dashboard' && <Dashboard />}
+          {page === 'gallery' && <Gallery />}
+          {page === 'timeline' && <Timeline />}
+          {page === 'compare' && <ComparePage />}
+          {page === 'calibration' && <CalibrationPage />}
+          {page === 'settings' && <SettingsPage />}
+        </main>
       </div>
-      <div className="panel">
-        <div className="panel-body" style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
-          <Settings size={48} style={{ marginBottom: 16, opacity: 0.3 }} />
-          <p style={{ fontSize: 16 }}>Раздел «{title}» будет доступен в следующей версии</p>
-        </div>
-      </div>
-    </div>
+    </NotificationProvider>
   )
 }

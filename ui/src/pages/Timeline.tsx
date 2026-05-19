@@ -5,8 +5,23 @@ import {
 } from 'recharts'
 import {
   Calendar, AlertCircle, ShieldAlert, BadgeInfo,
-  Users, TrendingUp, Clock
+  Users, TrendingUp, Clock, Download
 } from 'lucide-react'
+
+// Утилита экспорта в CSV
+const exportToCSV = (data: any[], filename: string) => {
+  if (!data || !data.length) return;
+  const headers = Object.keys(data[0]).join(',');
+  const rows = data.map(obj => 
+    Object.values(obj).map(val => `"${val}"`).join(',')
+  ).join('\n');
+  
+  const blob = new Blob([`${headers}\n${rows}`], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+};
 
 interface YearPoint {
   year: number
@@ -97,9 +112,18 @@ export function Timeline() {
 
   return (
     <div>
-      <div className="page-header">
-        <h2>Хронологический 3D-аудит</h2>
-        <p>Эволюция биометрических констант и детекция смены идентичности (1999–2025)</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h2>Хронологический 3D-аудит</h2>
+          <p>Эволюция биометрических констант и детекция смены идентичности (1999–2025)</p>
+        </div>
+        <button 
+          onClick={() => exportToCSV(chartData, 'chronology_report.csv')}
+          className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded text-white text-sm flex items-center gap-2"
+        >
+          <Download size={16} />
+          Экспорт в CSV
+        </button>
       </div>
 
       {/* Forensic Eras & Milestones */}
@@ -277,7 +301,7 @@ export function Timeline() {
               ))}
             </div>
           </div>
-          <div className="panel-body" style={{ flex: 1, minHeight: 320, padding: '24px 16px 8px 8px' }}>
+          <div className="panel-body" style={{ flex: 1, minHeight: 320, padding: '24px 16px 8px 8px', position: 'relative' }}>
             <ResponsiveContainer width="100%" height={320}>
               {currentMetric.kind === 'bar' ? (
                 <BarChart data={chartData}>
@@ -310,6 +334,26 @@ export function Timeline() {
                 </LineChart>
               )}
             </ResponsiveContainer>
+            {/* Anomaly markers overlay */}
+            {data.yearPoints.map((point, idx) => {
+              if (point.anomaly === 'danger') {
+                const xPos = (idx / (data.years.length - 1)) * 100;
+                return (
+                  <div
+                    key={idx}
+                    className="absolute w-3 h-3 bg-red-500 rounded-full animate-ping"
+                    style={{
+                      left: `${xPos}%`,
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      pointerEvents: 'none'
+                    }}
+                    title={`Аномалия: Год ${data.years[idx]}`}
+                  />
+                );
+              }
+              return null;
+            })}
           </div>
         </div>
 

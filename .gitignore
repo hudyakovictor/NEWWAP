@@ -1,11 +1,17 @@
 node_modules/
 __pycache__/
 *.pyc
+*.pyo
 .venv/
 dist/
 *.log
 .env
+.DS_Store
+.pytest_cache/
+*.pkl
 ui/public/
 ui/audit-report.json
 backend/scratch/
 storage/
+logs/
+results/

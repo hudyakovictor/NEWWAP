@@ -839,6 +839,7 @@ class ForensicWorkbenchService:
             },
             "timeline_summary": summary,
             "source_photo_total": len(main_records),
+            "source_calibration_total": len(self.calibration_records()),
             "processed_photo_total": len(ready_main),
             "calibration": {
                 "stability_score": calibration_summary["stability_score"],

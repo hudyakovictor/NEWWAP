@@ -1,5 +1,5 @@
 import numpy as np
-from core.constants import PRIOR_SAME_PERSON, PRIOR_IDENTITY_SWAP
+from .constants import PRIOR_SAME_PERSON, PRIOR_IDENTITY_SWAP
 
 class BayesianForensicEngine:
     def __init__(self, base_prior_h0=None, base_prior_h1=None, base_prior_h2=None):

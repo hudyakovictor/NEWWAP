@@ -23,7 +23,30 @@ export function Dashboard() {
   useEffect(() => {
     fetch('/api/overview')
       .then(r => r.json())
-      .then(d => { setData(d); setLoading(false) })
+      .then(d => {
+        const auditScores = Array.isArray(d.audit_current)
+          ? d.audit_current.map((item: any) => Number(item.score) || 0)
+          : []
+        const avgAuditScore = auditScores.length
+          ? Math.round(auditScores.reduce((sum: number, score: number) => sum + score, 0) / auditScores.length)
+          : 0
+        setData({
+          total_photos: d.source_photo_total ?? 0,
+          total_main: d.source_photo_total ?? 0,
+          total_calibration: d.source_calibration_total ?? 0,
+          total_pairs: d.timeline_summary?.transitions ?? 0,
+          total_anomalies: (d.timeline_summary?.impossible_changes ?? 0) + (d.timeline_summary?.long_gaps ?? 0),
+          total_metrics: d.calibration?.stable_metrics ?? 0,
+          buckets: d.timeline_summary?.angle_coverage ?? {},
+          calibration_quality: {
+            high: d.calibration?.stable_metrics ?? 0,
+            medium: d.calibration?.marginal_metrics ?? 0,
+            marginal: d.calibration?.replace_metrics ?? 0,
+            low: Math.max(0, 100 - avgAuditScore),
+          },
+        })
+        setLoading(false)
+      })
       .catch(() => {
         // Fallback to compiled data
         fetch('/storage/master_ui_data.json')
@@ -201,7 +224,7 @@ export function Dashboard() {
             }}>
               <Skull size={24} style={{ color: 'var(--accent-red)', marginBottom: 8 }} />
               <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                Данные требуют перекомпиляции<br />после обновления zones.py
+                Статус считается по текущим<br />summary.json и калибровке
               </div>
             </div>
           </div>

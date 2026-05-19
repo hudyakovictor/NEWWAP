@@ -13,23 +13,9 @@ from .visibility import compute_visibility
 from .calibration import CalibrationAnalyzer, CalibrationProtocol, CalibrationDecomposition, find_calibration_match
 from .zones import MACRO_BONE_INDICES, compute_zone_metrics, provisional_band_from_score
 from core.constants import ALIGNMENT_MIN_RANK, VISIBILITY_ANGLE_DEG
-from core.utils import iso_now, json_ready
+from core.utils import iso_now, json_ready, compute_linear_snr
 
 _IPD_MAX_YAW_DEG = 30.0  # IPD валиден только если оба глаза видны
-
-
-def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
-    """
-    [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
-    """
-    # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
-    # чтобы избежать взрывного роста SNR при идеальных масках (G-03).
-    safe_noise = max(abs(noise_baseline), 0.005)
-
-    # Сигнал не может быть отрицательным
-    safe_signal = max(signal_error - safe_noise, 0.0)
-
-    return safe_signal / safe_noise
 
 def _extract_calibrated_geometry_evidence(
     calibration: CalibrationProtocol,
@@ -47,7 +33,7 @@ def _extract_calibrated_geometry_evidence(
         # Force fallback behavior
         signal = float(max(robust_error, 0.0))
         noise = float(max(raw_error - robust_error, 0.0))
-        snr = _compute_linear_snr(signal, noise)
+        snr = compute_linear_snr(signal, noise, noise_floor=0.015)
     else:
         try:
             # Call direct decompose method from CalibrationProtocol
@@ -60,7 +46,7 @@ def _extract_calibrated_geometry_evidence(
             # Fallback
             signal = float(max(robust_error, 0.0))
             noise = float(max(raw_error - robust_error, 0.0))
-            snr = _compute_linear_snr(signal, noise)
+            snr = compute_linear_snr(signal, noise, noise_floor=0.015)
             evidence_mode = "fallback"
 
     return {

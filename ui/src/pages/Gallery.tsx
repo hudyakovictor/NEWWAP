@@ -4,6 +4,7 @@ import {
   Search, ChevronLeft, ChevronRight,
   ShieldAlert, Smile
 } from 'lucide-react'
+import { getClusterColor } from '../utils/clusterColors'
 
 interface PhotoItem {
   photo_id: string
@@ -50,6 +51,8 @@ export function Gallery() {
   const [uploadingCal, setUploadingCal] = useState(false)
   const [extractingJob, setExtractingJob] = useState(false)
   const [extractingProgress, setExtractingProgress] = useState('')
+  const [personas, setPersonas] = useState<any[]>([])
+  const [selectedPersona, setSelectedPersona] = useState<string>('all')
 
   const limit = 24
   const offset = (page - 1) * limit
@@ -75,6 +78,14 @@ export function Gallery() {
         setLoading(false)
       })
   }, [dataset, search, pose, sortBy, page])
+
+  useEffect(() => {
+    // Загружаем кластеры персон
+    fetch('/api/persona-clusters')
+      .then(r => r.json())
+      .then(data => setPersonas(data.clusters || []))
+      .catch(() => setPersonas([]))
+  }, [])
 
   useEffect(() => {
     if (!selectedPhoto) {
@@ -304,6 +315,33 @@ export function Gallery() {
               <option value="bayes">🔍 Вероятность H0 (Байес)</option>
             </select>
           </div>
+
+          {/* Personas filter */}
+          {dataset === 'main' && (
+            <div style={{ position: 'relative' }}>
+              <select
+                value={selectedPersona}
+                onChange={(e) => setSelectedPersona(e.target.value)}
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '8px 12px 8px 12px',
+                  color: 'var(--text-primary)',
+                  outline: 'none',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="all">Все фото</option>
+                {personas.map((p, idx) => (
+                  <option key={idx} value={p.persona_id}>
+                    Персона {p.persona_id} ({p.count} фото)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -316,6 +354,9 @@ export function Gallery() {
             {photos.map((photo) => {
               // Construct image URL
               const imgUrl = `/source/${dataset}/${photo.relative_path || photo.filename}`
+              // Find persona for this photo
+              const persona = personas.find(p => p.photo_ids && p.photo_ids.includes(photo.photo_id))
+              
               return (
                 <div
                   key={photo.photo_id}
@@ -325,6 +366,12 @@ export function Gallery() {
                   <img src={imgUrl} alt={photo.photo_id} onError={(e) => {
                     (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=60'
                   }} />
+                  {persona && (
+                    <div className="absolute top-2 right-2 text-xs px-2 py-1 rounded text-white flex items-center gap-1" style={{ backgroundColor: getClusterColor(persona.persona_id) }}>
+                      <div className="w-2 h-2 rounded-full bg-white" />
+                      Персона {persona.persona_id}
+                    </div>
+                  )}
                   <div className="photo-meta">
                     <div className="photo-date">{new Date(photo.date).toLocaleDateString('ru-RU')}</div>
                     <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>

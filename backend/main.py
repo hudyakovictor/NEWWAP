@@ -14,10 +14,11 @@ from pydantic import BaseModel
 
 from datetime import datetime
 from core.config import SETTINGS
-from core.analysis import calculate_bayesian_evidence
+from core.analysis import calculate_bayesian_evidence, get_runtime
 from core.detail_mapper import map_record_to_detail
 from core.jobs import JobManager
 from core.models import CalibrationOverrideRequest, ExtractJobRequest, RecomputeMetricsRequest
+from core.persona import cluster_personas
 from core.service import ForensicWorkbenchService
 from core.utils import IMAGE_EXTENSIONS, read_json
 from pipeline.reconstruction import load_reconstruction_cache, RECONSTRUCTION_CACHE_NAME
@@ -54,6 +55,15 @@ UI_DIST_DIR = SETTINGS.newapp_root / "ui" / "dist"
 async def lifespan(app: FastAPI):
     logger.info("Backend starting on port %d", SETTINGS.port)
     logger.info("Log directory: %s", LOG_DIR)
+    
+    # ПРИНУДИТЕЛЬНАЯ ИНИЦИАЛИЗАЦИЯ МОДЕЛЕЙ ПРИ СТАРТЕ СЕРВЕРА
+    logger.info("Pre-loading 3DDFA and texture models into memory...")
+    try:
+        runtime = get_runtime()
+        logger.info("Models pre-loaded successfully.")
+    except Exception as e:
+        logger.error(f"Failed to pre-load models: {e}")
+    
     tunnel = None
     if SETTINGS.localxpose_token:
         try:
@@ -196,6 +206,23 @@ def job(job_id: str) -> dict:
     return data
 
 
+@app.post("/api/jobs/clear-cache")
+def clear_jobs_cache() -> dict:
+    # Очищаем память словаря jobs в JobManager
+    jobs._jobs.clear()
+    
+    # Принудительный garbage collection и очистка VRAM
+    import gc
+    import torch
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+        
+    return {"status": "ok", "message": "Jobs and VRAM cache cleared"}
+
+
 @app.post("/api/jobs/extract")
 def start_extract(request: ExtractJobRequest) -> dict:
     job_id = jobs.start(
@@ -332,6 +359,18 @@ async def comparison_matrix(photo_ids: list[str] = Body(...)):
     return {"matrix": matrix, "photo_ids": photo_ids, "missing_ids": missing_ids}
 
 
+@app.get("/api/persona-clusters")
+async def persona_clusters():
+    """
+    Возвращает кластеры персон (группы фото с похожим профилем аномалий).
+    Используется для выявления повторного использования масок/реквизита.
+    """
+    from core.persona import cluster_personas
+    records = service.main_records()
+    clusters = cluster_personas(records)
+    return {"clusters": clusters}
+
+
 @app.get("/api/similar-photos/{photo_id}")
 async def similar_photos(photo_id: str, limit: int = 5):
     """
@@ -371,6 +410,15 @@ def list_investigations() -> list[dict]:
     return service.get_investigations()
 
 
+@app.get("/api/investigations/{inv_id}")
+def get_investigation(inv_id: str) -> dict:
+    invs = service.get_investigations()
+    for inv in invs:
+        if inv.get("id") == inv_id:
+            return inv
+    raise HTTPException(status_code=404, detail="Investigation not found")
+
+
 @app.post("/api/investigations")
 def upsert_investigation(inv: dict) -> dict:
     return service.upsert_investigation(inv)
@@ -382,6 +430,17 @@ def delete_investigation(inv_id: str) -> dict:
     if not result:
         raise HTTPException(status_code=404, detail="Investigation not found")
     return result
+
+
+@app.get("/api/personas")
+def get_personas() -> dict:
+    records = service.main_records()
+    if not records:
+        return {"clusters": []}
+    
+    # cluster_personas принимает список records и возвращает кластеры
+    clusters = cluster_personas(records)
+    return {"clusters": clusters, "total_records_processed": len(records)}
 
 
 @app.get("/api/pipeline/stages")
@@ -609,28 +668,23 @@ async def upload_calibration_photo(file: UploadFile = File(...)) -> dict:
 
 @app.post("/api/reset-all")
 def reset_all() -> dict:
-    """Reset the interface and clear all directories to make it ready for new analysis."""
+    """Clear derived analysis data while keeping source photos on disk."""
     import shutil
-    # 1. Clear photo directories
-    for path in [SETTINGS.main_photos_dir, SETTINGS.calibration_dir]:
-        if path.exists():
-            shutil.rmtree(path)
-        path.mkdir(parents=True, exist_ok=True)
 
-    # 2. Recreate storage directories and delete individual cached files
+    # Recreate derived storage only. Source datasets must survive reset.
     for sub in ["main", "calibration", "temp", "poses"]:
         p = SETTINGS.storage_root / sub
         if p.exists():
             shutil.rmtree(p)
         p.mkdir(parents=True, exist_ok=True)
 
-    # 3. Delete clusters and overrides
+    # Delete derived indexes and manual UI state.
     for f in ["duplicate-clusters.json", "calibration_overrides.json", "investigations.json"]:
         p = SETTINGS.storage_root / f
         if p.exists():
             p.unlink()
 
-    # 4. Invalidate memory cache
+    # Invalidate memory cache.
     service._records_cache.clear()
     service._records_cache_ts.clear()
     service._main_records_cache = None
@@ -639,7 +693,7 @@ def reset_all() -> dict:
     service._calib_summary_cache_ts = 0.0
     service._pose_reports.clear()
 
-    return {"status": "ok"}
+    return {"status": "ok", "message": "Derived analysis data cleared; source photos kept"}
 
 
 @app.delete("/api/photo/{dataset}/{photo_id}")

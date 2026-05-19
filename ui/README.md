@@ -1,73 +1,101 @@
-# React + TypeScript + Vite
+# DEEPUTIN Forensic SCAP v2.0
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A forensic photo comparison application for 3D facial analysis and identity verification.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Dashboard**: Overview of forensic analysis metrics and system status
+- **Gallery**: Browse and search photo archives with persona clustering
+- **Timeline**: Chronological analysis of biometric constants over time
+- **Compare**: Side-by-side photo comparison with Bayesian evidence analysis
+- **3D Mesh Viewer**: Interactive 3D mesh visualization with heatmap overlay
+- **Matrix Analysis**: N×N similarity matrix for batch photo comparison
+- **Calibration**: Manage calibration dataset and override recommendations
+- **Settings**: Job management for batch feature extraction
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React 18, TypeScript, Vite
+- **3D Rendering**: Three.js, React Three Fiber, React Three Drei
+- **UI Components**: Lucide Icons, Framer Motion
+- **Charts**: Recharts
+- **Styling**: Tailwind CSS
 
-## Expanding the ESLint configuration
+## Development
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Install Dependencies
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Run Development Server
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+### Build for Production
+
+```bash
+npm run build
+```
+
+### Type Checking
+
+```bash
+npx tsc --noEmit
+```
+
+## Project Structure
+
+```
+ui/
+├── src/
+│   ├── components/       # Reusable UI components
+│   │   ├── compare/      # Photo comparison components
+│   │   ├── 3d/           # 3D mesh viewer
+│   │   ├── gallery/      # Gallery components
+│   │   └── NotificationSystem.tsx
+│   ├── hooks/            # Custom React hooks
+│   │   └── useJobPolling.ts
+│   ├── pages/            # Page components
+│   │   ├── Dashboard.tsx
+│   │   ├── Gallery.tsx
+│   │   ├── Timeline.tsx
+│   │   ├── Compare.tsx
+│   │   ├── Calibration.tsx
+│   │   └── Settings.tsx
+│   ├── types/            # TypeScript type definitions
+│   │   └── api.ts
+│   ├── utils/            # Utility functions
+│   │   ├── heatmap.ts
+│   │   └── clusterColors.ts
+│   ├── App.tsx
+│   └── main.tsx
+├── public/               # Static assets
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
+```
+
+## API Integration
+
+The frontend communicates with the backend via REST API endpoints:
+
+- `/api/photos/main` - List main dataset photos
+- `/api/photos/calibration` - List calibration photos
+- `/api/evidence/compare` - Compare two photos
+- `/api/evidence/matrix` - Build similarity matrix
+- `/api/persona-clusters` - Get persona clusters
+- `/api/timeline-summary` - Get timeline data
+- `/api/calibration/summary` - Get calibration status
+- `/api/recommendations` - Get calibration recommendations
+- `/api/jobs/extract` - Start batch extraction job
+- `/api/jobs/{job_id}` - Get job status
+- `/api/mesh/{dataset}/{photoId}` - Get 3D mesh data
+
+## License
+
+Proprietary - Forensic Use Only

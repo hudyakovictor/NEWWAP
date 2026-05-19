@@ -39,11 +39,13 @@ from .constants import (
     ALIGNMENT_MIN_RANK,
     ARTIFACT_VERSION,
     MIN_ZONE_VERTICES,
+    ZONE_WEIGHTS,
 )
 from .utils import (
     BUCKET_METRIC_KEYS,
     RAW_BUCKET_TO_UI,
     ForensicManifest,
+    compute_linear_snr,
     ensure_directory,
     iso_now,
     parse_date_from_name,
@@ -63,45 +65,6 @@ class BayesianEvidence(BaseModel):
     h2_different_person: float
     structural_snr: float
     anomalies_flagged: int
-
-
-# Веса зон по реальным ключам из BUCKET_METRIC_KEYS.
-# Приоритет на неизменные костные структуры согласно ТЗ.
-# [FIX-1] Расширено до полного набора 21 зоны с анатомически обоснованными весами.
-ZONE_WEIGHTS = {
-    # === Костные структуры (максимальный приоритет, вес 1.0) ===
-    # Эти зоны формируются в раннем возрасте и не меняются на протяжении жизни
-    "nose_projection_ratio": 1.0,   # Проекция носа (переносица) — костная основа
-    "orbit_depth_L_ratio": 1.0,     # Глубина левой глазницы — костная структура
-    "orbit_depth_R_ratio": 1.0,     # Глубина правой глазницы — костная структура
-    "jaw_width_ratio": 0.95,        # Ширина челюсти — костная структура
-    "cranial_face_index": 0.95,     # Краниальный индекс — соотношение черепа и лица
-
-    # === Костно-связочные зоны (высокий приоритет, вес 0.8-0.9) ===
-    "chin_projection_ratio": 0.9,   # Проекция подбородка
-    "gonial_angle_L": 0.85,         # Угол нижней челюсти L — гониальный угол
-    "gonial_angle_R": 0.85,         # Угол нижней челюсти R
-    "canthal_tilt_L": 0.8,          # Кантальный угол L — связочная структура
-    "canthal_tilt_R": 0.8,          # Кантальный угол R
-    "nasofacial_angle_ratio": 0.8,  # Угол носа к лицу
-
-    # === Зоны симметрии и асимметрии (средний приоритет, вес 0.7) ===
-    # Используются для выявления структурных несоответствий
-    "chin_offset_asymmetry": 0.7,   # Асимметрия подбородка
-    "nasal_frontal_index": 0.7,     # Индекс переносицы
-    "forehead_slope_index": 0.7,    # Угол наклона лба
-
-    # === Мягкие ткани и текстура (низкий приоритет, вес 0.2-0.4) ===
-    # Подвержены временным изменениям, но полезны для детекции синтетики
-    "texture_silicone_prob": 0.3,   # Вероятность силикона (мягкие ткани)
-    "texture_pore_density": 0.25,     # Плотность пор — биологический маркер
-    "nose_width_ratio": 0.25,       # Ширина носа (включает мягкие ткани крыльев)
-    "texture_wrinkle_forehead": 0.2, # Морщины лба — возрастной маркер
-    "texture_wrinkle_nasolabial": 0.2, # Носогубные складки
-    "texture_spot_density": 0.2,    # Плотность пигментных пятен
-    "texture_global_smoothness": 0.15, # Общая гладкость (инверсия пор)
-    "interorbital_ratio": 0.15,     # Межглазничное расстояние (менее стабильно)
-}
 
 
 # [FIX-2] Зоны, чувствительные к разным выражениям лица согласно ТЗ
@@ -151,18 +114,6 @@ def _get_missing_metrics(metrics: Dict[str, Any], required_zones: list) -> list:
     return [zone for zone in required_zones if zone not in metrics or metrics[zone] is None]
 
 
-def _compute_linear_snr(signal_error: float, noise_baseline: float) -> float:
-    """
-    [ITER-1] Вычисляет строго линейный SNR без перехода в децибелы.
-    """
-    # Запрещаем отрицательный шум и ставим жесткий нижний предел (floor),
-    # чтобы избежать взрывного роста SNR при идеальных масках.
-    safe_noise = max(abs(noise_baseline), 0.015)
-
-    # Сигнал не может быть отрицательным
-    safe_signal = max(signal_error - safe_noise, 0.0)
-
-    return safe_signal / safe_noise
 
 
 def _calculate_real_snr(
@@ -200,14 +151,14 @@ def _calculate_real_snr(
         sigma = calibration_stats["sigma_noise"]
         if sigma > 0:
             # [ITER-1] ИСПРАВЛЕНИЕ: Линейный SNR вместо dB
-            snr = _compute_linear_snr(mean_weighted_delta, sigma)
+            snr = compute_linear_snr(mean_weighted_delta, sigma, noise_floor=0.015)
             return snr
 
     # Fallback: эвристический линейный SNR на основе дивергенции
     # [ITER-1] ИСПРАВЛЕНИЕ: Убрано преобразование в dB
     # Чем меньше delta — тем выше SNR (лучшее совпадение)
     fallback_noise = 0.02  # Базовый шум для fallback
-    snr = _compute_linear_snr(mean_weighted_delta, fallback_noise)
+    snr = compute_linear_snr(mean_weighted_delta, fallback_noise, noise_floor=0.015)
     return snr
 
 
@@ -265,7 +216,7 @@ def _determine_bucket_from_pose(pose: Dict[str, Any]) -> str:
     elif yaw <= 45:
         return f"{side}_threequarter_mid"
     elif yaw <= 65:
-        return f"{side}_threequarter_extreme"
+        return f"{side}_threequarter_deep"
     else:
         return f"{side}_profile"
 
@@ -616,7 +567,7 @@ def calculate_bayesian_evidence(
     
     # 6. [BUGFIX] Реальные данные вместо захардкоженных фейковых значений
     # Geometry SNR из реальных метрик (не 10.0)
-    geom_snr = _compute_linear_snr(avg_bone_delta, 0.04) if valid_zones > 0 else 0.0
+    geom_snr = compute_linear_snr(avg_bone_delta, 0.04, noise_floor=0.015) if valid_zones > 0 else 0.0
     bone_score = float(1.0 - avg_bone_delta) if valid_zones > 0 else 0.0
     
     # Silicone probability из реальных текстур (не 0.0)
@@ -629,6 +580,14 @@ def calculate_bayesian_evidence(
     lbp_val = tex_h1_result.get("features", {}).get("lbp_uniformity")
     albedo_val = tex_h1_result.get("features", {}).get("albedo_uniformity")
     specular_val = tex_h1_result.get("features", {}).get("specular_gloss")
+    
+    # 1. ВЫЗВАТЬ КЛАССИФИКАТОР:
+    h1_subtype_data = _classify_h1_subtype(
+        texture_features=tex_h1_result.get("features", {}),
+        geometric_divergence=avg_bone_delta,
+        tex_a=tex_a,
+        tex_b=tex_b
+    )
     
     # Pose distance из реальных углов
     pose_a = summary_a.get("pose", {})
@@ -666,6 +625,7 @@ def calculate_bayesian_evidence(
         },
         "texture": {
             "syntheticProb": float(synthetic_prob),
+            "h1_subtype": h1_subtype_data,
             "rawSyntheticProb": float(tex_h1_result.get("raw_composite", 0.0)),
             "naturalScore": float(tex_h1_result.get("naturalScore", 0.5)),
             "fft": float(fft_val) if fft_val is not None else None,
@@ -692,6 +652,7 @@ def calculate_bayesian_evidence(
             "H1": float(likelihoods[1]),
             "H2": float(likelihoods[2]),
         },
+        "zone_deltas": zone_deltas,
         "H0": float(posteriors[0]),
         "H1": float(posteriors[1]),
         "H2": float(posteriors[2]),

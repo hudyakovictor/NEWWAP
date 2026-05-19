@@ -464,6 +464,16 @@ def json_ready(obj: Any) -> Any:
     return obj
 
 
+def compute_linear_snr(signal_error: float, noise_baseline: float, noise_floor: float = 0.015) -> float:
+    """
+    Унифицированный расчет линейного SNR.
+    :param noise_floor: Жесткий нижний предел шума для предотвращения взрывного роста SNR.
+    """
+    safe_noise = max(abs(noise_baseline), noise_floor)
+    safe_signal = max(signal_error - safe_noise, 0.0)
+    return safe_signal / safe_noise
+
+
 def parse_pose_from_filename(filename: str) -> dict[str, Any] | None:
     """
     Parses yaw, pitch, roll from filenames like y35p-25r-15 or y-10p-3r-1.

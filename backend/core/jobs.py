@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -39,9 +40,32 @@ class JobRecord:
 
 
 class JobManager:
-    def __init__(self) -> None:
+    def __init__(self, ttl_seconds: int = 3600) -> None:
         self._lock = threading.Lock()
         self._jobs: dict[str, JobRecord] = {}
+        self.ttl_seconds = ttl_seconds
+
+    def _cleanup_old_jobs(self) -> None:
+        """Удаляет завершенные джобы с истекшим TTL для предотвращения утечек памяти."""
+        current_time = time.time()
+        keys_to_delete = []
+        
+        for jid, job in self._jobs.items():
+            if job.status in ("done", "error", "completed", "failed"):
+                # Парсим updated_at из ISO формата в timestamp
+                try:
+                    from datetime import datetime
+                    updated_dt = datetime.fromisoformat(job.updated_at.replace('Z', '+00:00'))
+                    updated_timestamp = updated_dt.timestamp()
+                except Exception:
+                    updated_timestamp = current_time
+                
+                # Если задача завершена более ttl_seconds назад
+                if current_time - updated_timestamp > self.ttl_seconds:
+                    keys_to_delete.append(jid)
+        
+        for jid in keys_to_delete:
+            del self._jobs[jid]
 
     def list_jobs(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -85,9 +109,10 @@ class JobManager:
         dataset: str,
         runner: Callable[[Callable[..., None]], None],
     ) -> str:
-        job_id = uuid.uuid4().hex
-        record = JobRecord(job_id=job_id, job_type=job_type, dataset=dataset)
         with self._lock:
+            self._cleanup_old_jobs()  # Очистка перед каждым новым запуском
+            job_id = uuid.uuid4().hex
+            record = JobRecord(job_id=job_id, job_type=job_type, dataset=dataset)
             self._jobs[job_id] = record
 
         def progress_callback(**payload: Any) -> None:

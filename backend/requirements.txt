@@ -1,0 +1,36 @@
+# Backend requirements for Deeputin Investigation Platform
+# Iteration 1 - Fixed versions for deployment consistency
+
+# Core web framework
+fastapi==0.115.0
+uvicorn==0.41.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
+pydantic-core==2.41.5
+
+# Data processing
+numpy==2.0.1
+pandas==2.3.3
+scipy==1.17.0
+
+# Computer vision
+opencv-python==4.13.0.90
+opencv-python-headless==4.13.0.90
+scikit-image==0.26.0
+scikit-learn==1.8.0
+pillow==12.2.0
+
+# Deep learning
+torch==2.5.1
+torchvision==0.25.0
+torchaudio==2.5.1
+
+# Utilities
+python-multipart==0.0.22
+python-dateutil==2.9.0.post0
+pyyaml==6.0.3
+
+# Additional dependencies
+mediapipe==0.10.14
+onnx==1.20.1
+onnxruntime==1.23.2
